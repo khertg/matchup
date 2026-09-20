@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+.git
+.gitignore
+.vscode
+.idea
+*.log
+Dockerfile
+docker-compose.yml
+.dockerignore
+README.md
+pickleq-specs.md

@@ -24,6 +24,10 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    // Bind-mounted files on Windows/macOS don't emit fs events; poll inside Docker.
+    watch: process.env.USE_POLLING ? { usePolling: true } : undefined,
+  },
   test: {
     environment: 'node',
   },
