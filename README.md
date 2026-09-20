@@ -13,6 +13,10 @@ Free, offline-first pickleball open play manager (see `pickleq-specs.md`).
 
 Requires Node 20.19+ (built with Node 26).
 
+## UI (shadcn/ui)
+
+Components live in `src/components/ui` and are ours to edit. Add more with `npx shadcn@latest add <name>`. Import them via the `@/` alias, e.g. `@/components/ui/button`. Theme tokens (green primary, light and dark) are in `src/index.css`; dark mode is toggled through `next-themes`.
+
 ## Docker
 
 - `docker compose up dev`: hot-reload dev server at http://localhost:5173

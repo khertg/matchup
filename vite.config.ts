@@ -1,3 +1,4 @@
+import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -24,6 +25,9 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: { '@': path.resolve(import.meta.dirname, 'src') },
+  },
   server: {
     // Bind-mounted files on Windows/macOS don't emit fs events; poll inside Docker.
     watch: process.env.USE_POLLING ? { usePolling: true } : undefined,
