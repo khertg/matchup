@@ -9,6 +9,10 @@ export interface Player {
   name: string
   skill: SkillLevel
   gender?: Gender
+  /** All-time totals across saved sessions. */
+  games?: number
+  wins?: number
+  losses?: number
 }
 
 export interface Session {

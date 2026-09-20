@@ -17,7 +17,13 @@ export async function addOrGetPlayer(
     if (existing.skill !== skill) changes.skill = skill
     if (gender && existing.gender !== gender) changes.gender = gender
     if (Object.keys(changes).length > 0) await db.players.update(existing.id, changes)
-    return { ...existing, ...changes, id: existing.id }
+    // Only identity fields go into a session; all-time totals stay on the roster.
+    return {
+      id: existing.id,
+      name: existing.name,
+      skill: changes.skill ?? existing.skill,
+      gender: changes.gender ?? existing.gender,
+    }
   }
   const id = await db.players.add({ name: trimmed, skill, gender })
   if (id === undefined) throw new Error('Failed to save player')

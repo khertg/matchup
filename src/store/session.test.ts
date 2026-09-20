@@ -135,6 +135,15 @@ describe('session store', () => {
     expect(store().session!.courts[0].teams!.flat().sort()).toEqual([1, 2, 3, 4])
   })
 
+  it('tracks stats per result and undo reverts them', () => {
+    store().startSession('Club', 'doubles', 1)
+    checkInMany(4)
+    store().recordResult(1, 0)
+    expect(Object.keys(store().session!.stats)).toHaveLength(4)
+    expect(store().undo()).toBe(true)
+    expect(store().session!.stats).toEqual({})
+  })
+
   it('unlocks partners', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(2)

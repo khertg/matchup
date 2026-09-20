@@ -38,6 +38,7 @@ export function createSession(
     matchmaking,
     partners: [],
     lastResult: {},
+    stats: {},
     courts: Array.from({ length: courtCount }, (_, i) => ({ id: i + 1, teams: null })),
     players: {},
     queue: [],
@@ -126,6 +127,23 @@ export function recordResult(state: SessionState, courtId: number, winner: 0 | 1
   if (!court?.teams) throw new Error(`Court ${courtId} has no game in progress`)
   const winners = court.teams[winner]
   const losers = court.teams[winner === 0 ? 1 : 0]
+  const stats = { ...state.stats }
+  const averageSkill = (ids: number[]) =>
+    ids.reduce((sum, id) => sum + state.players[id].skill, 0) / ids.length
+  const tally = (ids: number[], opponents: number[], won: boolean) => {
+    const opponentSkill = averageSkill(opponents)
+    for (const id of ids) {
+      const prev = stats[id] ?? { games: 0, wins: 0, losses: 0, opponentSkill: 0 }
+      stats[id] = {
+        games: prev.games + 1,
+        wins: prev.wins + (won ? 1 : 0),
+        losses: prev.losses + (won ? 0 : 1),
+        opponentSkill: prev.opponentSkill + opponentSkill,
+      }
+    }
+  }
+  tally(winners, losers, true)
+  tally(losers, winners, false)
   return {
     winners,
     losers,
@@ -138,6 +156,7 @@ export function recordResult(state: SessionState, courtId: number, winner: 0 | 1
         ...Object.fromEntries(winners.map((id) => [id, 'W' as const])),
         ...Object.fromEntries(losers.map((id) => [id, 'L' as const])),
       },
+      stats,
     },
   }
 }

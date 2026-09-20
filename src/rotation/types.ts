@@ -10,6 +10,14 @@ export type MatchmakingMode = 'balanced' | 'skill' | 'winners' | 'mixed'
 
 export type LastResult = 'W' | 'L'
 
+export interface PlayerStats {
+  games: number
+  wins: number
+  losses: number
+  /** Sum over this player's games of the opposing team's average skill level. */
+  opponentSkill: number
+}
+
 /** Two sides of player ids. Doubles: 2 per side. Singles: 1 per side. */
 export type Teams = [number[], number[]]
 
@@ -28,6 +36,8 @@ export interface SessionState {
   partners: [number, number][]
   /** Outcome of each player's most recent game (used by Winners vs. Losers). */
   lastResult: Record<number, LastResult>
+  /** This session's results per player (only players who have finished a game). */
+  stats: Record<number, PlayerStats>
   courts: Court[]
   players: Record<number, RosterPlayer>
   /** Waiting players, first in line at index 0. */

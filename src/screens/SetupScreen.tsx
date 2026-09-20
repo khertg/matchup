@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { LifetimeLeaderboard } from '@/components/LifetimeLeaderboard'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -145,6 +146,9 @@ export function SetupScreen() {
             Start session
           </Button>
         </form>
+        <div className="mt-2">
+          <LifetimeLeaderboard />
+        </div>
       </CardContent>
     </Card>
   )

@@ -13,6 +13,7 @@ describe('migrateSession', () => {
       matchmaking: _m,
       partners: _p,
       lastResult: _l,
+      stats: _s,
       ...legacy
     } = createSession('doubles', 2)
     const migrated = migrateSession(legacy as never, 1)
@@ -20,13 +21,21 @@ describe('migrateSession', () => {
     expect(migrated?.matchmaking).toBe('balanced')
     expect(migrated?.partners).toEqual([])
     expect(migrated?.lastResult).toEqual({})
+    expect(migrated?.stats).toEqual({})
     expect(migrated?.courts).toHaveLength(2)
   })
 
   it('upgrades a v2 session with the matchmaking defaults', () => {
-    const { matchmaking: _m, partners: _p, lastResult: _l, ...v2 } = createSession('doubles', 1)
+    const { matchmaking: _m, partners: _p, lastResult: _l, stats: _s, ...v2 } = createSession('doubles', 1)
     const migrated = migrateSession(v2 as never, 2)
-    expect(migrated).toMatchObject({ matchmaking: 'balanced', partners: [], lastResult: {} })
+    expect(migrated).toMatchObject({ matchmaking: 'balanced', partners: [], lastResult: {}, stats: {} })
+  })
+
+  it('adds empty stats to a v3 session without touching its other fields', () => {
+    const { stats: _s, ...v3 } = createSession('doubles', 1, { matchmaking: 'mixed' })
+    const migrated = migrateSession(v3 as never, 3)
+    expect(migrated?.stats).toEqual({})
+    expect(migrated?.matchmaking).toBe('mixed')
   })
 
   it('leaves a current session untouched', () => {
