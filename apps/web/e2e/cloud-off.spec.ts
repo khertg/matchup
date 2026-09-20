@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { startSession } from './helpers'
 
-// The default build has no Supabase credentials, so every cloud feature must stay out of the way.
+// The default build has no API configured (VITE_API_URL), so every cloud feature must stay out of the way.
 
 test('hides the cloud club panel on the setup screen', async ({ page }) => {
   await page.goto('/')

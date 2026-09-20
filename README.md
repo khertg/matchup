@@ -11,8 +11,7 @@ apps/web        React app (Vite, Tailwind, shadcn/ui, Dexie, PWA) and its tests
 apps/api        Node API (Fastify + Postgres): clubs, live board, club leaderboard (see apps/api/README.md)
 packages/shared wire contract used by both: types, snapshot validation, slug rules
 docs/           product spec
-supabase/       previous cloud backend, being replaced by apps/api
-deploy/         production deployment files (added later)
+deploy/         production deployment: Caddy + API + Postgres on one server (see deploy/README.md)
 ```
 
 Run everything from the repository root: `npm install` once, then the scripts below. Each script runs in every workspace that defines it.
@@ -27,7 +26,7 @@ Run everything from the repository root: `npm install` once, then the scripts be
 - `npm run typecheck`: type-check every workspace
 - `npm run lint`: lint every workspace with oxlint
 - `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Tests and config live in `apps/web/e2e` and `apps/web/playwright.config.ts`. Cloud features run against a second build (`npm run build:cloudtest`) that talks to a **real API** (embedded Postgres, started automatically for each run), so the whole stack is tested end to end.
-- `npm run test:db`: applies the Supabase migration to a throwaway Postgres in Docker and checks its security rules (needs Docker running).
+- `npm test -w @matchup/api`: the API suite on embedded Postgres; set `TEST_DATABASE_URL` to run it on a real Postgres instead (CI does both).
 
 Requires Node 20.19+ (built with Node 26).
 
@@ -59,8 +58,18 @@ Components live in `apps/web/src/components/ui` and are ours to edit. Add more w
 
 ## Docker
 
-- `docker compose up dev`: hot-reload dev server at http://localhost:5173
-- `docker compose --profile prod up --build web`: production build served by nginx at http://localhost:8080
+**Development** (`docker-compose.yml`): the web app, the API and a Postgres database, all with hot reload.
+
+```bash
+docker compose up            # web http://localhost:5173, API http://localhost:8787, Postgres on :5432
+docker compose down -v       # after changing dependencies, so the containers get the new packages
+```
+
+The web app proxies `/api` to the API, so the cloud features work with no extra setup. You can also run each
+piece without Docker: `npm run dev` (web) and `npm run dev -w @matchup/api` (API, with an embedded database).
+
+**Production** is one small server running Caddy, the API and Postgres. See [deploy/README.md](deploy/README.md)
+for the step-by-step guide, backups and updates.
 
 ## Court rotation
 

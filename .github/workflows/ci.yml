@@ -6,6 +6,8 @@ on:
   pull_request:
 
 jobs:
+  # Lint, types, unit tests for every workspace, and the browser tests. The cloud E2E tests start
+  # the real API (embedded Postgres), so the whole stack is exercised.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -16,8 +18,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run typecheck
       - run: npm test
-      - run: npm run test:db
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
@@ -26,3 +28,41 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  # The API suite again, this time on a real Postgres instead of the embedded one.
+  api-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: pg
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:pg@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test -w @matchup/api
+
+  # The production images must build, and the API image must run on Alpine (native argon2 module).
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f apps/api/Dockerfile --target prod -t matchup-api .
+      - run: docker build -f deploy/Dockerfile -t matchup-caddy .
+      - name: The API image loads its native password hashing
+        run: >-
+          docker run --rm -w /app matchup-api node --input-type=module
+          -e "const { hash, verify } = await import('@node-rs/argon2'); const h = await hash('x'); if (!h.startsWith('\$argon2id\$') || !(await verify(h, 'x'))) process.exit(1)"

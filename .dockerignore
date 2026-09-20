@@ -11,8 +11,6 @@
 .vscode
 .idea
 docs
-supabase
-scripts
 README.md
 **/Dockerfile
 docker-compose.yml

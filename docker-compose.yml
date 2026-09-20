@@ -1,31 +1,62 @@
+# Development stack: the web app, the API and a Postgres database.
+#   docker compose up            -> web http://localhost:5173, API http://localhost:8787
+# Production lives in deploy/docker-compose.prod.yml.
 services:
-  # Hot-reload dev server: `docker compose up dev` -> http://localhost:5173
-  dev:
+  # Hot-reload web app. /api is proxied to the api service, as it will be behind the reverse proxy.
+  web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       target: dev
     ports:
       - "5173:5173"
+    environment:
+      VITE_API_URL: /api
+      API_PROXY_TARGET: http://api:8787
+    depends_on:
+      - api
     volumes:
       - .:/app
       - node_modules:/app/node_modules # keep container deps, not the host's
       - web_node_modules:/app/apps/web/node_modules
 
-  # Production image behind nginx: `docker compose --profile prod up --build web` -> http://localhost:8080
-  web:
-    profiles: ["prod"]
+  api:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
-      target: prod
-      args:
-        # Set in .env.local and pass with: docker compose --env-file .env.local ...
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+      dockerfile: apps/api/Dockerfile
+      target: dev
     ports:
-      - "8080:80"
+      - "8787:8787"
+    environment:
+      DATABASE_URL: postgres://matchup:matchup@db:5432/matchup
+      PORT: "8787"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+
+  # The dev database. Port 5432 is published only so you can inspect it with a SQL client.
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: matchup
+      POSTGRES_PASSWORD: matchup
+      POSTGRES_DB: matchup
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matchup -d matchup"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
 volumes:
   node_modules:
   web_node_modules:
+  api_node_modules:
+  pgdata:

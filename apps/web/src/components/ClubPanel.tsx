@@ -307,7 +307,7 @@ function SignedIn() {
   )
 }
 
-/** Optional cloud club sign-in on the setup screen. Hidden when Supabase is not configured. */
+/** Optional cloud club sign-in on the setup screen. Hidden when no API is configured. */
 export function ClubPanel() {
   const club = useClubAuth((s) => s.club)
   // A new recovery code (after creating a club or resetting a password) is shown once, here,

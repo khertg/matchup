@@ -14,8 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "oxlint apps packages",
     "test:e2e": "npm run test:e2e -w @matchup/web",
-    "test:e2e:ui": "npm run test:e2e:ui -w @matchup/web",
-    "test:db": "node scripts/test-db.mjs"
+    "test:e2e:ui": "npm run test:e2e:ui -w @matchup/web"
   },
   "devDependencies": {
     "oxlint": "^1.81.0"

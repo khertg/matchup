@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1
+# Development image for the web app. Production is built by deploy/Dockerfile.
 # The build context is the repository root:  docker build -f apps/web/Dockerfile .
 
-# ---- deps: install once, reused by every stage ----
+# ---- deps: every workspace manifest, so the lockfile resolves ----
 FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
 RUN npm ci
 
 # ---- dev: hot-reload server (source is bind-mounted by docker-compose) ----
@@ -13,20 +16,3 @@ FROM deps AS dev
 ENV USE_POLLING=true
 EXPOSE 5173
 CMD ["npm", "run", "dev", "-w", "@matchup/web", "--", "--host", "0.0.0.0"]
-
-# ---- build: type-check + production bundle + service worker ----
-FROM deps AS build
-COPY . .
-# Optional cloud sync: Vite bakes these public values into the bundle at build time.
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
-    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-RUN npm run build -w @matchup/web
-
-# ---- prod: static files behind nginx ----
-FROM nginx:1.27-alpine AS prod
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/apps/web/dist /usr/share/nginx/html
-EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1

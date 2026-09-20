@@ -1,0 +1,37 @@
+# Serves the web app and forwards /api to the API. Caddy gets and renews the HTTPS
+# certificate by itself when DOMAIN is a real domain pointing at this server.
+# DOMAIN=:80 serves plain HTTP on any host name (used for local testing only).
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	handle /api/* {
+		# flush_interval -1 sends the live-board event stream to viewers immediately.
+		reverse_proxy api:8787 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		root * /srv
+
+		# Everything revalidates by default. That matters for the HTML shell (also served for routes such as
+		# /club/<name>), the service worker and the manifest: if they were cached, app updates would never arrive.
+		@revalidate not path /assets/*
+		header @revalidate Cache-Control "no-cache"
+
+		# Files under /assets have a content hash in their name, so they can be cached for good.
+		# (The two rules never overlap, so the order Caddy runs them in does not matter.)
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		# Client-side routes such as /club/<name> load the app.
+		try_files {path} /index.html
+		file_server
+	}
+}
