@@ -15,6 +15,11 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 # ---- build: type-check + production bundle + service worker ----
 FROM deps AS build
 COPY . .
+# Optional cloud sync: Vite bakes these public values into the bundle at build time.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build
 
 # ---- prod: static files behind nginx ----

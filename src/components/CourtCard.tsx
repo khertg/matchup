@@ -9,16 +9,18 @@ import type { Court, RosterPlayer } from '@/rotation/types'
 interface Props {
   court: Court
   players: Record<number, RosterPlayer>
-  /** Waiting player ids in queue order, offered as substitutes. */
-  queue: number[]
   /** Locked partner pairs, to mark teams that are locked together. */
   partners: [number, number][]
-  onReplace: (outId: number, inId: number) => void
+  /** Read-only cards (the public viewer page) show teams but no controls. */
+  readOnly?: boolean
+  /** Waiting player ids in queue order, offered as substitutes. */
+  queue?: number[]
+  onReplace?: (outId: number, inId: number) => void
   /** True when waiting players could start a game here despite the matchmaking mode. */
-  canStart: boolean
-  onStart: () => void
-  onResult: (winner: 0 | 1) => void
-  onCancel: () => void
+  canStart?: boolean
+  onStart?: () => void
+  onResult?: (winner: 0 | 1) => void
+  onCancel?: () => void
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
@@ -26,10 +28,11 @@ const TEAM_NAMES = ['Team A', 'Team B'] as const
 export function CourtCard({
   court,
   players,
-  queue,
   partners,
+  readOnly = false,
+  queue = [],
   onReplace,
-  canStart,
+  canStart = false,
   onStart,
   onResult,
   onCancel,
@@ -65,36 +68,42 @@ export function CourtCard({
                       <Badge variant="secondary" title={skillLabel(players[id]?.skill)}>
                         Lv {players[id]?.skill}
                       </Badge>
-                      <ReplacePlayerDialog
-                        player={players[id]}
-                        waiting={queue.map((qid) => players[qid])}
-                        onReplace={(inId) => onReplace(id, inId)}
-                      />
+                      {!readOnly && onReplace && (
+                        <ReplacePlayerDialog
+                          player={players[id]}
+                          waiting={queue.map((qid) => players[qid])}
+                          onReplace={(inId) => onReplace(id, inId)}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            <div className="grid grid-cols-2 gap-2">
-              <Button className="h-11" onClick={() => onResult(0)}>
-                Team A won
-              </Button>
-              <Button className="h-11" onClick={() => onResult(1)}>
-                Team B won
-              </Button>
-            </div>
-            <Button variant="ghost" className="w-full" onClick={onCancel}>
-              Cancel game
-            </Button>
+            {!readOnly && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button className="h-11" onClick={() => onResult?.(0)}>
+                    Team A won
+                  </Button>
+                  <Button className="h-11" onClick={() => onResult?.(1)}>
+                    Team B won
+                  </Button>
+                </div>
+                <Button variant="ghost" className="w-full" onClick={onCancel}>
+                  Cancel game
+                </Button>
+              </>
+            )}
           </>
         ) : (
           <div className="space-y-3 py-4 text-center">
             <p className="text-sm text-muted-foreground">
-              {canStart
+              {canStart && !readOnly
                 ? 'No group fits this matchmaking mode yet. Check in more players, or start with whoever is waiting.'
                 : 'Waiting for players to check in'}
             </p>
-            {canStart && (
+            {canStart && !readOnly && (
               <Button variant="outline" className="h-11 w-full" onClick={onStart}>
                 Start with waiting players
               </Button>

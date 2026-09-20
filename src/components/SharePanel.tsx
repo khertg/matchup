@@ -1,0 +1,79 @@
+import { QrCode } from 'lucide-react'
+import QRCode from 'qrcode'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { useClubAuth } from '@/cloud/auth'
+import { viewerUrl } from '@/cloud/slug'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+
+export function SharePanel() {
+  const club = useClubAuth((s) => s.club)
+  const [open, setOpen] = useState(false)
+  const [qr, setQr] = useState<string | null>(null)
+  const url = club ? viewerUrl(club.slug) : ''
+
+  useEffect(() => {
+    if (!open || !url) return
+    let cancelled = false
+    QRCode.toDataURL(url, { margin: 1, width: 240 })
+      .then((dataUrl) => {
+        if (!cancelled) setQr(dataUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setQr(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, url])
+
+  if (!club) return null
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast('Link copied')
+    } catch {
+      toast.error('Could not copy. Select the link and copy it by hand.')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <QrCode /> Share live view
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Share the live board</DialogTitle>
+          <DialogDescription>
+            Players scan the code or open the link to follow the courts, queue and standings on their
+            own phones.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-center">
+          {qr ? (
+            <img src={qr} alt="QR code for the live board" width={240} height={240} />
+          ) : (
+            <div className="size-60 animate-pulse rounded-lg bg-muted" aria-hidden />
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Input readOnly value={url} aria-label="Live board link" onFocus={(e) => e.target.select()} />
+          <Button onClick={copy}>Copy link</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

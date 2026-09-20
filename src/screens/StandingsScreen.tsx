@@ -11,10 +11,15 @@ import {
 } from '@/components/ui/table'
 import { rankPlayers } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
-import { useSessionStore } from '@/store/session'
 
-export function StandingsScreen({ session }: { session: SessionState }) {
-  const location = useSessionStore((s) => s.location)
+interface Props {
+  session: SessionState
+  location: string
+  /** Read-only views (the public viewer page) hide the share-card buttons. */
+  readOnly?: boolean
+}
+
+export function StandingsScreen({ session, location, readOnly = false }: Props) {
   const standings = rankPlayers(session)
   const date = new Date().toLocaleDateString()
 
@@ -42,9 +47,11 @@ export function StandingsScreen({ session }: { session: SessionState }) {
                   <TableHead className="text-right" title="Average skill level of opponents faced">
                     Opp.
                   </TableHead>
-                  <TableHead className="w-12">
-                    <span className="sr-only">Share</span>
-                  </TableHead>
+                  {!readOnly && (
+                    <TableHead className="w-12">
+                      <span className="sr-only">Share</span>
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -62,9 +69,11 @@ export function StandingsScreen({ session }: { session: SessionState }) {
                     <TableCell className="text-right">{row.losses}</TableCell>
                     <TableCell className="text-right">{Math.round(row.winRate * 100)}%</TableCell>
                     <TableCell className="text-right">{row.avgOpponentSkill.toFixed(1)}</TableCell>
-                    <TableCell>
-                      <StatsCardDialog standing={row} location={location} date={date} />
-                    </TableCell>
+                    {!readOnly && (
+                      <TableCell>
+                        <StatsCardDialog standing={row} location={location} date={date} />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

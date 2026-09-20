@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ClubPanel } from '@/components/ClubPanel'
 import { LifetimeLeaderboard } from '@/components/LifetimeLeaderboard'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,7 +27,7 @@ const MODES: { value: GameMode; label: string }[] = [
   { value: 'singles', label: 'Singles' },
 ]
 
-export function SetupScreen() {
+function SetupCard() {
   const startSession = useSessionStore((s) => s.startSession)
   const [location, setLocation] = useState('')
   const [courts, setCourts] = useState('4')
@@ -151,5 +152,14 @@ export function SetupScreen() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+export function SetupScreen() {
+  return (
+    <div className="space-y-4">
+      <SetupCard />
+      <ClubPanel />
+    </div>
   )
 }

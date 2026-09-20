@@ -8,12 +8,16 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
+    "build:cloudtest": "vite build --mode cloudtest --outDir dist-cloudtest",
+    "preview:cloudtest": "vite preview --outDir dist-cloudtest --port 4174 --strictPort",
+    "test:db": "node scripts/test-db.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "preview": "vite preview"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
+    "@supabase/supabase-js": "^2.116.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.3.0",
     "dexie": "^4.4.6",

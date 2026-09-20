@@ -12,6 +12,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { useClubAuth } from '@/cloud/auth'
+import { cloud } from '@/cloud/client'
+import { newBatchId } from '@/cloud/id'
+import { toLifetimePlayers } from '@/cloud/lifetime'
+import { flushPendingLifetime } from '@/cloud/sync'
 import { saveLifetimeStats } from '@/db/lifetime'
 import { rankPlayers } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
@@ -26,8 +31,26 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
     setSaving(true)
     try {
       await saveLifetimeStats(session)
+
+      // Also add to the club leaderboard when signed in. It is queued first, so a
+      // dropped connection never loses it; it is sent again when back online.
+      const club = useClubAuth.getState().club
+      let clubUpdated = true
+      if (cloud && club) {
+        useClubAuth.getState().enqueueLifetime({
+          batchId: newBatchId(),
+          slug: club.slug,
+          players: toLifetimePlayers(session),
+        })
+        clubUpdated = await flushPendingLifetime()
+      }
+
       endSession()
-      toast('Session saved to the all-time leaderboard')
+      toast(
+        clubUpdated
+          ? 'Session saved to the all-time leaderboard'
+          : 'Saved on this device. The club leaderboard will update when you are back online.',
+      )
     } catch {
       toast.error('Could not save the results. The session is still open.')
       setSaving(false)

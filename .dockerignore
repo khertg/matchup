@@ -16,3 +16,6 @@ playwright-report
 blob-report
 e2e
 playwright.config.ts
+dist-cloudtest
+.env.local
+.env.*.local

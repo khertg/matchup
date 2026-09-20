@@ -45,6 +45,8 @@ interface SessionStore {
   /** Lock two checked-in players as doubles partners. */
   lockPartners: (a: number, b: number) => void
   unlockPartners: (playerId: number) => void
+  /** Replace the running session, for example one resumed from the cloud on another device. */
+  loadSession: (location: string, session: SessionState) => void
   endSession: () => void
 }
 
@@ -129,6 +131,8 @@ export const useSessionStore = create<SessionStore>()(
         const session = requireSession(get().session)
         set({ session: unlockPartnersEngine(session, playerId), previous: null })
       },
+
+      loadSession: (location, session) => set({ location, session, previous: null }),
 
       endSession: () => set({ location: '', session: null, previous: null }),
     }),

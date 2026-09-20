@@ -10,7 +10,8 @@ Free, offline-first pickleball open play manager (see `pickleq-specs.md`).
 - `npm run build`: type-check and build (also generates the service worker)
 - `npm test`: run unit tests
 - `npm run lint`: lint with oxlint
-- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against the production build; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`.
+- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Cloud features are tested against a second build (`npm run build:cloudtest`) with fake credentials and every Supabase request mocked, so no real project is needed.
+- `npm run test:db`: applies the Supabase migration to a throwaway Postgres in Docker and checks its security rules (needs Docker running).
 
 Requires Node 20.19+ (built with Node 26).
 
@@ -25,6 +26,16 @@ Requires Node 20.19+ (built with Node 26).
 Matchmaking modes (doubles): *Auto-balanced* (first come, first served, even teams), *Skill-separated*, *Winners vs. Losers*, and *Mixed doubles* (one man and one woman per team). Mixed doubles never stages a non-mixed game on its own; if no valid group exists yet, use "Start with waiting players" on the open court.
 
 The active session is saved on the device, so a reload or going offline keeps it.
+
+## Cloud sync and live board (optional)
+
+With a free Supabase project (setup in [supabase/README.md](supabase/README.md)) the setup screen offers a **Cloud club**. Signed-in staff get:
+
+- a **live board** at `/club/<your-club>` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
+- **resume** of a running session on a second staff device;
+- an **all-time club leaderboard** combined across devices.
+
+Without the two `VITE_SUPABASE_*` variables (see `.env.example`) the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
 
 ## UI (shadcn/ui)
 

@@ -1,5 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { toCloudError, type LifetimePlayer } from '@/cloud/api'
+import { useClubAuth } from '@/cloud/auth'
+import { cloud } from '@/cloud/client'
+import { MedalBadge } from '@/components/MedalBadge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -19,22 +23,58 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { MedalBadge } from '@/components/MedalBadge'
-import { db } from '@/db/db'
+import { db, type Player } from '@/db/db'
 import { MAX_LIFETIME_GAMES, MIN_LIFETIME_GAMES, rankLifetime } from '@/rotation/standings'
 
 const MEDALS = [null, 'gold', 'silver', 'bronze'] as const
 
+const fromClub = (rows: LifetimePlayer[]): Player[] =>
+  rows.map((p, index) => ({ id: index + 1, skill: 3, ...p }))
+
 export function LifetimeLeaderboard() {
-  const players = useLiveQuery(() => db.players.toArray(), [])
+  const club = useClubAuth((s) => s.club)
+  const localPlayers = useLiveQuery(() => db.players.toArray(), [])
+  const [open, setOpen] = useState(false)
   const [text, setText] = useState(String(MIN_LIFETIME_GAMES))
+  // The latest club fetch, tagged with its club so a stale result is never shown for another.
+  const [clubData, setClubData] = useState<{
+    slug: string
+    rows: LifetimePlayer[] | null
+    error: string | null
+  } | null>(null)
+
+  const useCloud = cloud !== null && club !== null
+  const slug = club?.slug
+
+  // While signed in to a club, show its combined results from every device.
+  useEffect(() => {
+    if (!open || !cloud || !slug) return
+    let cancelled = false
+    cloud
+      .fetchClubPlayers(slug)
+      .then((rows) => {
+        if (!cancelled) setClubData({ slug, rows, error: null })
+      })
+      .catch((error) => {
+        if (!cancelled) setClubData({ slug, rows: null, error: toCloudError(error).message })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, slug])
 
   const value = Number(text)
   const valid = Number.isInteger(value) && value >= MIN_LIFETIME_GAMES && value <= MAX_LIFETIME_GAMES
-  const rows = players && valid ? rankLifetime(players, value) : []
+  // Fall back to this device's totals if the club leaderboard can't be loaded.
+  const current = clubData?.slug === slug ? clubData : null
+  const clubRows = current?.rows ?? null
+  const clubError = current?.error ?? null
+  const source = useCloud && clubRows ? fromClub(clubRows) : localPlayers
+  const rows = source && valid ? rankLifetime(source, value) : []
+  const showingClub = useCloud && clubRows !== null
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" variant="ghost" className="w-full">
           Lifetime leaderboard
@@ -43,8 +83,18 @@ export function LifetimeLeaderboard() {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Lifetime leaderboard</DialogTitle>
-          <DialogDescription>All-time results from saved sessions on this device.</DialogDescription>
+          <DialogDescription>
+            {showingClub
+              ? `Combined all-time results for ${club?.name}, from every device.`
+              : 'All-time results from saved sessions on this device.'}
+          </DialogDescription>
         </DialogHeader>
+
+        {clubError && (
+          <p role="alert" className="text-sm text-destructive">
+            {clubError} Showing this device&apos;s results instead.
+          </p>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="min-games">

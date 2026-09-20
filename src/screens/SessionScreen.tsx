@@ -1,4 +1,6 @@
 import { EndSessionDialog } from '@/components/EndSessionDialog'
+import { SharePanel } from '@/components/SharePanel'
+import { SyncBadge } from '@/components/SyncBadge'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { matchmakingLabel } from '@/lib/matchmaking'
@@ -27,7 +29,11 @@ export function SessionScreen({ session }: { session: SessionState }) {
           </div>
         </div>
 
-        <EndSessionDialog session={session} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SyncBadge />
+          <SharePanel />
+          <EndSessionDialog session={session} />
+        </div>
       </header>
 
       <Tabs defaultValue="board">
@@ -43,7 +49,7 @@ export function SessionScreen({ session }: { session: SessionState }) {
           <CheckInScreen session={session} />
         </TabsContent>
         <TabsContent value="standings" className="mt-4">
-          <StandingsScreen session={session} />
+          <StandingsScreen session={session} location={location} />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,0 +1,46 @@
+import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import type { LifetimePlayer } from './api'
+
+export interface Club {
+  slug: string
+  name: string
+  /** Opaque staff token from club_login; the password is never kept. */
+  token: string
+}
+
+/** A finished session's totals waiting to reach the club leaderboard. */
+export interface PendingLifetime {
+  batchId: string
+  slug: string
+  players: LifetimePlayer[]
+}
+
+interface ClubAuthStore {
+  club: Club | null
+  pendingLifetime: PendingLifetime[]
+  signIn: (club: Club) => void
+  signOut: () => void
+  enqueueLifetime: (pending: PendingLifetime) => void
+  dequeueLifetime: (batchId: string) => void
+}
+
+export const useClubAuth = create<ClubAuthStore>()(
+  persist(
+    (set) => ({
+      club: null,
+      pendingLifetime: [],
+      signIn: (club) => set({ club }),
+      signOut: () => set({ club: null }),
+      enqueueLifetime: (pending) =>
+        set((s) => ({ pendingLifetime: [...s.pendingLifetime, pending] })),
+      dequeueLifetime: (batchId) =>
+        set((s) => ({ pendingLifetime: s.pendingLifetime.filter((p) => p.batchId !== batchId) })),
+    }),
+    {
+      name: 'matchup-club',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+    },
+  ),
+)
