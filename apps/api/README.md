@@ -46,7 +46,7 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 |---|---|---|
 | `POST /clubs` `{name, slug, password}` | none | Create a club. Returns `{token, recoveryCode}`; the recovery code is shown **once**. `409 club_slug_taken`, `400 weak_password` / `invalid_club`. |
 | `POST /clubs/:slug/login` `{password}` | none | Returns `{token, name}`. An unknown club and a wrong password give the same `401 invalid_credentials`. |
-| `POST /clubs/:slug/reset-password` `{recoveryCode, newPassword}` | none | Set a new password using the recovery code. Revokes every login and returns a new `{token, recoveryCode}`. |
+| `POST /clubs/:slug/reset-password` `{recoveryCode, newPassword}` | none | Set a new password using the recovery code. Revokes every login and returns a new `{token, recoveryCode, name}`. |
 | `POST /logout` | staff | End this login. |
 | `PUT /session` `{public, full}` | staff | Publish the running session. `public` is validated and stripped to known fields; `full` is a private backup. |
 | `GET /session` | staff | The private backup, for resuming on another device (`404` if none). |

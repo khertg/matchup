@@ -7,6 +7,7 @@ import {
   type CreateClubRequest,
   type LoginResponse,
   type ResetPasswordRequest,
+  type ResetPasswordResponse,
 } from '@matchup/shared'
 import type { Db } from '../db'
 import { AppError } from '../errors'
@@ -76,12 +77,12 @@ export async function resetPassword(
   slugInput: string,
   input: ResetPasswordRequest,
   tokenTtlDays: number,
-): Promise<AuthGrant> {
+): Promise<ResetPasswordResponse> {
   const slug = slugInput.trim().toLowerCase()
   checkPassword(input.newPassword)
 
-  const { rows } = await db.query<{ recovery_hash: string }>(
-    'select recovery_hash from clubs where slug = $1',
+  const { rows } = await db.query<{ recovery_hash: string; name: string }>(
+    'select recovery_hash, name from clubs where slug = $1',
     [slug],
   )
   const stored = rows[0]?.recovery_hash
@@ -101,5 +102,5 @@ export async function resetPassword(
     await revokeAllTokens(tx, slug)
     return issueToken(tx, slug, tokenTtlDays)
   })
-  return { token, recoveryCode }
+  return { token, recoveryCode, name: rows[0].name }
 }

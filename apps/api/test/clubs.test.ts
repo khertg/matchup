@@ -174,6 +174,7 @@ describe('recovering a password', () => {
     expect(reset.statusCode).toBe(200)
     const grant = reset.json()
     expect(grant.recoveryCode).not.toBe(recoveryCode)
+    expect(grant.name).toBe('Test Club') // so the app can show the club after signing in
 
     expect((await post('/api/clubs/downtown-club/login', { password: 'old-secret' })).statusCode).toBe(401)
     expect((await post('/api/clubs/downtown-club/login', { password: 'new-secret' })).statusCode).toBe(200)

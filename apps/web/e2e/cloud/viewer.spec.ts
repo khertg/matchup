@@ -1,10 +1,18 @@
-import { expect, test } from '@playwright/test'
-import { asLive, liveSnapshot, mockCloud } from './mock'
+import { expect, test, type APIRequestContext } from '@playwright/test'
+import { apiCreateClub, apiLive, apiPublish, bearer, liveSnapshot, uniqueClub } from './support'
+
+/** A club that is already running a session, published straight to the API. */
+async function runningClub(request: APIRequestContext, snapshot: object = liveSnapshot()) {
+  const club = uniqueClub('Sunset')
+  const { token } = await apiCreateClub(request, club)
+  await apiPublish(request, token, snapshot)
+  return { club, token }
+}
 
 test.describe('live viewer', () => {
-  test('shows the courts, queue and standings without staff controls', async ({ page }) => {
-    await mockCloud(page, { live: asLive(liveSnapshot) })
-    await page.goto('/club/sunset')
+  test('shows the courts, queue and standings without staff controls', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
 
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     await expect(page.getByText('Live', { exact: true })).toBeVisible()
@@ -27,9 +35,9 @@ test.describe('live viewer', () => {
     await expect(page.getByRole('tab', { name: 'Check-in' })).toHaveCount(0)
   })
 
-  test('shows standings with medals and no share buttons', async ({ page }) => {
-    await mockCloud(page, { live: asLive(liveSnapshot) })
-    await page.goto('/club/sunset')
+  test('shows standings with medals and no share buttons', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
     await page.getByRole('tab', { name: 'Standings' }).click()
 
     const rows = page.getByRole('row')
@@ -38,84 +46,132 @@ test.describe('live viewer', () => {
     await expect(page.getByRole('button', { name: /^Share card/ })).toHaveCount(0)
   })
 
-  test('explains when no session is running', async ({ page }) => {
-    await mockCloud(page, { live: null })
-    await page.goto('/club/sunset')
-    await expect(page.getByText('No game in progress')).toBeVisible()
+  test('explains when no session is running, for any club', async ({ page, request }) => {
+    const idle = uniqueClub('Idle')
+    await apiCreateClub(request, idle)
+    for (const slug of [idle.slug, uniqueClub('Ghost').slug]) {
+      await page.goto(`/club/${slug}`)
+      await expect(page.getByText('No game in progress')).toBeVisible()
+    }
   })
 
   test('rejects an invalid club link', async ({ page }) => {
-    await mockCloud(page)
     await page.goto('/club/NOT_VALID')
     await expect(page.getByText(/That club link isn.t valid/)).toBeVisible()
   })
 
-  test('refuses to render data it does not understand', async ({ page }) => {
-    await mockCloud(page, { live: asLive({ ...liveSnapshot, schemaVersion: 99 }) })
-    await page.goto('/club/sunset')
+  test('refuses to render data from a newer version instead of showing something broken', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.route(/\/api\/clubs\/[^/]+\/live$/, (route) =>
+      route.fulfill({
+        json: { state: { ...liveSnapshot(), schemaVersion: 99 }, updatedAt: new Date().toISOString() },
+      }),
+    )
+    await page.goto(`/club/${club.slug}`)
     await expect(page.getByText('This board needs a newer version of Matchup')).toBeVisible()
     await expect(page.getByText('Ann')).toHaveCount(0)
   })
 
-  test('updates by itself when the club changes the board', async ({ page }) => {
-    const mock = await mockCloud(page, { live: asLive(liveSnapshot) })
-    await page.clock.install()
-    await page.goto('/club/sunset')
-    await expect(page.getByText('Queue (2)')).toBeVisible()
-
-    // The club moves a game along: court 2 fills from the queue.
-    mock.live = asLive({
-      ...liveSnapshot,
-      courts: [liveSnapshot.courts[0], { id: 2, teams: [[5, 6], [1, 2]] }],
-      queue: [],
-    })
-    await page.clock.runFor(16_000)
-
-    await expect(page.getByRole('region', { name: 'Court 2' }).getByText('In play')).toBeVisible()
-    await expect(page.getByText('No one waiting')).toBeVisible()
-  })
-
-  test('goes back to "no game" when the club ends the session', async ({ page }) => {
-    const mock = await mockCloud(page, { live: asLive(liveSnapshot) })
-    await page.clock.install()
-    await page.goto('/club/sunset')
-    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
-
-    mock.live = null
-    await page.clock.runFor(16_000)
-    await expect(page.getByText('No game in progress')).toBeVisible()
-  })
-
-  test('keeps the last board on screen and says so when the connection drops', async ({ page }) => {
-    const mock = await mockCloud(page, { live: asLive(liveSnapshot) })
-    await page.clock.install()
-    await page.goto('/club/sunset')
-    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
-
-    mock.down = true
-    // The Supabase client retries failed reads with backoff timers, which this fake
-    // clock freezes, so keep advancing it until the failure surfaces.
-    await expect(async () => {
-      await page.clock.runFor(5_000)
-      await expect(page.getByText(/Offline\. Showing the update from/)).toBeVisible({ timeout: 500 })
-    }).toPass({ timeout: 20_000 })
-    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
-
-    mock.down = false
-    await expect(async () => {
-      await page.clock.runFor(5_000)
-      await expect(page.getByText(/^Updated /)).toBeVisible({ timeout: 500 })
-    }).toPass({ timeout: 20_000 })
-  })
-
-  test('is usable on a phone without horizontal scrolling', async ({ page }) => {
-    await mockCloud(page, { live: asLive(liveSnapshot) })
+  test('is usable on a phone without horizontal scrolling', async ({ page, request }) => {
+    const { club } = await runningClub(request)
     await page.setViewportSize({ width: 375, height: 800 })
-    await page.goto('/club/sunset')
+    await page.goto(`/club/${club.slug}`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+})
+
+test.describe('live updates', () => {
+  test('changes on screen within moments of the club changing the board, with no refresh', async ({ page, request }) => {
+    const { club, token } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
+    await expect(page.getByText('Queue (2)')).toBeVisible()
+
+    // The club moves a game along: court 2 fills from the queue. The polling fallback runs every
+    // 15 seconds, so seeing this within a few seconds proves the pushed stream is working.
+    await apiPublish(request, token, {
+      ...liveSnapshot(),
+      courts: [liveSnapshot().courts[0], { id: 2, teams: [[5, 6], [1, 2]] }],
+      queue: [],
+    })
+    await expect(page.getByRole('region', { name: 'Court 2' }).getByText('In play')).toBeVisible({ timeout: 6000 })
+    await expect(page.getByText('No one waiting')).toBeVisible()
+  })
+
+  test('goes back to "no game" the moment the club ends the session', async ({ page, request }) => {
+    const { club, token } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
+    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
+
+    await request.delete('/api/session', { headers: bearer(token) })
+    await expect(page.getByText('No game in progress')).toBeVisible({ timeout: 6000 })
+    expect((await apiLive(request, club.slug)).status()).toBe(404)
+  })
+
+  test('picks a session up when a club starts one while the page is already open', async ({ page, request }) => {
+    const club = uniqueClub('Waiting')
+    const { token } = await apiCreateClub(request, club)
+    await page.goto(`/club/${club.slug}`)
+    await expect(page.getByText('No game in progress')).toBeVisible()
+
+    await apiPublish(request, token, liveSnapshot('Just Started'))
+    await expect(page.getByRole('heading', { name: 'Just Started' })).toBeVisible({ timeout: 6000 })
+  })
+
+  test('keeps working by polling when the live stream is blocked', async ({ page, request }) => {
+    const { club, token } = await runningClub(request)
+    await page.route('**/live/stream', (route) => route.abort('connectionrefused'))
+    await page.clock.install()
+    await page.goto(`/club/${club.slug}`)
+    await expect(page.getByText('Queue (2)')).toBeVisible()
+
+    await apiPublish(request, token, { ...liveSnapshot(), queue: [5] })
+    await page.clock.runFor(16_000)
+    await expect(page.getByText('Queue (1)')).toBeVisible()
+  })
+
+  test('keeps the last board on screen, and says so, when the connection drops', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.clock.install()
+    await page.goto(`/club/${club.slug}`)
+    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
+
+    await page.route('**/api/**', (route) => route.abort('connectionrefused'))
+    await page.clock.runFor(16_000)
+    await expect(page.getByText(/Offline\. Showing the update from/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
+
+    await page.unroute('**/api/**')
+    await page.clock.runFor(16_000)
+    await expect(page.getByText(/^Updated /)).toBeVisible()
+  })
+
+  test('never receives private details', async ({ page, request }) => {
+    const club = uniqueClub('Private')
+    const { token } = await apiCreateClub(request, club)
+    const snapshot = liveSnapshot()
+    // A buggy client that sends genders and extra fields on the public board.
+    const dirty = {
+      ...snapshot,
+      email: 'owner@example.com',
+      players: Object.fromEntries(
+        Object.entries(snapshot.players).map(([id, p]) => [id, { ...p, gender: 'F', phone: '555' }]),
+      ),
+    }
+    await apiPublish(request, token, dirty)
+
+    // Wait for the board itself rather than collecting replies in the background.
+    const board = page.waitForResponse((r) => /\/api\/clubs\/[^/]+\/live$/.test(r.url()))
+    await page.goto(`/club/${club.slug}`)
+    const body = await (await board).text()
+    expect(body).toContain('Sunset Courts')
+    expect(body).not.toMatch(/gender|email|phone|owner@/)
+
+    // Nor did anything private make it onto the page the player sees.
+    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
+    expect(await page.content()).not.toMatch(/gender|owner@example|555/)
   })
 })

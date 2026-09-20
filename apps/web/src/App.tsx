@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { clubSlugFromPath } from '@/cloud/slug'
+import { clubSlugFromPath } from '@matchup/shared'
 import { startCloudSync } from '@/cloud/sync'
 import { Toaster } from '@/components/ui/sonner'
 import { SessionScreen } from '@/screens/SessionScreen'

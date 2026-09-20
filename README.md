@@ -26,7 +26,7 @@ Run everything from the repository root: `npm install` once, then the scripts be
 - `npm test`: run unit tests
 - `npm run typecheck`: type-check every workspace
 - `npm run lint`: lint every workspace with oxlint
-- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Tests and config live in `apps/web/e2e` and `apps/web/playwright.config.ts`. Cloud features are tested against a second build (`npm run build:cloudtest`) with fake credentials and every Supabase request mocked, so no real project is needed.
+- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Tests and config live in `apps/web/e2e` and `apps/web/playwright.config.ts`. Cloud features run against a second build (`npm run build:cloudtest`) that talks to a **real API** (embedded Postgres, started automatically for each run), so the whole stack is tested end to end.
 - `npm run test:db`: applies the Supabase migration to a throwaway Postgres in Docker and checks its security rules (needs Docker running).
 
 Requires Node 20.19+ (built with Node 26).
@@ -45,13 +45,13 @@ The active session is saved on the device, so a reload or going offline keeps it
 
 ## Cloud sync and live board (optional)
 
-With a free Supabase project (setup in [supabase/README.md](supabase/README.md)) the setup screen offers a **Cloud club**. Signed-in staff get:
+With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the setup screen offers a **Cloud club**. Staff create a club (and get a one-time **recovery code**) or log in, then get:
 
 - a **live board** at `/club/<your-club>` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
 - **resume** of a running session on a second staff device;
 - an **all-time club leaderboard** combined across devices.
 
-Without the two `VITE_SUPABASE_*` variables (see `apps/web/.env.example`) the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
+Point the web app at the API with `VITE_API_URL=/api` (see `apps/web/.env.example`; the dev server proxies `/api` to `http://localhost:8787`). Without it the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
 
 ## UI (shadcn/ui)
 

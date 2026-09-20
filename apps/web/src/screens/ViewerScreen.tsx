@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { toCloudError } from '@/cloud/api'
+import { toCloudError, type LiveRow } from '@/cloud/api'
 import { cloud } from '@/cloud/client'
 import { parsePublicSnapshot, toViewerState, type PublicSnapshot } from '@/cloud/snapshot'
 import { CourtCard } from '@/components/CourtCard'
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { matchmakingLabel } from '@/lib/matchmaking'
 import { StandingsScreen } from './StandingsScreen'
 
-/** Fallback for networks that block realtime websockets. */
+/** Fallback for networks that block the live stream. */
 const POLL_MS = 15_000
 
 type ViewState =
@@ -40,21 +40,31 @@ export function ViewerScreen({ slug }: { slug: string }) {
     const api = cloud
     let cancelled = false
 
+    // The board can arrive by push (realtime) or by poll. Ignore a reply that is older than
+    // what is already on screen, so a slow poll can never overwrite a newer pushed update.
+    let latest = ''
+
+    function show(row: LiveRow | null) {
+      if (cancelled) return
+      setOffline(false)
+      if (!row) {
+        latest = ''
+        setView({ kind: 'none' })
+        return
+      }
+      if (row.updatedAt < latest) return
+      latest = row.updatedAt
+      const snapshot = parsePublicSnapshot(row.state)
+      setView(
+        snapshot
+          ? { kind: 'live', snapshot, updatedAt: row.updatedAt }
+          : { kind: 'error', message: 'This board needs a newer version of Matchup. Refresh the page.' },
+      )
+    }
+
     async function load() {
       try {
-        const row = await api.fetchLive(slug)
-        if (cancelled) return
-        setOffline(false)
-        if (!row) {
-          setView({ kind: 'none' })
-          return
-        }
-        const snapshot = parsePublicSnapshot(row.state)
-        setView(
-          snapshot
-            ? { kind: 'live', snapshot, updatedAt: row.updatedAt }
-            : { kind: 'error', message: 'This board needs a newer version of Matchup. Refresh the page.' },
-        )
+        show(await api.fetchLive(slug))
       } catch (error) {
         if (cancelled) return
         // Keep showing the last good board when the connection drops.
@@ -66,7 +76,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
     }
 
     void load()
-    const unsubscribe = api.subscribeLive(slug, () => void load())
+    const unsubscribe = api.subscribeLive(slug, show)
     const timer = setInterval(() => void load(), POLL_MS)
     const handleOnline = () => void load()
     window.addEventListener('online', handleOnline)

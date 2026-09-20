@@ -19,6 +19,7 @@ import {
   MAX_AVG_GAME_MINUTES,
   MIN_AVG_GAME_MINUTES,
 } from '@/rotation/engine'
+import { MAX_LOCATION_LENGTH } from '@matchup/shared'
 import type { GameMode, MatchmakingMode } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -63,6 +64,7 @@ function SetupCard() {
             <Input
               id="location"
               value={location}
+              maxLength={MAX_LOCATION_LENGTH}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="Open play"
             />

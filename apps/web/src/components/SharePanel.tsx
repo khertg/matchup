@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useClubAuth } from '@/cloud/auth'
-import { viewerUrl } from '@/cloud/slug'
+import { viewerUrl } from '@/cloud/url'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

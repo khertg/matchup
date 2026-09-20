@@ -1,125 +1,221 @@
+import { ERROR_CODES } from '@matchup/shared'
 import { describe, expect, it, vi } from 'vitest'
-import { CloudError, createCloudApi, toCloudError, type CloudClient } from './api'
+import { CloudError, toCloudError } from './api'
+import { createHttpApi } from './httpApi'
 
-function fakeClient(rpcResult: { data?: unknown; error?: unknown } | Error) {
-  const rpc = vi.fn(async () => {
-    if (rpcResult instanceof Error) throw rpcResult
-    return { data: rpcResult.data ?? null, error: rpcResult.error ?? null }
+const json = (status: number, body?: unknown) =>
+  new Response(body === undefined ? null : JSON.stringify(body), {
+    status,
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
   })
-  return { rpc, client: { rpc } as unknown as CloudClient }
+
+function setup(...replies: (Response | Error)[]) {
+  const fetchMock = vi.fn<typeof fetch>()
+  for (const reply of replies) {
+    if (reply instanceof Error) fetchMock.mockRejectedValueOnce(reply)
+    else fetchMock.mockResolvedValueOnce(reply)
+  }
+  const api = createHttpApi('/api', { fetch: fetchMock })
+  const call = (index = 0) => {
+    const [url, init] = fetchMock.mock.calls[index]
+    return {
+      url: String(url),
+      method: init?.method,
+      headers: (init?.headers ?? {}) as Record<string, string>,
+      body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+    }
+  }
+  return { api, call, fetchMock }
 }
 
-describe('toCloudError', () => {
-  it('recognises the server error codes', () => {
-    for (const code of ['weak_password', 'club_slug_taken', 'invalid_credentials', 'invalid_token'] as const) {
-      const error = toCloudError({ message: code })
-      expect(error.code).toBe(code)
-      expect(error.message).not.toBe(code) // friendly text, not the raw code
-    }
+describe('requests', () => {
+  it('logs in with a JSON body and no credentials header', async () => {
+    const { api, call } = setup(json(200, { token: 't', name: 'Downtown' }))
+    expect(await api.login('downtown', 'secret')).toEqual({ token: 't', name: 'Downtown' })
+    expect(call()).toEqual({
+      url: '/api/clubs/downtown/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { password: 'secret' },
+    })
   })
 
-  it('recognises a code inside a longer message', () => {
-    expect(toCloudError({ message: 'P0001: invalid_token (hint)' }).code).toBe('invalid_token')
+  it('creates a club and returns the one-time recovery code', async () => {
+    const { api, call } = setup(json(201, { token: 't', recoveryCode: 'AAAA-BBBB-CCCC-DDDD-EEEE' }))
+    const grant = await api.createClub('Downtown', 'downtown', 'secret')
+    expect(grant.recoveryCode).toBe('AAAA-BBBB-CCCC-DDDD-EEEE')
+    expect(call().body).toEqual({ name: 'Downtown', slug: 'downtown', password: 'secret' })
+    expect(call().url).toBe('/api/clubs')
   })
 
-  it('treats fetch failures as a network problem', () => {
-    expect(toCloudError({ message: 'TypeError: Failed to fetch' }).code).toBe('network')
-    expect(toCloudError(new TypeError('NetworkError when attempting to fetch resource.')).code).toBe('network')
+  it('resets a password with the recovery code', async () => {
+    const { api, call } = setup(json(200, { token: 't', recoveryCode: 'NEW', name: 'Downtown' }))
+    expect((await api.resetPassword('downtown', 'OLD', 'new-secret')).name).toBe('Downtown')
+    expect(call()).toMatchObject({
+      url: '/api/clubs/downtown/reset-password',
+      method: 'POST',
+      body: { recoveryCode: 'OLD', newPassword: 'new-secret' },
+    })
   })
 
-  it('keeps unknown messages', () => {
-    const error = toCloudError({ message: 'something odd' })
-    expect(error.code).toBe('unknown')
-    expect(error.message).toBe('something odd')
+  it('sends the staff token as a bearer header on staff routes', async () => {
+    const { api, call } = setup(json(200, { updatedAt: 'x' }), new Response(null, { status: 204 }), new Response(null, { status: 204 }))
+    const snapshot = { schemaVersion: 1 } as never
+    const backup = { schemaVersion: 1 } as never
+    await api.publish('tok', snapshot, backup)
+    await api.clear('tok')
+    await api.logout('tok')
+
+    expect(call(0)).toMatchObject({ url: '/api/session', method: 'PUT', body: { public: snapshot, full: backup } })
+    expect(call(0).headers.authorization).toBe('Bearer tok')
+    expect(call(1)).toMatchObject({ url: '/api/session', method: 'DELETE' })
+    expect(call(1).headers).toEqual({ authorization: 'Bearer tok' }) // no body, so no content-type
+    expect(call(2)).toMatchObject({ url: '/api/logout', method: 'POST' })
   })
 
-  it('passes a CloudError through unchanged', () => {
-    const original = new CloudError('invalid_club')
-    expect(toCloudError(original)).toBe(original)
+  it('uploads leaderboard totals with the batch id', async () => {
+    const { api, call } = setup(new Response(null, { status: 204 }))
+    const players = [{ name: 'Ann', games: 2, wins: 1, losses: 1 }]
+    await api.recordLifetime('tok', 'batch-1', players)
+    expect(call()).toMatchObject({ url: '/api/lifetime', method: 'POST', body: { batchId: 'batch-1', players } })
+  })
+
+  it('reads public data without credentials', async () => {
+    const { api, call } = setup(json(200, { state: { x: 1 }, updatedAt: 't' }), json(200, { players: [{ name: 'Ann', games: 1, wins: 1, losses: 0 }] }))
+    expect(await api.fetchLive('downtown')).toEqual({ state: { x: 1 }, updatedAt: 't' })
+    expect(await api.fetchClubPlayers('downtown')).toEqual([{ name: 'Ann', games: 1, wins: 1, losses: 0 }])
+    expect(call(0)).toMatchObject({ url: '/api/clubs/downtown/live', method: 'GET' })
+    expect(call(0).headers.authorization).toBeUndefined()
+    expect(call(1).url).toBe('/api/clubs/downtown/players')
+  })
+
+  it('treats "not found" as an empty result for the live board and the private backup', async () => {
+    const { api } = setup(json(404, { error: 'not_found', message: 'Not found.' }), json(404, { error: 'not_found', message: 'Not found.' }))
+    expect(await api.fetchLive('nobody')).toBeNull()
+    expect(await api.fetchFullSession('tok')).toBeNull()
+  })
+
+  it('returns the private backup when there is one', async () => {
+    const { api } = setup(json(200, { location: 'Club' }))
+    expect(await api.fetchFullSession('tok')).toEqual({ location: 'Club' })
+  })
+
+  it('URL-encodes club names and tolerates a trailing slash on the base URL', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(json(404, { error: 'not_found', message: '' }))
+    const api = createHttpApi('https://example.com/api/', { fetch: fetchMock })
+    await api.fetchLive('a b/c')
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.com/api/clubs/a%20b%2Fc/live')
   })
 })
 
-describe('createCloudApi', () => {
-  it('logs in with the RPC arguments the database expects', async () => {
-    const { client, rpc } = fakeClient({ data: 'token-123' })
-    const token = await createCloudApi(client).login('downtown', 'secret')
-    expect(token).toBe('token-123')
-    expect(rpc).toHaveBeenCalledWith('club_login', { p_slug: 'downtown', p_password: 'secret' })
+describe('errors', () => {
+  it('maps every error code the server can send to a friendly message', async () => {
+    for (const code of ERROR_CODES) {
+      const { api } = setup(json(400, { error: code, message: 'server wording' }))
+      const error = await api.login('a', 'b').catch((e) => e)
+      expect(error, code).toBeInstanceOf(CloudError)
+      expect(error.code).toBe(code)
+      expect(error.message).not.toBe('server wording')
+      expect(error.message.length).toBeGreaterThan(5)
+    }
   })
 
-  it('creates a club', async () => {
-    const { client, rpc } = fakeClient({ data: 'tok' })
-    await createCloudApi(client).createClub('Downtown', 'downtown', 'secret')
-    expect(rpc).toHaveBeenCalledWith('create_club', {
-      p_name: 'Downtown',
-      p_slug: 'downtown',
-      p_password: 'secret',
-    })
+  it('keeps specific, useful wording for the errors people actually hit', async () => {
+    const cases: [string, RegExp][] = [
+      ['invalid_credentials', /Wrong club URL or password/],
+      ['club_slug_taken', /already taken/],
+      ['rate_limited', /wait/i],
+      ['invalid_token', /expired/],
+    ]
+    for (const [code, pattern] of cases) {
+      const { api } = setup(json(400, { error: code }))
+      await expect(api.login('a', 'b')).rejects.toThrow(pattern)
+    }
   })
 
-  it('sends a lifetime batch with its idempotency id', async () => {
-    const { client, rpc } = fakeClient({})
-    const players = [{ name: 'Ann', games: 2, wins: 1, losses: 1 }]
-    await createCloudApi(client).recordLifetime('tok', 'batch-1', players)
-    expect(rpc).toHaveBeenCalledWith('record_lifetime', {
-      p_token: 'tok',
-      p_batch: 'batch-1',
-      p_players: players,
-    })
+  it('treats a dropped connection as a network problem', async () => {
+    const { api } = setup(new TypeError('Failed to fetch'))
+    await expect(api.login('a', 'b')).rejects.toMatchObject({ code: 'network' })
   })
 
-  it('turns an RPC error into a friendly CloudError', async () => {
-    const { client } = fakeClient({ error: { message: 'invalid_credentials' } })
-    await expect(createCloudApi(client).login('a', 'b')).rejects.toMatchObject({
-      name: 'CloudError',
-      code: 'invalid_credentials',
-      message: 'Wrong club URL or password.',
-    })
+  it('treats a proxy error while the API restarts as a network problem', async () => {
+    for (const status of [502, 503, 504]) {
+      const { api } = setup(new Response('<html>Bad Gateway</html>', { status }))
+      await expect(api.fetchLive('a')).rejects.toMatchObject({ code: 'network' })
+    }
   })
 
-  it('turns a thrown network failure into a network CloudError', async () => {
-    const { client } = fakeClient(new TypeError('Failed to fetch'))
-    await expect(createCloudApi(client).login('a', 'b')).rejects.toMatchObject({ code: 'network' })
+  it('keeps unknown server messages, and copes with a non-JSON error page', async () => {
+    const { api } = setup(json(418, { error: 'something_new', message: 'I am a teapot' }))
+    await expect(api.login('a', 'b')).rejects.toMatchObject({ code: 'unknown', message: 'I am a teapot' })
+
+    const { api: api2 } = setup(new Response('oops', { status: 500 }))
+    await expect(api2.login('a', 'b')).rejects.toMatchObject({ code: 'unknown', message: 'Request failed (500)' })
   })
 
-  it('returns null for a club name that does not exist', async () => {
-    const { client } = fakeClient({ data: null })
-    expect(await createCloudApi(client).clubName('nope')).toBeNull()
+  it('normalises anything thrown into a CloudError', () => {
+    const original = new CloudError('invalid_club')
+    expect(toCloudError(original)).toBe(original)
+    expect(toCloudError(new Error('boom'))).toMatchObject({ code: 'unknown', message: 'boom' })
+    expect(toCloudError('text')).toMatchObject({ code: 'unknown', message: 'text' })
+  })
+})
+
+describe('the live stream', () => {
+  class FakeEventSource {
+    static last: FakeEventSource
+    readonly url: string
+    closed = false
+    private readonly handlers = new Map<string, ((event: MessageEvent) => void)[]>()
+    constructor(url: string) {
+      this.url = url
+      FakeEventSource.last = this
+    }
+    addEventListener(type: string, handler: (event: MessageEvent) => void) {
+      this.handlers.set(type, [...(this.handlers.get(type) ?? []), handler])
+    }
+    close() {
+      this.closed = true
+    }
+    emit(type: string, data = '{}') {
+      for (const handler of this.handlers.get(type) ?? []) handler({ data } as MessageEvent)
+    }
+  }
+  const stream = () =>
+    createHttpApi('/api', { EventSource: FakeEventSource as unknown as typeof EventSource })
+
+  it('connects to the club’s stream', () => {
+    stream().subscribeLive('downtown', () => undefined)
+    expect(FakeEventSource.last.url).toBe('/api/clubs/downtown/live/stream')
   })
 
-  it('reads the live session row', async () => {
-    const maybeSingle = vi.fn(async () => ({
-      data: { state: { location: 'X' }, updated_at: '2026-01-01T00:00:00Z' },
-      error: null,
-    }))
-    const eq = vi.fn(() => ({ maybeSingle }))
-    const select = vi.fn(() => ({ eq }))
-    const from = vi.fn(() => ({ select }))
-    const api = createCloudApi({ from } as unknown as CloudClient)
-
-    expect(await api.fetchLive('downtown')).toEqual({
-      state: { location: 'X' },
-      updatedAt: '2026-01-01T00:00:00Z',
-    })
-    expect(from).toHaveBeenCalledWith('live_sessions')
-    expect(eq).toHaveBeenCalledWith('club_slug', 'downtown')
-  })
-
-  it('subscribes to one club and unsubscribes cleanly', () => {
-    const channel = { on: vi.fn(), subscribe: vi.fn() }
-    channel.on.mockReturnValue(channel)
-    channel.subscribe.mockReturnValue(channel)
-    const removeChannel = vi.fn()
-    const client = { channel: vi.fn(() => channel), removeChannel } as unknown as CloudClient
-
+  it('passes each pushed board and each end of session to the listener', () => {
     const onChange = vi.fn()
-    const stop = createCloudApi(client).subscribeLive('downtown', onChange)
-    expect(channel.on).toHaveBeenCalledWith(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'live_sessions', filter: 'club_slug=eq.downtown' },
-      onChange,
-    )
+    stream().subscribeLive('downtown', onChange)
+    FakeEventSource.last.emit('update', JSON.stringify({ state: { a: 1 }, updatedAt: 't1' }))
+    FakeEventSource.last.emit('cleared')
+    expect(onChange).toHaveBeenNthCalledWith(1, { state: { a: 1 }, updatedAt: 't1' })
+    expect(onChange).toHaveBeenNthCalledWith(2, null)
+  })
+
+  it('ignores a garbled event instead of crashing', () => {
+    const onChange = vi.fn()
+    stream().subscribeLive('downtown', onChange)
+    expect(() => FakeEventSource.last.emit('update', '{not json')).not.toThrow()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('closes the connection when unsubscribed', () => {
+    const stop = stream().subscribeLive('downtown', () => undefined)
     stop()
-    expect(removeChannel).toHaveBeenCalledWith(channel)
+    expect(FakeEventSource.last.closed).toBe(true)
+  })
+
+  it('does nothing where EventSource does not exist, leaving polling to cover it', () => {
+    const api = createHttpApi('/api', { EventSource: undefined })
+    // jsdom-free node has no EventSource global, so this is exactly the "unsupported" case.
+    if (typeof EventSource === 'undefined') {
+      expect(() => api.subscribeLive('downtown', () => undefined)()).not.toThrow()
+    }
   })
 })

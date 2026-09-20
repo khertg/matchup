@@ -1,10 +1,18 @@
+import {
+  MAX_CLUB_NAME_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  isValidSlug,
+  slugify,
+} from '@matchup/shared'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { toCloudError } from '@/cloud/api'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { parseFullBackup } from '@/cloud/snapshot'
-import { isValidSlug, slugify, viewerUrl } from '@/cloud/slug'
+import { viewerUrl } from '@/cloud/url'
+import { RecoveryCodeDialog } from '@/components/RecoveryCodeDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { SyncBadge } from '@/components/SyncBadge'
 import { Button } from '@/components/ui/button'
@@ -22,9 +30,12 @@ import { Label } from '@/components/ui/label'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
-const MIN_PASSWORD_LENGTH = 4
+interface DialogProps {
+  /** Ask the panel to show a new recovery code (it is displayed once, outside this dialog). */
+  onRecoveryCode: (code: string) => void
+}
 
-function CreateClubDialog() {
+function CreateClubDialog({ onRecoveryCode }: DialogProps) {
   const signIn = useClubAuth((s) => s.signIn)
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -41,9 +52,9 @@ function CreateClubDialog() {
     setBusy(true)
     setError(null)
     try {
-      const token = await cloud.createClub(name.trim(), slug, password)
+      const { token, recoveryCode } = await cloud.createClub(name.trim(), slug, password)
       signIn({ slug, name: name.trim(), token })
-      toast(`Club created. Players can follow along at ${viewerUrl(slug)}`)
+      onRecoveryCode(recoveryCode)
       setOpen(false)
       setName('')
       setPassword('')
@@ -75,6 +86,7 @@ function CreateClubDialog() {
             <Input
               id="club-name"
               value={name}
+              maxLength={MAX_CLUB_NAME_LENGTH}
               onChange={(e) => setName(e.target.value)}
               autoComplete="off"
             />
@@ -90,6 +102,7 @@ function CreateClubDialog() {
               id="club-password"
               type="password"
               autoComplete="new-password"
+              maxLength={MAX_PASSWORD_LENGTH}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -108,16 +121,34 @@ function CreateClubDialog() {
   )
 }
 
-function LoginDialog() {
+function LoginDialog({ onRecoveryCode }: DialogProps) {
   const signIn = useClubAuth((s) => s.signIn)
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<'login' | 'reset'>('login')
   const [slug, setSlug] = useState('')
   const [password, setPassword] = useState('')
+  const [recoveryCode, setRecoveryCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const cleanSlug = slug.trim().toLowerCase()
-  const valid = isValidSlug(cleanSlug) && password !== ''
+  const resetting = mode === 'reset'
+  const valid = isValidSlug(cleanSlug) && (resetting ? recoveryCode.trim() !== '' && password.length >= MIN_PASSWORD_LENGTH : password !== '')
+
+  function changeMode(next: 'login' | 'reset') {
+    setMode(next)
+    setPassword('')
+    setError(null)
+  }
+
+  function close() {
+    setOpen(false)
+    setMode('login')
+    setSlug('')
+    setPassword('')
+    setRecoveryCode('')
+    setError(null)
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -125,12 +156,16 @@ function LoginDialog() {
     setBusy(true)
     setError(null)
     try {
-      const token = await cloud.login(cleanSlug, password)
-      const name = (await cloud.clubName(cleanSlug).catch(() => null)) ?? cleanSlug
-      signIn({ slug: cleanSlug, name, token })
-      setOpen(false)
-      setSlug('')
-      setPassword('')
+      if (resetting) {
+        const grant = await cloud.resetPassword(cleanSlug, recoveryCode.trim(), password)
+        signIn({ slug: cleanSlug, name: grant.name, token: grant.token })
+        // The old recovery code is now used up; show the replacement.
+        onRecoveryCode(grant.recoveryCode)
+      } else {
+        const { token, name } = await cloud.login(cleanSlug, password)
+        signIn({ slug: cleanSlug, name, token })
+      }
+      close()
     } catch (err) {
       setError(toCloudError(err).message)
     } finally {
@@ -139,7 +174,7 @@ function LoginDialog() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" className="h-11">
           Log in
@@ -147,8 +182,12 @@ function LoginDialog() {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Log in to your club</DialogTitle>
-          <DialogDescription>Use the club link name, for example downtown-pickle-club.</DialogDescription>
+          <DialogTitle>{resetting ? 'Reset your password' : 'Log in to your club'}</DialogTitle>
+          <DialogDescription>
+            {resetting
+              ? 'Enter the recovery code you saved when the club was created, and choose a new password.'
+              : 'Use the club link name, for example downtown-pickle-club.'}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -161,12 +200,28 @@ function LoginDialog() {
               autoCapitalize="none"
             />
           </div>
+          {resetting && (
+            <div className="space-y-2">
+              <Label htmlFor="reset-code">Recovery code</Label>
+              <Input
+                id="reset-code"
+                value={recoveryCode}
+                onChange={(e) => setRecoveryCode(e.target.value)}
+                autoComplete="off"
+                autoCapitalize="characters"
+                className="font-mono"
+              />
+            </div>
+          )}
           <div className="space-y-2">
-            <Label htmlFor="login-password">Password</Label>
+            <Label htmlFor="login-password">
+              {resetting ? `New password (min. ${MIN_PASSWORD_LENGTH} characters)` : 'Password'}
+            </Label>
             <Input
               id="login-password"
               type="password"
-              autoComplete="current-password"
+              autoComplete={resetting ? 'new-password' : 'current-password'}
+              maxLength={MAX_PASSWORD_LENGTH}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -177,7 +232,15 @@ function LoginDialog() {
             </p>
           )}
           <Button type="submit" className="h-11 w-full" disabled={!valid || busy}>
-            {busy ? 'Logging in…' : 'Log in'}
+            {busy ? (resetting ? 'Resetting…' : 'Logging in…') : resetting ? 'Reset password' : 'Log in'}
+          </Button>
+          <Button
+            type="button"
+            variant="link"
+            className="w-full"
+            onClick={() => changeMode(resetting ? 'login' : 'reset')}
+          >
+            {resetting ? 'Back to log in' : 'Forgot password?'}
           </Button>
         </form>
       </DialogContent>
@@ -247,6 +310,9 @@ function SignedIn() {
 /** Optional cloud club sign-in on the setup screen. Hidden when Supabase is not configured. */
 export function ClubPanel() {
   const club = useClubAuth((s) => s.club)
+  // A new recovery code (after creating a club or resetting a password) is shown once, here,
+  // so it survives the dialog that produced it closing.
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null)
   if (!cloud) return null
 
   return (
@@ -263,10 +329,17 @@ export function ClubPanel() {
           <SignedIn />
         ) : (
           <div className="grid grid-cols-2 gap-2">
-            <CreateClubDialog />
-            <LoginDialog />
+            <CreateClubDialog onRecoveryCode={setRecoveryCode} />
+            <LoginDialog onRecoveryCode={setRecoveryCode} />
           </div>
         )}
+        <RecoveryCodeDialog
+          code={recoveryCode}
+          onDone={() => {
+            setRecoveryCode(null)
+            if (club) toast(`Players can follow along at ${viewerUrl(club.slug)}`)
+          }}
+        />
       </CardContent>
     </Card>
   )

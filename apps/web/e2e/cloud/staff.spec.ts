@@ -1,225 +1,392 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startSession } from '../helpers'
-import { fullBackup, mockCloud, rpcError } from './mock'
+import { checkIn } from '../helpers'
+import {
+  apiCreateClub,
+  apiLive,
+  bearer,
+  confirmRecoveryCode,
+  expectSignedIn,
+  liveSnapshot,
+  storedToken,
+  uiCreateClub,
+  uiLogin,
+  uniqueClub,
+  type TestClub,
+} from './support'
 
-async function createClub(page: Page, name = 'Downtown Pickle Club', password = 'secret') {
-  await page.getByRole('button', { name: 'Create a club' }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Club name').fill(name)
-  await dialog.getByLabel(/^Password/).fill(password)
-  await dialog.getByRole('button', { name: 'Create club' }).click()
+/** Sign in to an existing club, then start a session on the setup screen that is already showing. */
+async function signInAndStart(page: Page, club: TestClub, location = 'Test Session') {
+  await page.goto('/')
+  await uiLogin(page, club)
+  await expectSignedIn(page)
+  await page.getByLabel('Location').fill(location)
+  await page.getByRole('button', { name: 'Start session' }).click()
+  await expect(page.getByRole('heading', { name: location })).toBeVisible()
 }
 
-async function logIn(page: Page, slug = 'downtown-pickle-club', password = 'secret') {
-  await page.getByRole('button', { name: 'Log in' }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Club link name').fill(slug)
-  await dialog.getByLabel('Password').fill(password)
-  await dialog.getByRole('button', { name: 'Log in' }).click()
+const queueLength = (request: Parameters<typeof apiLive>[0], slug: string) => async () => {
+  const response = await apiLive(request, slug)
+  return response.ok() ? ((await response.json()).state.queue as number[]).length : -1
 }
 
 test.describe('club sign-in', () => {
-  test('offers to create a club or log in when cloud is configured', async ({ page }) => {
-    await mockCloud(page)
+  test('offers to create a club or log in when an API is configured', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('Cloud club')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Create a club' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible()
   })
 
-  test('creates a club and shows its live link', async ({ page }) => {
-    const mock = await mockCloud(page)
+  test('creates a club, shows the recovery code once, and signs in', async ({ page, request }) => {
+    const club = uniqueClub('Downtown')
     await page.goto('/')
     await page.getByRole('button', { name: 'Create a club' }).click()
-    const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('Club name').fill('Downtown Pickle Club')
-    await expect(dialog.getByText('/club/downtown-pickle-club')).toBeVisible()
+    const dialog = page.getByRole('dialog', { name: 'Create a club' })
+    await dialog.getByLabel('Club name').fill(club.name)
+    await expect(dialog.getByText(`/club/${club.slug}`)).toBeVisible()
 
     // Passwords need at least four characters.
     await dialog.getByLabel(/^Password/).fill('abc')
     await expect(dialog.getByRole('button', { name: 'Create club' })).toBeDisabled()
-    await dialog.getByLabel(/^Password/).fill('secret')
+    await dialog.getByLabel(/^Password/).fill(club.password)
     await dialog.getByRole('button', { name: 'Create club' }).click()
 
-    await expect(page.getByText('Downtown Pickle Club')).toBeVisible()
-    await expect(page.getByText('/club/downtown-pickle-club', { exact: true })).toBeVisible()
-    expect(mock.callsTo('create_club')[0].body).toEqual({
-      p_name: 'Downtown Pickle Club',
-      p_slug: 'downtown-pickle-club',
-      p_password: 'secret',
-    })
+    // The recovery code cannot be dismissed by accident.
+    const recovery = page.getByRole('dialog', { name: 'Save your recovery code' })
+    await expect(recovery).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(recovery).toBeVisible()
+    await expect(recovery.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    await confirmRecoveryCode(page)
+
+    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByText(`/club/${club.slug}`, { exact: true })).toBeVisible()
+
+    // The club really exists on the server.
+    const login = await request.post(`/api/clubs/${club.slug}/login`, { data: { password: club.password } })
+    expect(login.status()).toBe(200)
+    expect((await login.json()).name).toBe(club.name)
   })
 
-  test('explains when the club URL is already taken', async ({ page }) => {
-    const mock = await mockCloud(page)
-    mock.overrides.create_club = () => rpcError('club_slug_taken')
+  test('explains when the club URL is already taken', async ({ page, request }) => {
+    const club = uniqueClub('Taken')
+    await apiCreateClub(request, club)
     await page.goto('/')
-    await createClub(page)
-    await expect(page.getByRole('alert')).toContainText('already taken')
-    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByRole('button', { name: 'Create a club' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Create a club' })
+    await dialog.getByLabel('Club name').fill(club.name)
+    await dialog.getByLabel(/^Password/).fill('another-secret')
+    await dialog.getByRole('button', { name: 'Create club' }).click()
+
+    await expect(dialog.getByRole('alert')).toContainText('already taken')
+    await expect(dialog).toBeVisible()
   })
 
-  test('logs in to an existing club', async ({ page }) => {
-    await mockCloud(page)
+  test('logs in to an existing club and stays signed in after a reload', async ({ page, request }) => {
+    const club = uniqueClub('Existing')
+    await apiCreateClub(request, club)
     await page.goto('/')
-    await logIn(page)
-    await expect(page.getByText('Downtown Club', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+    await uiLogin(page, club)
+    await expectSignedIn(page)
+    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
+
+    await page.reload()
+    await expectSignedIn(page)
   })
 
-  test('rejects a wrong password without signing in', async ({ page }) => {
-    await mockCloud(page)
+  test('rejects a wrong password without signing in', async ({ page, request }) => {
+    const club = uniqueClub('Guarded')
+    await apiCreateClub(request, club)
     await page.goto('/')
-    await logIn(page, 'downtown-pickle-club', 'nope')
+    await uiLogin(page, { ...club, password: 'not-the-password' })
     await expect(page.getByRole('alert')).toHaveText('Wrong club URL or password.')
     await expect(page.getByRole('button', { name: 'Log out' })).toHaveCount(0)
   })
 
-  test('stays signed in after a reload and can log out', async ({ page }) => {
-    const mock = await mockCloud(page)
+  test('says so when the club does not exist, without hinting whether it might', async ({ page }) => {
     await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+    await uiLogin(page, { slug: uniqueClub('Ghost').slug, password: 'secret' })
+    await expect(page.getByRole('alert')).toHaveText('Wrong club URL or password.')
+  })
 
-    await page.reload()
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+  test('logging out revokes the login on the server', async ({ page, request }) => {
+    const club = uniqueClub('Leaving')
+    await apiCreateClub(request, club)
+    await page.goto('/')
+    await uiLogin(page, club)
+    await expectSignedIn(page)
+    const token = await storedToken(page)
 
     await page.getByRole('button', { name: 'Log out' }).click()
     await expect(page.getByRole('button', { name: 'Create a club' })).toBeVisible()
-    await expect.poll(() => mock.callsTo('club_logout').length).toBe(1)
-    expect(mock.callsTo('club_logout')[0].body).toEqual({ p_token: 'token-login' })
+    // Logging out again with the same token can only fail if the first logout revoked it.
+    await expect
+      .poll(async () => (await request.post('/api/logout', { headers: bearer(token) })).status())
+      .toBe(401)
+  })
+
+  test('shows a clear message when the server says to slow down', async ({ page }) => {
+    await page.route('**/api/clubs/*/login', (route) =>
+      route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'rate_limited', message: 'x' }) }),
+    )
+    await page.goto('/')
+    await uiLogin(page, { slug: 'some-club', password: 'secret' })
+    await expect(page.getByRole('alert')).toContainText('Too many attempts')
+  })
+
+  test('says so when the server cannot be reached', async ({ page }) => {
+    await page.route('**/api/clubs/*/login', (route) => route.abort('connectionrefused'))
+    await page.goto('/')
+    await uiLogin(page, { slug: 'some-club', password: 'secret' })
+    await expect(page.getByRole('alert')).toContainText('Cannot reach the server')
+  })
+})
+
+test.describe('password recovery', () => {
+  async function openReset(page: Page, slug: string, code: string, password: string) {
+    await page.getByRole('button', { name: 'Log in' }).click()
+    // The same dialog switches to reset mode, and its title (its accessible name) changes with it.
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Forgot password?' }).click()
+    await expect(page.getByRole('dialog', { name: 'Reset your password' })).toBeVisible()
+    await dialog.getByLabel('Club link name').fill(slug)
+    await dialog.getByLabel('Recovery code').fill(code)
+    await dialog.getByLabel(/^New password/).fill(password)
+    await dialog.getByRole('button', { name: 'Reset password' }).click()
+  }
+
+  test('sets a new password with the recovery code and issues a fresh code', async ({ page, request }) => {
+    const club = uniqueClub('Forgetful')
+    const { recoveryCode } = await apiCreateClub(request, club)
+    await page.goto('/')
+    // Typed loosely: lower case, no dashes.
+    await openReset(page, club.slug, recoveryCode.toLowerCase().replaceAll('-', ''), 'brand-new-secret')
+
+    const newCode = await confirmRecoveryCode(page)
+    expect(newCode).not.toBe(recoveryCode)
+    await expectSignedIn(page)
+    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
+
+    const oldPassword = await request.post(`/api/clubs/${club.slug}/login`, { data: { password: club.password } })
+    expect(oldPassword.status()).toBe(401)
+    const newPassword = await request.post(`/api/clubs/${club.slug}/login`, { data: { password: 'brand-new-secret' } })
+    expect(newPassword.status()).toBe(200)
+
+    // The code that was just used no longer works; the new one does.
+    const reused = await request.post(`/api/clubs/${club.slug}/reset-password`, {
+      data: { recoveryCode, newPassword: 'third-secret' },
+    })
+    expect(reused.status()).toBe(401)
+    const fresh = await request.post(`/api/clubs/${club.slug}/reset-password`, {
+      data: { recoveryCode: newCode, newPassword: 'fourth-secret' },
+    })
+    expect(fresh.status()).toBe(200)
+  })
+
+  test('rejects a wrong recovery code', async ({ page, request }) => {
+    const club = uniqueClub('Wrongcode')
+    await apiCreateClub(request, club)
+    await page.goto('/')
+    await openReset(page, club.slug, 'AAAA-AAAA-AAAA-AAAA-AAAA', 'brand-new-secret')
+    await expect(page.getByRole('alert')).toHaveText('That recovery code is not valid.')
+    await expect(page.getByRole('button', { name: 'Log out' })).toHaveCount(0)
+  })
+
+  test('needs a long enough new password and a recovery code before it can be submitted', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Log in' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Forgot password?' }).click()
+    await dialog.getByLabel('Club link name').fill('some-club')
+    await expect(dialog.getByRole('button', { name: 'Reset password' })).toBeDisabled()
+    await dialog.getByLabel('Recovery code').fill('AAAA-AAAA-AAAA-AAAA-AAAA')
+    await dialog.getByLabel(/^New password/).fill('abc')
+    await expect(dialog.getByRole('button', { name: 'Reset password' })).toBeDisabled()
+    await dialog.getByLabel(/^New password/).fill('abcd')
+    await expect(dialog.getByRole('button', { name: 'Reset password' })).toBeEnabled()
+  })
+
+  test('can go back to logging in', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Log in' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Forgot password?' }).click()
+    await expect(dialog.getByText('Reset your password')).toBeVisible()
+    await dialog.getByRole('button', { name: 'Back to log in' }).click()
+    await expect(dialog.getByText('Log in to your club')).toBeVisible()
+    await expect(dialog.getByLabel('Recovery code')).toHaveCount(0)
+  })
+
+  test('creating a club through the UI also yields a working recovery code', async ({ page, request }) => {
+    const club = uniqueClub('Fresh')
+    await page.goto('/')
+    const code = await uiCreateClub(page, club)
+    const reset = await request.post(`/api/clubs/${club.slug}/reset-password`, {
+      data: { recoveryCode: code, newPassword: 'reset-secret' },
+    })
+    expect(reset.status()).toBe(200)
   })
 })
 
 test.describe('publishing the live session', () => {
-  test('publishes changes with a staff token and no private details', async ({ page }) => {
-    const mock = await mockCloud(page)
-    await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
-
-    // Start from the setup screen the app already shows, without navigating away.
-    await page.getByLabel('Location').fill('Downtown Open')
-    await page.getByRole('button', { name: 'Start session' }).click()
+  test('publishes to the live board, and keeps genders off it', async ({ page, request }) => {
+    const club = uniqueClub('Publisher')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club, 'Downtown Open')
     await checkIn(page, [{ name: 'Ann', gender: 'Female' }, 'Bob'])
 
-    await expect.poll(() => mock.callsTo('publish_session').length).toBeGreaterThan(0)
-    const latest = mock.callsTo('publish_session').at(-1)!.body as {
-      p_token: string
-      p_public: { location: string; queue: number[] }
-      p_full: { session: unknown }
-    }
-    expect(latest.p_token).toBe('token-login')
-    expect(latest.p_public.location).toBe('Downtown Open')
-    expect(JSON.stringify(latest.p_public)).not.toContain('gender')
-    expect(JSON.stringify(latest.p_full)).toContain('gender')
+    await expect.poll(queueLength(request, club.slug)).toBe(2)
+    const publicBody = await (await apiLive(request, club.slug)).text()
+    expect(publicBody).toContain('Downtown Open')
+    expect(publicBody).not.toMatch(/gender/)
+
+    // The private backup, only for staff, keeps everything.
+    const backup = await request.get('/api/session', { headers: bearer(await storedToken(page)) })
+    expect(await backup.text()).toContain('gender')
     await expect(page.getByRole('status')).toHaveText('Live and synced')
   })
 
-  test('holds changes while offline and sends them when the connection returns', async ({ page, context }) => {
-    const mock = await mockCloud(page)
-    await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start session' }).click()
-    await expect.poll(() => mock.callsTo('publish_session').length).toBeGreaterThan(0)
-    const before = mock.callsTo('publish_session').length
+  test('holds changes while offline and sends them when the connection returns', async ({ page, context, request }) => {
+    const club = uniqueClub('Offline')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club)
+    await expect.poll(queueLength(request, club.slug)).toBe(0)
 
     await context.setOffline(true)
     await checkIn(page, ['Ann', 'Bob'])
     await expect(page.getByRole('status')).toHaveText('Offline, will sync')
     await page.waitForTimeout(1500)
-    expect(mock.callsTo('publish_session').length).toBe(before)
+    expect(await queueLength(request, club.slug)()).toBe(0) // the board has not changed yet
 
     await context.setOffline(false)
-    await expect.poll(() => mock.callsTo('publish_session').length).toBeGreaterThan(before)
-    const latest = mock.callsTo('publish_session').at(-1)!.body as { p_public: { queue: number[] } }
-    expect(latest.p_public.queue).toHaveLength(2)
+    await expect.poll(queueLength(request, club.slug)).toBe(2)
     await expect(page.getByRole('status')).toHaveText('Live and synced')
   })
 
-  test('clears the live session when the session ends', async ({ page }) => {
-    const mock = await mockCloud(page)
-    await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start session' }).click()
-    await expect.poll(() => mock.callsTo('publish_session').length).toBeGreaterThan(0)
+  test('takes the board down when the session ends', async ({ page, request }) => {
+    const club = uniqueClub('Ending')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club)
+    await expect.poll(async () => (await apiLive(request, club.slug)).status()).toBe(200)
 
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
-    await expect.poll(() => mock.callsTo('clear_session').length).toBe(1)
-    expect(mock.callsTo('clear_session')[0].body).toEqual({ p_token: 'token-login' })
+    await expect.poll(async () => (await apiLive(request, club.slug)).status()).toBe(404)
   })
 
-  test('signs out with a clear message when the club login has expired', async ({ page }) => {
-    const mock = await mockCloud(page)
-    mock.overrides.publish_session = () => rpcError('invalid_token')
-    await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start session' }).click()
+  test('signs out with a clear message when the login has been revoked', async ({ page, request }) => {
+    const club = uniqueClub('Revoked')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club)
+    await expect.poll(async () => (await apiLive(request, club.slug)).status()).toBe(200)
+
+    // Someone (another device, or expiry) ends this login on the server.
+    await request.post('/api/logout', { headers: bearer(await storedToken(page)) })
+    await checkIn(page, ['Ann'])
 
     await expect(page.getByText('Your club login expired. Please log in again.').first()).toBeVisible()
     await expect(page.getByRole('status')).toHaveCount(0)
   })
 
-  test('does not publish anything without a club login', async ({ page }) => {
-    const mock = await mockCloud(page)
-    await startSession(page)
+  test('sends nothing without a club login', async ({ page }) => {
+    const sessionRequests: string[] = []
+    page.on('request', (r) => {
+      if (r.url().includes('/api/session')) sessionRequests.push(r.method())
+    })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Start session' }).click()
     await checkIn(page, ['Ann', 'Bob'])
     await page.waitForTimeout(1500)
-    expect(mock.callsTo('publish_session')).toHaveLength(0)
+    expect(sessionRequests).toEqual([])
     await expect(page.getByRole('status')).toHaveCount(0)
   })
 })
 
 test.describe('sharing', () => {
-  test('shows the live link and a QR code', async ({ page }) => {
-    await mockCloud(page)
-    await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start session' }).click()
+  test('shows the live link and a QR code', async ({ page, request }) => {
+    const club = uniqueClub('Sharing')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club)
 
     await page.getByRole('button', { name: 'Share live view' }).click()
     const dialog = page.getByRole('dialog')
-    await expect(dialog.getByLabel('Live board link')).toHaveValue(
-      'http://localhost:4174/club/downtown-pickle-club',
-    )
+    await expect(dialog.getByLabel('Live board link')).toHaveValue(`http://localhost:4174/club/${club.slug}`)
     const qr = dialog.getByRole('img', { name: 'QR code for the live board' })
     await expect(qr).toBeVisible()
     expect(await qr.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
   })
 })
 
-test.describe('resuming on another device', () => {
-  test('offers a session saved by another staff device and loads it', async ({ page }) => {
-    await mockCloud(page, { fullSession: fullBackup })
-    await page.goto('/')
-    await logIn(page)
+test.describe('two browsers', () => {
+  test('a player’s phone follows the staff device live, from start to finish', async ({ page, browser, request }) => {
+    const club = uniqueClub('Followed')
+    await apiCreateClub(request, club)
+    const viewerContext = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      serviceWorkers: 'block',
+    })
+    const viewer = await viewerContext.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+    await expect(viewer.getByText('No game in progress')).toBeVisible()
 
-    await page.getByRole('button', { name: /Resume .Saved Club Night. from the cloud/ }).click()
-    await expect(page.getByRole('heading', { name: 'Saved Club Night' })).toBeVisible()
-    const court = page.getByRole('region', { name: 'Court 1' })
+    // The club starts a session: the viewer's page changes by itself, with no refresh.
+    await signInAndStart(page, club, 'Live Night')
+    await expect(viewer.getByRole('heading', { name: 'Live Night' })).toBeVisible({ timeout: 8000 })
+
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    const court = viewer.getByRole('region', { name: 'Court 1' })
+    await expect(court.getByText('In play')).toBeVisible({ timeout: 8000 })
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(court.getByText(name)).toBeVisible()
-    await expect(page.getByText('Queue (1)')).toBeVisible()
+    await expect(viewer.getByText('Queue (1)')).toBeVisible()
+
+    await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Team A won' }).click()
+    await viewer.getByRole('tab', { name: 'Standings' }).click()
+    await expect(viewer.getByRole('row').nth(1)).toContainText('Gold medal', { timeout: 8000 })
+
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
+    await expect(viewer.getByText('No game in progress')).toBeVisible({ timeout: 8000 })
+
+    await viewerContext.close()
+  })
+})
+
+test.describe('resuming on another device', () => {
+  test('offers the session another staff device was running and loads it', async ({ page, browser, request }) => {
+    const club = uniqueClub('Resumable')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club, 'Saved Night')
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    await expect.poll(queueLength(request, club.slug)).toBe(1)
+
+    const second = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
+    const other = await second.newPage()
+    await other.goto('/')
+    await uiLogin(other, club)
+    await other.getByRole('button', { name: /Resume .Saved Night. from the cloud/ }).click()
+
+    await expect(other.getByRole('heading', { name: 'Saved Night' })).toBeVisible()
+    const court = other.getByRole('region', { name: 'Court 1' })
+    for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(court.getByText(name)).toBeVisible()
+    await expect(other.getByText('Queue (1)')).toBeVisible()
+    await second.close()
   })
 
-  test('shows no resume button when nothing is running in the cloud', async ({ page }) => {
-    await mockCloud(page, { fullSession: null })
+  test('offers nothing when no session is running', async ({ page, request }) => {
+    const club = uniqueClub('Idle')
+    await apiCreateClub(request, club)
     await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+    await uiLogin(page, club)
+    await expectSignedIn(page)
     await expect(page.getByRole('button', { name: /^Resume/ })).toHaveCount(0)
   })
 })
 
 test.describe('club leaderboard', () => {
-  async function playAndEnd(page: Page) {
+  async function playAndEnd(page: Page, club: TestClub) {
     await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+    await uiLogin(page, club)
+    await expectSignedIn(page)
     await page.getByRole('button', { name: 'Singles' }).click()
     await page.getByRole('button', { name: 'Start session' }).click()
     await checkIn(page, ['Ann', 'Bob'])
@@ -228,65 +395,85 @@ test.describe('club leaderboard', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   }
 
-  test('uploads the finished session to the club leaderboard', async ({ page }) => {
-    const mock = await mockCloud(page)
-    await playAndEnd(page)
+  const board = (request: Parameters<typeof apiLive>[0], slug: string) => async () => {
+    const response = await request.get(`/api/clubs/${slug}/players`)
+    return (await response.json()).players as { name: string; games: number; wins: number; losses: number }[]
+  }
 
-    await expect.poll(() => mock.callsTo('record_lifetime').length).toBe(1)
-    const body = mock.callsTo('record_lifetime')[0].body as {
-      p_token: string
-      p_batch: string
-      p_players: { name: string; games: number; wins: number; losses: number }[]
-    }
-    expect(body.p_token).toBe('token-login')
-    expect(body.p_batch).toMatch(/^[0-9a-f-]{36}$/)
-    expect(body.p_players.map((p) => p.name).sort()).toEqual(['Ann', 'Bob'])
-    expect(body.p_players.find((p) => p.name === 'Ann')).toMatchObject({ games: 1, wins: 1, losses: 0 })
+  test('uploads the finished session to the club leaderboard', async ({ page, request }) => {
+    const club = uniqueClub('Board')
+    await apiCreateClub(request, club)
+    await playAndEnd(page, club)
+
     await expect(page.getByText('Session saved to the all-time leaderboard')).toBeVisible()
+    await expect.poll(async () => (await board(request, club.slug)()).length).toBe(2)
+    const rows = await board(request, club.slug)()
+    expect(rows.find((p) => p.name === 'Ann')).toMatchObject({ games: 1, wins: 1, losses: 0 })
+    expect(rows.find((p) => p.name === 'Bob')).toMatchObject({ games: 1, wins: 0, losses: 1 })
   })
 
-  test('keeps the totals and retries with the same batch id after a failed upload', async ({ page }) => {
-    const mock = await mockCloud(page)
-    mock.down = false
-    // The first upload attempt fails as if the connection dropped.
+  test('keeps the totals after a failed upload and retries without double counting', async ({ page, request }) => {
+    const club = uniqueClub('Retry')
+    await apiCreateClub(request, club)
+
+    const batchIds: string[] = []
     let attempts = 0
-    mock.overrides.record_lifetime = () => {
-      attempts += 1
-      return attempts === 1 ? { status: 503, body: { message: 'Failed to fetch' } } : { status: 204 }
-    }
-    await playAndEnd(page)
+    await page.route('**/api/lifetime', (route) => {
+      batchIds.push(route.request().postDataJSON().batchId)
+      // The first upload never reaches the server, as if the connection dropped.
+      return attempts++ === 0 ? route.abort('connectionrefused') : route.continue()
+    })
+    await playAndEnd(page, club)
 
     await expect(page.getByText(/Saved on this device/)).toBeVisible()
-    await expect.poll(() => mock.callsTo('record_lifetime').length).toBe(1)
+    expect(await board(request, club.slug)()).toEqual([])
 
-    // Connectivity returns: the queued batch is sent again, unchanged.
+    // The connection is back: the queued batch is sent again, unchanged.
     await page.evaluate(() => window.dispatchEvent(new Event('online')))
-    await expect.poll(() => mock.callsTo('record_lifetime').length).toBe(2)
-    const [first, second] = mock.callsTo('record_lifetime').map((c) => c.body.p_batch)
-    expect(second).toBe(first)
+    await expect.poll(async () => (await board(request, club.slug)()).length).toBe(2)
+    expect(batchIds).toHaveLength(2)
+    expect(batchIds[1]).toBe(batchIds[0])
+    expect((await board(request, club.slug)())[0].games).toBe(1)
 
-    // Nothing is left to send.
+    // Nothing is left to send, so another "online" changes nothing.
     await page.evaluate(() => window.dispatchEvent(new Event('online')))
     await page.waitForTimeout(500)
-    expect(mock.callsTo('record_lifetime')).toHaveLength(2)
+    expect(batchIds).toHaveLength(2)
   })
 
-  test('shows the combined club results when signed in', async ({ page }) => {
-    await mockCloud(page, {
-      clubPlayers: [
-        { name: 'Zoe', games: 12, wins: 9, losses: 3 },
-        { name: 'Yan', games: 8, wins: 2, losses: 6 },
-      ],
+  test('shows the club’s combined results in the lifetime leaderboard when signed in', async ({ page, request }) => {
+    const club = uniqueClub('Combined')
+    const { token } = await apiCreateClub(request, club)
+    await request.post('/api/lifetime', {
+      headers: bearer(token),
+      data: {
+        batchId: '00000000-0000-4000-8000-000000000001',
+        players: [
+          { name: 'Zoe', games: 12, wins: 9, losses: 3 },
+          { name: 'Yan', games: 8, wins: 2, losses: 6 },
+        ],
+      },
     })
     await page.goto('/')
-    await logIn(page)
-    await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+    await uiLogin(page, club)
+    await expectSignedIn(page)
 
     await page.getByRole('button', { name: 'Lifetime leaderboard' }).click()
     const dialog = page.getByRole('dialog')
-    await expect(dialog.getByText(/Combined all-time results for Downtown Club/)).toBeVisible()
+    await expect(dialog.getByText(`Combined all-time results for ${club.name}`)).toBeVisible()
     await expect(dialog.getByRole('row').nth(1)).toContainText('Zoe')
     await expect(dialog.getByRole('row').nth(1)).toContainText('75%')
     await expect(dialog.getByRole('row').nth(2)).toContainText('Yan')
   })
+})
+
+// Keeps the fixture referenced so a future change to it is deliberate.
+test('the shared live fixture is a valid public snapshot', async ({ request }) => {
+  const club = uniqueClub('Fixture')
+  const { token } = await apiCreateClub(request, club)
+  const response = await request.put('/api/session', {
+    headers: bearer(token),
+    data: { public: liveSnapshot(), full: { schemaVersion: 1, storeVersion: 4, location: 'x', session: {} } },
+  })
+  expect(response.status()).toBe(200)
 })

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
 import { db, type Gender, type SkillLevel } from '@/db/db'
 import { addOrGetPlayer } from '@/db/roster'
 import { DEFAULT_SKILL, SKILL_LEVELS, skillLabel } from '@/lib/skill'
@@ -169,6 +170,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
                 id="player-name"
                 list="roster-players"
                 autoComplete="off"
+                maxLength={MAX_PLAYER_NAME_LENGTH}
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
               />

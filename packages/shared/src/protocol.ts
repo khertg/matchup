@@ -50,6 +50,11 @@ export interface AuthGrant {
   recoveryCode: string
 }
 
+/** Returned after a password reset: a new login, a new recovery code, and the club name to display. */
+export interface ResetPasswordResponse extends AuthGrant {
+  name: string
+}
+
 export interface LoginRequest {
   password: string
 }

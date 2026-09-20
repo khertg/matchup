@@ -19,6 +19,11 @@ export const useSyncStore = create<SyncStore>()((set) => ({
 
 const isExpiredLogin = (error: unknown) => error instanceof CloudError && error.code === 'invalid_token'
 
+/** Errors that retrying cannot fix: the login is gone, or the server refuses this session's data. */
+const isPermanent = (error: unknown) =>
+  error instanceof CloudError &&
+  (error.code === 'invalid_token' || error.code === 'invalid_snapshot' || error.code === 'payload_too_large')
+
 /** An expired staff token means signing out; anything else is left for a retry. */
 function handleAuthError(error: unknown) {
   if (isExpiredLogin(error)) {
@@ -83,7 +88,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     setStatus: (status) => {
       if (signedIn()) setStatus(status)
     },
-    isFatal: isExpiredLogin,
+    isFatal: isPermanent,
   })
 
   // Only publish a session that exists. Sending "no session" on start-up would

@@ -1,30 +1,22 @@
-import type { SkillLevel } from '@/db/db'
+import {
+  SNAPSHOT_VERSION,
+  parseFullBackupEnvelope,
+  parsePublicSnapshot,
+  type PublicSnapshot,
+} from '@matchup/shared'
+import type { SessionState } from '@/rotation/types'
 import { migrateSession, SESSION_STORE_VERSION } from '@/store/migrate'
-import type { GameMode, MatchmakingMode, SessionState } from '@/rotation/types'
 
 /**
- * Two shapes go to the cloud:
+ * Two shapes go to the cloud (their wire format is defined in @matchup/shared):
  *  - PublicSnapshot: what the public viewer page shows. It leaves out genders
  *    and per-player results history.
  *  - FullBackup: the whole session, only retrievable with a staff token, so a
  *    second staff device can resume it.
  */
 
-export const SNAPSHOT_VERSION = 1
-
-export interface PublicSnapshot {
-  schemaVersion: typeof SNAPSHOT_VERSION
-  location: string
-  mode: GameMode
-  matchmaking: MatchmakingMode
-  avgGameMinutes: number
-  courts: SessionState['courts']
-  queue: number[]
-  onBreak: number[]
-  partners: SessionState['partners']
-  stats: SessionState['stats']
-  players: Record<number, { id: number; name: string; skill: SkillLevel }>
-}
+export { parsePublicSnapshot }
+export type { PublicSnapshot }
 
 export interface FullBackup {
   schemaVersion: typeof SNAPSHOT_VERSION
@@ -56,57 +48,6 @@ export function toFullBackup(location: string, session: SessionState): FullBacku
   return { schemaVersion: SNAPSHOT_VERSION, storeVersion: SESSION_STORE_VERSION, location, session }
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-const isIdList = (v: unknown): v is number[] =>
-  Array.isArray(v) && v.every((n) => Number.isInteger(n))
-
-function validCourts(v: unknown): v is SessionState['courts'] {
-  return (
-    Array.isArray(v) &&
-    v.every(
-      (c) =>
-        isObject(c) &&
-        Number.isInteger(c.id) &&
-        (c.teams === null ||
-          (Array.isArray(c.teams) && c.teams.length === 2 && c.teams.every(isIdList))),
-    )
-  )
-}
-
-function validPlayers(v: unknown): v is PublicSnapshot['players'] {
-  return (
-    isObject(v) &&
-    Object.values(v).every(
-      (p) =>
-        isObject(p) &&
-        Number.isInteger(p.id) &&
-        typeof p.name === 'string' &&
-        Number.isInteger(p.skill) &&
-        (p.skill as number) >= 1 &&
-        (p.skill as number) <= 6,
-    )
-  )
-}
-
-/** Returns the snapshot if it is well formed and of a known version, otherwise null. */
-export function parsePublicSnapshot(raw: unknown): PublicSnapshot | null {
-  if (!isObject(raw) || raw.schemaVersion !== SNAPSHOT_VERSION) return null
-  const ok =
-    typeof raw.location === 'string' &&
-    (raw.mode === 'doubles' || raw.mode === 'singles') &&
-    typeof raw.matchmaking === 'string' &&
-    typeof raw.avgGameMinutes === 'number' &&
-    validCourts(raw.courts) &&
-    isIdList(raw.queue) &&
-    isIdList(raw.onBreak) &&
-    Array.isArray(raw.partners) &&
-    raw.partners.every(isIdList) &&
-    isObject(raw.stats) &&
-    validPlayers(raw.players)
-  return ok ? (raw as unknown as PublicSnapshot) : null
-}
-
 /** A read-only SessionState built from a public snapshot, for reusing the display components. */
 export function toViewerState(snapshot: PublicSnapshot): SessionState {
   return {
@@ -125,10 +66,14 @@ export function toViewerState(snapshot: PublicSnapshot): SessionState {
 
 /** Returns the location and a session upgraded to the current shape, or null if unusable. */
 export function parseFullBackup(raw: unknown): { location: string; session: SessionState } | null {
-  if (!isObject(raw) || raw.schemaVersion !== SNAPSHOT_VERSION) return null
-  if (typeof raw.location !== 'string' || typeof raw.storeVersion !== 'number') return null
-  if (!isObject(raw.session)) return null
-  const migrated = migrateSession(raw.session as unknown as SessionState, raw.storeVersion)
-  if (!migrated || !validCourts(migrated.courts) || !isIdList(migrated.queue)) return null
-  return { location: raw.location, session: migrated }
+  const envelope = parseFullBackupEnvelope(raw)
+  if (!envelope) return null
+  try {
+    const session = migrateSession(envelope.session as unknown as SessionState, envelope.storeVersion)
+    // A session that cannot be published as a valid board is not sound enough to resume.
+    if (!session || !parsePublicSnapshot(toPublicSnapshot(envelope.location, session))) return null
+    return { location: envelope.location, session }
+  } catch {
+    return null
+  }
 }
