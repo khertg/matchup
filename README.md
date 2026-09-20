@@ -8,9 +8,11 @@ An npm-workspaces monorepo:
 
 ```
 apps/web        React app (Vite, Tailwind, shadcn/ui, Dexie, PWA) and its tests
+apps/api        Node API (Fastify + Postgres): clubs, live board, club leaderboard (see apps/api/README.md)
+packages/shared wire contract used by both: types, snapshot validation, slug rules
 docs/           product spec
-supabase/       cloud backend (being replaced by apps/api)
-deploy/         production deployment files (added with the API)
+supabase/       previous cloud backend, being replaced by apps/api
+deploy/         production deployment files (added later)
 ```
 
 Run everything from the repository root: `npm install` once, then the scripts below. Each script runs in every workspace that defines it.

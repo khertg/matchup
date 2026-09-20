@@ -1,0 +1,14 @@
+{
+  "name": "@matchup/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Wire contract shared by the web app and the API: types, snapshot validation, slug rules.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

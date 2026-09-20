@@ -28,3 +28,7 @@ test-results
 playwright-report
 blob-report
 dist-cloudtest
+
+# API local development
+.env
+.data
