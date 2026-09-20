@@ -3,12 +3,13 @@ import { expect, type Page } from '@playwright/test'
 /** Fill the setup form and start a session. */
 export async function startSession(
   page: Page,
-  { location = 'Test Club', courts = 1, mode = 'Doubles' } = {},
+  { location = 'Test Club', courts = 1, mode = 'Doubles', gameMinutes = 12 } = {},
 ) {
   await page.goto('/')
   await page.getByLabel('Location').fill(location)
   await page.getByLabel('Number of courts (1 to 15)').fill(String(courts))
   await page.getByRole('button', { name: mode }).click()
+  await page.getByLabel('Average game length (minutes)').fill(String(gameMinutes))
   await page.getByRole('button', { name: 'Start session' }).click()
   await expect(page.getByRole('heading', { name: location })).toBeVisible()
 }

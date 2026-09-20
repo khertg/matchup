@@ -16,6 +16,8 @@ export interface Court {
 
 export interface SessionState {
   mode: GameMode
+  /** Assumed length of one game, used for wait estimates. */
+  avgGameMinutes: number
   courts: Court[]
   players: Record<number, RosterPlayer>
   /** Waiting players, first in line at index 0. */

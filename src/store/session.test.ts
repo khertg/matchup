@@ -91,6 +91,30 @@ describe('session store', () => {
     expect(activePlayerCount(store().session!)).toBe(1)
   })
 
+  it('uses the chosen game length', () => {
+    store().startSession('Club', 'doubles', 1, 20)
+    expect(store().session!.avgGameMinutes).toBe(20)
+  })
+
+  it('keeps a pending undo and does not revert the game length when it changes', () => {
+    store().startSession('Club', 'doubles', 1)
+    checkInMany(8)
+    store().recordResult(1, 0)
+    store().setAvgGameMinutes(30)
+    expect(store().undo()).toBe(true)
+    expect(store().session!.avgGameMinutes).toBe(30)
+    expect(store().session!.courts[0].teams?.flat().sort()).toEqual([1, 2, 3, 4])
+  })
+
+  it('replaces a playing player with a chosen waiting one', () => {
+    store().startSession('Club', 'doubles', 1)
+    checkInMany(6)
+    store().replacePlayer(1, 1, 6)
+    expect(store().session!.courts[0].teams!.flat()).toContain(6)
+    expect(store().session!.onBreak).toEqual([1])
+    expect(store().session!.queue).toEqual([5])
+  })
+
   it('ends the session', () => {
     store().startSession('Club', 'singles', 1)
     store().endSession()

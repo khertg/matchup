@@ -3,6 +3,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  DEFAULT_AVG_GAME_MINUTES,
+  isValidGameMinutes,
+  MAX_AVG_GAME_MINUTES,
+  MIN_AVG_GAME_MINUTES,
+} from '@/rotation/engine'
 import type { GameMode } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -16,14 +22,18 @@ export function SetupScreen() {
   const [location, setLocation] = useState('')
   const [courts, setCourts] = useState('4')
   const [mode, setMode] = useState<GameMode>('doubles')
+  const [gameMinutes, setGameMinutes] = useState(String(DEFAULT_AVG_GAME_MINUTES))
 
   const courtCount = Number(courts)
   const courtsValid = Number.isInteger(courtCount) && courtCount >= 1 && courtCount <= 15
+  const gameMinutesValue = Number(gameMinutes)
+  const gameMinutesValid = isValidGameMinutes(gameMinutesValue)
+  const formValid = courtsValid && gameMinutesValid
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!courtsValid) return
-    startSession(location.trim() || 'Open play', mode, courtCount)
+    if (!formValid) return
+    startSession(location.trim() || 'Open play', mode, courtCount, gameMinutesValue)
   }
 
   return (
@@ -79,7 +89,26 @@ export function SetupScreen() {
             </div>
           </div>
 
-          <Button type="submit" className="h-11 w-full" disabled={!courtsValid}>
+          <div className="space-y-2">
+            <Label htmlFor="game-minutes">Average game length (minutes)</Label>
+            <Input
+              id="game-minutes"
+              type="number"
+              inputMode="numeric"
+              min={MIN_AVG_GAME_MINUTES}
+              max={MAX_AVG_GAME_MINUTES}
+              value={gameMinutes}
+              onChange={(e) => setGameMinutes(e.target.value)}
+              aria-invalid={!gameMinutesValid}
+            />
+            {!gameMinutesValid && (
+              <p className="text-sm text-destructive">
+                Enter a whole number from {MIN_AVG_GAME_MINUTES} to {MAX_AVG_GAME_MINUTES}.
+              </p>
+            )}
+          </div>
+
+          <Button type="submit" className="h-11 w-full" disabled={!formValid}>
             Start session
           </Button>
         </form>

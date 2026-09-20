@@ -8,6 +8,7 @@ import {
   estimateWaitMinutes,
   recordResult,
   replacePlayer,
+  setAvgGameMinutes,
 } from './engine'
 import type { RosterPlayer, SessionState } from './types'
 
@@ -27,6 +28,27 @@ describe('createSession', () => {
   it('rejects court counts outside 1-15', () => {
     expect(() => createSession('doubles', 0)).toThrow(RangeError)
     expect(() => createSession('doubles', 16)).toThrow(RangeError)
+  })
+})
+
+describe('game length', () => {
+  it('defaults to 12 minutes and accepts a custom length', () => {
+    expect(createSession('doubles', 1).avgGameMinutes).toBe(12)
+    expect(createSession('doubles', 1, 20).avgGameMinutes).toBe(20)
+  })
+
+  it('rejects lengths outside 5-60 or non-integers', () => {
+    expect(() => createSession('doubles', 1, 4)).toThrow(RangeError)
+    expect(() => createSession('doubles', 1, 61)).toThrow(RangeError)
+    expect(() => setAvgGameMinutes(createSession('doubles', 1), 7.5)).toThrow(RangeError)
+  })
+
+  it('changes the wait estimate without mutating the old state', () => {
+    const s = assignCourts(withPlayers(createSession('doubles', 1), 5))
+    const slower = setAvgGameMinutes(s, 24)
+    expect(estimateWaitMinutes(s, 5, s.avgGameMinutes)).toBe(12)
+    expect(estimateWaitMinutes(slower, 5, slower.avgGameMinutes)).toBe(24)
+    expect(s.avgGameMinutes).toBe(12)
   })
 })
 
@@ -133,6 +155,13 @@ describe('replacePlayer', () => {
     expect(r.courts[0].teams!.flat()).not.toContain(1)
     expect(r.queue).toEqual([])
     expect(r.onBreak).toEqual([1])
+  })
+
+  it('subs in a chosen waiting player, not just the front of the queue', () => {
+    const s = assignCourts(withPlayers(createSession('doubles', 1), 6))
+    const r = replacePlayer(s, 1, 2, 6)
+    expect(r.courts[0].teams!.flat()).toContain(6)
+    expect(r.queue).toEqual([5])
   })
 
   it('throws when the substitute is not queued', () => {

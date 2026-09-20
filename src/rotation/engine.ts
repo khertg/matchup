@@ -8,17 +8,40 @@ import type { GameMode, RosterPlayer, SessionState, Teams } from './types'
 
 export const playersPerCourt = (mode: GameMode) => (mode === 'doubles' ? 4 : 2)
 
-export function createSession(mode: GameMode, courtCount: number): SessionState {
+export const DEFAULT_AVG_GAME_MINUTES = 12
+export const MIN_AVG_GAME_MINUTES = 5
+export const MAX_AVG_GAME_MINUTES = 60
+
+export const isValidGameMinutes = (minutes: number) =>
+  Number.isInteger(minutes) && minutes >= MIN_AVG_GAME_MINUTES && minutes <= MAX_AVG_GAME_MINUTES
+
+export function createSession(
+  mode: GameMode,
+  courtCount: number,
+  avgGameMinutes = DEFAULT_AVG_GAME_MINUTES,
+): SessionState {
   if (!Number.isInteger(courtCount) || courtCount < 1 || courtCount > 15) {
     throw new RangeError('courtCount must be an integer from 1 to 15')
   }
+  if (!isValidGameMinutes(avgGameMinutes)) {
+    throw new RangeError('avgGameMinutes must be an integer from 5 to 60')
+  }
   return {
     mode,
+    avgGameMinutes,
     courts: Array.from({ length: courtCount }, (_, i) => ({ id: i + 1, teams: null })),
     players: {},
     queue: [],
     onBreak: [],
   }
+}
+
+/** Change the assumed game length used for wait estimates. */
+export function setAvgGameMinutes(state: SessionState, minutes: number): SessionState {
+  if (!isValidGameMinutes(minutes)) {
+    throw new RangeError('avgGameMinutes must be an integer from 5 to 60')
+  }
+  return { ...state, avgGameMinutes: minutes }
 }
 
 export function playingIds(state: SessionState): number[] {

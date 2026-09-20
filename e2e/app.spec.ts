@@ -19,6 +19,13 @@ test('blocks an invalid number of courts', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Start session' })).toBeEnabled()
 })
 
+test('blocks an invalid game length', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Average game length (minutes)').fill('4')
+  await expect(page.getByText('Enter a whole number from 5 to 60.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start session' })).toBeDisabled()
+})
+
 test('loads without console errors', async ({ page }) => {
   const errors: string[] = []
   page.on('console', (msg) => {

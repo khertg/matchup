@@ -4,9 +4,6 @@ import { skillLabel } from '@/lib/skill'
 import { estimateWaitMinutes } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 
-/** Assumed length of a game until this becomes a session setting. */
-export const AVG_GAME_MINUTES = 12
-
 export function QueueList({ session }: { session: SessionState }) {
   return (
     <Card>
@@ -20,7 +17,7 @@ export function QueueList({ session }: { session: SessionState }) {
           <ol className="divide-y">
             {session.queue.map((id, index) => {
               const player = session.players[id]
-              const wait = estimateWaitMinutes(session, id, AVG_GAME_MINUTES)
+              const wait = estimateWaitMinutes(session, id, session.avgGameMinutes)
               return (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="w-6 text-sm text-muted-foreground">{index + 1}</span>

@@ -81,6 +81,40 @@ test('saves the chosen skill level', async ({ page }) => {
   await expect(page.getByRole('listitem').filter({ hasText: 'Zed' }).getByText('Advanced')).toBeVisible()
 })
 
+test('replaces a playing player with someone waiting', async ({ page }) => {
+  await startSession(page)
+  await checkIn(page, FIVE)
+  const court = page.getByRole('region', { name: 'Court 1' })
+  await expect(court.getByText('Ann')).toBeVisible()
+
+  await court.getByRole('button', { name: 'Replace Ann' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Replace Ann')).toBeVisible()
+  await dialog.getByRole('button', { name: /Eve/ }).click()
+
+  await expect(page.getByText('Eve replaced Ann')).toBeVisible()
+  await expect(court.getByText('Eve')).toBeVisible()
+  await expect(court.getByText('Ann')).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Check-in' }).click()
+  await expect(page.getByText('On a break (1)')).toBeVisible()
+})
+
+test('offers no substitute when nobody is waiting', async ({ page }) => {
+  await startSession(page)
+  await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+  await page.getByRole('button', { name: 'Replace Ann' }).click()
+  await expect(page.getByText('No one is waiting to substitute')).toBeVisible()
+})
+
+test('uses the game length from setup and lets it be changed', async ({ page }) => {
+  await startSession(page, { gameMinutes: 20 })
+  await checkIn(page, FIVE)
+  await expect(page.getByText('~20 min')).toBeVisible()
+
+  await page.getByLabel('Game length (min)').fill('30')
+  await expect(page.getByText('~30 min')).toBeVisible()
+})
+
 test('keeps the session after a reload', async ({ page }) => {
   await startSession(page, { location: 'Persistent Club' })
   await checkIn(page, FIVE)
