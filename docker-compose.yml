@@ -3,18 +3,21 @@ services:
   dev:
     build:
       context: .
+      dockerfile: apps/web/Dockerfile
       target: dev
     ports:
       - "5173:5173"
     volumes:
       - .:/app
       - node_modules:/app/node_modules # keep container deps, not the host's
+      - web_node_modules:/app/apps/web/node_modules
 
   # Production image behind nginx: `docker compose --profile prod up --build web` -> http://localhost:8080
   web:
     profiles: ["prod"]
     build:
       context: .
+      dockerfile: apps/web/Dockerfile
       target: prod
       args:
         # Set in .env.local and pass with: docker compose --env-file .env.local ...
@@ -25,3 +28,4 @@ services:
 
 volumes:
   node_modules:
+  web_node_modules:

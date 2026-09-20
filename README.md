@@ -1,6 +1,19 @@
 # Matchup
 
-Free, offline-first pickleball open play manager (see `pickleq-specs.md`).
+Free, offline-first pickleball open play manager (see [docs/pickleq-specs.md](docs/pickleq-specs.md)).
+
+## Repository layout
+
+An npm-workspaces monorepo:
+
+```
+apps/web        React app (Vite, Tailwind, shadcn/ui, Dexie, PWA) and its tests
+docs/           product spec
+supabase/       cloud backend (being replaced by apps/api)
+deploy/         production deployment files (added with the API)
+```
+
+Run everything from the repository root: `npm install` once, then the scripts below. Each script runs in every workspace that defines it.
 
 **Stack:** React, Vite, TypeScript, Tailwind CSS, Dexie (IndexedDB), Zustand, vite-plugin-pwa, Vitest.
 
@@ -9,8 +22,9 @@ Free, offline-first pickleball open play manager (see `pickleq-specs.md`).
 - `npm run dev`: start the dev server
 - `npm run build`: type-check and build (also generates the service worker)
 - `npm test`: run unit tests
-- `npm run lint`: lint with oxlint
-- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Cloud features are tested against a second build (`npm run build:cloudtest`) with fake credentials and every Supabase request mocked, so no real project is needed.
+- `npm run typecheck`: type-check every workspace
+- `npm run lint`: lint every workspace with oxlint
+- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Tests and config live in `apps/web/e2e` and `apps/web/playwright.config.ts`. Cloud features are tested against a second build (`npm run build:cloudtest`) with fake credentials and every Supabase request mocked, so no real project is needed.
 - `npm run test:db`: applies the Supabase migration to a throwaway Postgres in Docker and checks its security rules (needs Docker running).
 
 Requires Node 20.19+ (built with Node 26).
@@ -35,11 +49,11 @@ With a free Supabase project (setup in [supabase/README.md](supabase/README.md))
 - **resume** of a running session on a second staff device;
 - an **all-time club leaderboard** combined across devices.
 
-Without the two `VITE_SUPABASE_*` variables (see `.env.example`) the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
+Without the two `VITE_SUPABASE_*` variables (see `apps/web/.env.example`) the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
 
 ## UI (shadcn/ui)
 
-Components live in `src/components/ui` and are ours to edit. Add more with `npx shadcn@latest add <name>`. Import them via the `@/` alias, e.g. `@/components/ui/button`. Theme tokens (green primary, light and dark) are in `src/index.css`; dark mode is toggled through `next-themes`.
+Components live in `apps/web/src/components/ui` and are ours to edit. Add more with `npx shadcn@latest add <name>`. Import them via the `@/` alias, e.g. `@/components/ui/button`. Theme tokens (green primary, light and dark) are in `apps/web/src/index.css`; dark mode is toggled through `next-themes`.
 
 ## Docker
 
@@ -48,4 +62,4 @@ Components live in `src/components/ui` and are ours to edit. Add more with `npx 
 
 ## Court rotation
 
-`src/rotation/engine.ts` is a pure, immutable engine (check-in, queue, court assignment, results, substitutions, wait estimates). Keep the previous state to implement the 10-second undo.
+`apps/web/src/rotation/engine.ts` is a pure, immutable engine (check-in, queue, court assignment, results, substitutions, wait estimates). Keep the previous state to implement the 10-second undo.

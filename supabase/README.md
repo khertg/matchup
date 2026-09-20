@@ -19,7 +19,7 @@ Everything below uses Supabase's free tier.
 ## 2. Connect the app
 
 1. In **Project Settings, API** copy the **Project URL** and the **anon public** key.
-2. Copy `.env.example` to `.env.local` and fill them in:
+2. Copy `apps/web/.env.example` to `apps/web/.env.local` and fill them in:
 
    ```
    VITE_SUPABASE_URL=https://xxxx.supabase.co
@@ -30,13 +30,13 @@ Everything below uses Supabase's free tier.
    The setup screen now shows a **Cloud club** card.
 
 > Use the **anon** key only. Never put the `service_role` key in this app or in any `VITE_` variable:
-> everything in the browser bundle is public. `.env.local` is git-ignored.
+> everything in the browser bundle is public. `apps/web/.env.local` is git-ignored.
 
 ## 3. Deploy
 
 Set the same two variables in your host's build settings (for example Cloudflare Pages) and build with
 `npm run build`. `public/_redirects` makes `/club/<name>` links load the app on Cloudflare Pages/Netlify.
-For Docker: `docker compose --env-file .env.local --profile prod up --build web`.
+For Docker: `docker compose --env-file apps/web/.env.local --profile prod up --build web`.
 
 ## How it is secured
 
