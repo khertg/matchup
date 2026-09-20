@@ -10,6 +10,7 @@ Free, offline-first pickleball open play manager (see `pickleq-specs.md`).
 - `npm run build`: type-check and build (also generates the service worker)
 - `npm test`: run unit tests
 - `npm run lint`: lint with oxlint
+- `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against the production build; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`.
 
 Requires Node 20.19+ (built with Node 26).
 
