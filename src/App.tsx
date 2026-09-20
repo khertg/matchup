@@ -7,7 +7,8 @@ export default function App() {
   const session = useSessionStore((s) => s.session)
 
   return (
-    <main className="mx-auto max-w-5xl p-4 sm:p-6">
+    // Extra bottom padding lets the last controls scroll clear of the toasts pinned to the screen bottom.
+    <main className="mx-auto max-w-5xl p-4 pb-32 sm:p-6 sm:pb-32">
       {session ? <SessionScreen session={session} /> : <SetupScreen />}
       <Toaster />
     </main>

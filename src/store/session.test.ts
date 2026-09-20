@@ -92,7 +92,7 @@ describe('session store', () => {
   })
 
   it('uses the chosen game length', () => {
-    store().startSession('Club', 'doubles', 1, 20)
+    store().startSession('Club', 'doubles', 1, { avgGameMinutes: 20 })
     expect(store().session!.avgGameMinutes).toBe(20)
   })
 
@@ -113,6 +113,39 @@ describe('session store', () => {
     expect(store().session!.courts[0].teams!.flat()).toContain(6)
     expect(store().session!.onBreak).toEqual([1])
     expect(store().session!.queue).toEqual([5])
+  })
+
+  it('stages a match with the locked pair on one team once four players are in', () => {
+    store().startSession('Club', 'doubles', 1)
+    checkInMany(3)
+    store().lockPartners(1, 3)
+    expect(store().session!.courts[0].teams).toBeNull()
+    store().checkInPlayer(player(4))
+    const teams = store().session!.courts[0].teams!
+    expect(teams.some((t) => t.includes(1) && t.includes(3))).toBe(true)
+  })
+
+  it('starts an open mixed court by hand', () => {
+    store().startSession('Club', 'doubles', 1, { matchmaking: 'mixed' })
+    for (let id = 1; id <= 4; id++) {
+      store().checkInPlayer({ id, name: `P${id}`, skill: 3, gender: 'M' })
+    }
+    expect(store().session!.courts[0].teams).toBeNull()
+    store().startCourt(1)
+    expect(store().session!.courts[0].teams!.flat().sort()).toEqual([1, 2, 3, 4])
+  })
+
+  it('unlocks partners', () => {
+    store().startSession('Club', 'doubles', 1)
+    checkInMany(2)
+    store().lockPartners(1, 2)
+    store().unlockPartners(2)
+    expect(store().session!.partners).toEqual([])
+  })
+
+  it('starts a session with the chosen matchmaking mode', () => {
+    store().startSession('Club', 'doubles', 1, { matchmaking: 'mixed' })
+    expect(store().session!.matchmaking).toBe('mixed')
   })
 
   it('ends the session', () => {

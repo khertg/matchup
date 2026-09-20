@@ -1,5 +1,5 @@
-import { balanceDoubles } from '../matchmaking/balance'
-import type { GameMode, RosterPlayer, SessionState, Teams } from './types'
+import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
+import type { GameMode, MatchmakingMode, RosterPlayer, SessionState } from './types'
 
 /**
  * Court rotation engine. Every function is pure: it returns a new state and
@@ -15,10 +15,16 @@ export const MAX_AVG_GAME_MINUTES = 60
 export const isValidGameMinutes = (minutes: number) =>
   Number.isInteger(minutes) && minutes >= MIN_AVG_GAME_MINUTES && minutes <= MAX_AVG_GAME_MINUTES
 
+export interface SessionOptions {
+  avgGameMinutes?: number
+  /** Doubles only; singles is always first come, first served. */
+  matchmaking?: MatchmakingMode
+}
+
 export function createSession(
   mode: GameMode,
   courtCount: number,
-  avgGameMinutes = DEFAULT_AVG_GAME_MINUTES,
+  { avgGameMinutes = DEFAULT_AVG_GAME_MINUTES, matchmaking = 'balanced' }: SessionOptions = {},
 ): SessionState {
   if (!Number.isInteger(courtCount) || courtCount < 1 || courtCount > 15) {
     throw new RangeError('courtCount must be an integer from 1 to 15')
@@ -29,6 +35,9 @@ export function createSession(
   return {
     mode,
     avgGameMinutes,
+    matchmaking,
+    partners: [],
+    lastResult: {},
     courts: Array.from({ length: courtCount }, (_, i) => ({ id: i + 1, teams: null })),
     players: {},
     queue: [],
@@ -77,30 +86,26 @@ export function checkOut(state: SessionState, playerId: number): SessionState {
   }
 }
 
-function splitTeams(state: SessionState, group: number[]): Teams {
-  if (state.mode === 'singles') return [[group[0]], [group[1]]]
-  const four = group.map((id) => state.players[id]) as [
-    RosterPlayer,
-    RosterPlayer,
-    RosterPlayer,
-    RosterPlayer,
-  ]
-  const { teamA, teamB } = balanceDoubles(four)
-  return [teamA.map((p) => p.id!), teamB.map((p) => p.id!)]
-}
-
 /**
- * Fill every empty court from the front of the queue (first come, first
- * served). Doubles groups are split into the most even teams by skill.
+ * Fill every empty court from the queue. Singles is strictly first come, first
+ * served. Doubles groups are chosen by the session's matchmaking mode and split
+ * into teams (see src/matchmaking/grouping.ts). A court stays empty until a
+ * valid group can be formed.
  */
 export function assignCourts(state: SessionState): SessionState {
-  const size = playersPerCourt(state.mode)
   let queue = state.queue
   const courts = state.courts.map((court) => {
-    if (court.teams || queue.length < size) return court
-    const group = queue.slice(0, size)
-    queue = queue.slice(size)
-    return { ...court, teams: splitTeams(state, group) }
+    if (court.teams) return court
+    if (state.mode === 'singles') {
+      if (queue.length < 2) return court
+      const [a, b] = queue
+      queue = queue.slice(2)
+      return { ...court, teams: [[a], [b]] as [number[], number[]] }
+    }
+    const group = selectGroup(state, queue)
+    if (!group) return court
+    queue = queue.filter((id) => !group.includes(id))
+    return { ...court, teams: splitGroup(state, group) }
   })
   return { ...state, courts, queue }
 }
@@ -128,7 +133,29 @@ export function recordResult(state: SessionState, courtId: number, winner: 0 | 1
       ...state,
       courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: null } : c)),
       queue: [...state.queue, ...winners, ...losers],
+      lastResult: {
+        ...state.lastResult,
+        ...Object.fromEntries(winners.map((id) => [id, 'W' as const])),
+        ...Object.fromEntries(losers.map((id) => [id, 'L' as const])),
+      },
     },
+  }
+}
+
+/**
+ * Stage a game on an empty court from whoever is waiting, ignoring the
+ * matchmaking mode. Lets staff start a mixed-doubles court that has no valid
+ * mixed group yet. Locked partners are still kept together.
+ */
+export function startCourtManually(state: SessionState, courtId: number): SessionState {
+  const court = state.courts.find((c) => c.id === courtId)
+  if (!court || court.teams) throw new Error(`Court ${courtId} is not open`)
+  const group = selectGroup(state, state.queue, { ignoreMode: true })
+  if (!group) throw new Error('Not enough players are waiting to start a game')
+  return {
+    ...state,
+    courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: splitGroup(state, group) } : c)),
+    queue: state.queue.filter((id) => !group.includes(id)),
   }
 }
 
@@ -168,7 +195,28 @@ export function replacePlayer(
     ),
     queue: state.queue.filter((id) => id !== inId),
     onBreak: [...state.onBreak, outId],
+    // Whoever leaves is no longer bound to their partner.
+    partners: state.partners.filter((pair) => !pair.includes(outId)),
   }
+}
+
+/**
+ * Lock two checked-in players as partners: they always share a team and wait
+ * in the queue together. Doubles only; a player can have one partner.
+ */
+export function lockPartners(state: SessionState, a: number, b: number): SessionState {
+  if (state.mode !== 'doubles') throw new Error('Partners can only be locked in doubles')
+  if (a === b) throw new Error('A player cannot partner themselves')
+  if (!state.players[a] || !state.players[b]) throw new Error('Both players must be checked in')
+  if (partnerOf(state.partners, a) !== undefined || partnerOf(state.partners, b) !== undefined) {
+    throw new Error('A player is already locked with a partner')
+  }
+  return { ...state, partners: [...state.partners, [a, b]] }
+}
+
+/** Dissolve the partner lock that includes this player (no-op if none). */
+export function unlockPartners(state: SessionState, playerId: number): SessionState {
+  return { ...state, partners: state.partners.filter((pair) => !pair.includes(playerId)) }
 }
 
 /**

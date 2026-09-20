@@ -6,9 +6,12 @@ import {
   checkOut,
   createSession,
   estimateWaitMinutes,
+  lockPartners,
   recordResult,
   replacePlayer,
   setAvgGameMinutes,
+  startCourtManually,
+  unlockPartners,
 } from './engine'
 import type { RosterPlayer, SessionState } from './types'
 
@@ -34,12 +37,12 @@ describe('createSession', () => {
 describe('game length', () => {
   it('defaults to 12 minutes and accepts a custom length', () => {
     expect(createSession('doubles', 1).avgGameMinutes).toBe(12)
-    expect(createSession('doubles', 1, 20).avgGameMinutes).toBe(20)
+    expect(createSession('doubles', 1, { avgGameMinutes: 20 }).avgGameMinutes).toBe(20)
   })
 
   it('rejects lengths outside 5-60 or non-integers', () => {
-    expect(() => createSession('doubles', 1, 4)).toThrow(RangeError)
-    expect(() => createSession('doubles', 1, 61)).toThrow(RangeError)
+    expect(() => createSession('doubles', 1, { avgGameMinutes: 4 })).toThrow(RangeError)
+    expect(() => createSession('doubles', 1, { avgGameMinutes: 61 })).toThrow(RangeError)
     expect(() => setAvgGameMinutes(createSession('doubles', 1), 7.5)).toThrow(RangeError)
   })
 
@@ -182,5 +185,82 @@ describe('estimateWaitMinutes', () => {
     expect(estimateWaitMinutes(s, 9, 12)).toBe(6)
     expect(estimateWaitMinutes(s, 13, 12)).toBe(12)
     expect(estimateWaitMinutes(s, 1, 12)).toBeNull()
+  })
+})
+
+describe('partner locking', () => {
+  it('locks two checked-in players and unlocks by either partner', () => {
+    let s = withPlayers(createSession('doubles', 1), 3)
+    s = lockPartners(s, 1, 3)
+    expect(s.partners).toEqual([[1, 3]])
+    expect(unlockPartners(s, 3).partners).toEqual([])
+    expect(unlockPartners(s, 2).partners).toEqual([[1, 3]])
+  })
+
+  it('rejects invalid locks', () => {
+    const s = withPlayers(createSession('doubles', 1), 3)
+    expect(() => lockPartners(s, 1, 1)).toThrow()
+    expect(() => lockPartners(s, 1, 99)).toThrow()
+    expect(() => lockPartners(withPlayers(createSession('singles', 1), 3), 1, 2)).toThrow()
+    const locked = lockPartners(s, 1, 2)
+    expect(() => lockPartners(locked, 2, 3)).toThrow()
+  })
+
+  it('keeps partners on the same team and requeues them together after a game', () => {
+    let s = lockPartners(withPlayers(createSession('doubles', 1), 8), 1, 4)
+    s = assignCourts(s)
+    const [a, b] = s.courts[0].teams!
+    expect([a, b].some((t) => t.includes(1) && t.includes(4))).toBe(true)
+
+    const { state } = recordResult(s, 1, 0)
+    const at = state.queue.indexOf(1)
+    expect(Math.abs(at - state.queue.indexOf(4))).toBe(1)
+  })
+
+  it('dissolves the lock when one partner is replaced mid-game', () => {
+    let s = lockPartners(withPlayers(createSession('doubles', 1), 5), 1, 2)
+    s = assignCourts(s)
+    s = replacePlayer(s, 1, 1)
+    expect(s.partners).toEqual([])
+  })
+
+  it('is ignored when a session has no partners (singles stays first come, first served)', () => {
+    const s = assignCourts(withPlayers(createSession('singles', 1), 3))
+    expect(s.courts[0].teams).toEqual([[1], [2]])
+  })
+})
+
+describe('lastResult', () => {
+  it('records W for winners and L for losers and overwrites on the next game', () => {
+    let s = assignCourts(withPlayers(createSession('doubles', 1), 4))
+    const first = recordResult(s, 1, 0)
+    first.winners.forEach((id) => expect(first.state.lastResult[id]).toBe('W'))
+    first.losers.forEach((id) => expect(first.state.lastResult[id]).toBe('L'))
+
+    s = assignCourts(first.state)
+    const second = recordResult(s, 1, 1)
+    second.winners.forEach((id) => expect(second.state.lastResult[id]).toBe('W'))
+  })
+})
+
+describe('startCourtManually', () => {
+  const mixedMen = () => {
+    let st = createSession('doubles', 1, { matchmaking: 'mixed' })
+    for (let id = 1; id <= 5; id++) st = checkIn(st, { id, name: `P${id}`, skill: 3, gender: 'M' })
+    return st
+  }
+
+  it('leaves a mixed court open when no mixed group exists, then lets staff start it', () => {
+    const s = assignCourts(mixedMen())
+    expect(s.courts[0].teams).toBeNull()
+    const started = startCourtManually(s, 1)
+    expect(started.courts[0].teams!.flat().sort()).toEqual([1, 2, 3, 4])
+    expect(started.queue).toEqual([5])
+  })
+
+  it('refuses a busy court or too few players', () => {
+    const busy = assignCourts(withPlayers(createSession('doubles', 1), 4))
+    expect(() => startCourtManually(busy, 1)).toThrow()
+    expect(() => startCourtManually(withPlayers(createSession('doubles', 1), 3), 1)).toThrow()
   })
 })

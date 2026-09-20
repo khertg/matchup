@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { matchmakingLabel } from '@/lib/matchmaking'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
@@ -27,6 +28,9 @@ export function SessionScreen({ session }: { session: SessionState }) {
           <h1 className="text-2xl font-bold">{location}</h1>
           <div className="mt-1 flex gap-2">
             <Badge variant="secondary">{session.mode === 'doubles' ? 'Doubles' : 'Singles'}</Badge>
+            {session.mode === 'doubles' && (
+              <Badge variant="secondary">{matchmakingLabel(session.matchmaking)}</Badge>
+            )}
             <Badge variant="secondary">
               {session.courts.length} {session.courts.length === 1 ? 'court' : 'courts'}
             </Badge>

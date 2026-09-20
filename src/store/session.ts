@@ -6,10 +6,14 @@ import {
   checkIn,
   checkOut,
   createSession,
+  lockPartners as lockPartnersEngine,
   playingIds,
   recordResult as recordResultEngine,
   replacePlayer as replacePlayerEngine,
   setAvgGameMinutes as setAvgGameMinutesEngine,
+  type SessionOptions,
+  startCourtManually as startCourtManuallyEngine,
+  unlockPartners as unlockPartnersEngine,
 } from '@/rotation/engine'
 import type { GameMode, RosterPlayer, SessionState } from '@/rotation/types'
 import { migrateSession, SESSION_STORE_VERSION } from './migrate'
@@ -24,7 +28,7 @@ interface SessionStore {
     location: string,
     mode: GameMode,
     courtCount: number,
-    avgGameMinutes?: number,
+    options?: SessionOptions,
   ) => void
   setAvgGameMinutes: (minutes: number) => void
   /** Returns false if the player was already queued or playing. */
@@ -34,8 +38,13 @@ interface SessionStore {
   /** Restores the state from before the last result. Returns false if it is no longer safe. */
   undo: () => boolean
   cancelMatch: (courtId: number) => void
+  /** Stage a game on an open court from the waiting players, whatever the matchmaking mode. */
+  startCourt: (courtId: number) => void
   /** Swap a playing player for a waiting one (defaults to the front of the queue). */
   replacePlayer: (courtId: number, outId: number, inId?: number) => void
+  /** Lock two checked-in players as doubles partners. */
+  lockPartners: (a: number, b: number) => void
+  unlockPartners: (playerId: number) => void
   endSession: () => void
 }
 
@@ -51,10 +60,10 @@ export const useSessionStore = create<SessionStore>()(
       session: null,
       previous: null,
 
-      startSession: (location, mode, courtCount, avgGameMinutes) =>
+      startSession: (location, mode, courtCount, options) =>
         set({
           location,
-          session: createSession(mode, courtCount, avgGameMinutes),
+          session: createSession(mode, courtCount, options),
           previous: null,
         }),
 
@@ -100,9 +109,25 @@ export const useSessionStore = create<SessionStore>()(
         set({ session: cancelMatchEngine(session, courtId), previous: null })
       },
 
+      startCourt: (courtId) => {
+        const session = requireSession(get().session)
+        set({ session: startCourtManuallyEngine(session, courtId), previous: null })
+      },
+
       replacePlayer: (courtId, outId, inId) => {
         const session = requireSession(get().session)
         set({ session: replacePlayerEngine(session, courtId, outId, inId), previous: null })
+      },
+
+      lockPartners: (a, b) => {
+        const session = requireSession(get().session)
+        // Locking only changes future grouping, so re-check whether a court can now fill.
+        set({ session: assignCourts(lockPartnersEngine(session, a, b)), previous: null })
+      },
+
+      unlockPartners: (playerId) => {
+        const session = requireSession(get().session)
+        set({ session: unlockPartnersEngine(session, playerId), previous: null })
       },
 
       endSession: () => set({ location: '', session: null, previous: null }),

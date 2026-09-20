@@ -4,12 +4,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { MATCHMAKING_MODES } from '@/lib/matchmaking'
+import {
   DEFAULT_AVG_GAME_MINUTES,
   isValidGameMinutes,
   MAX_AVG_GAME_MINUTES,
   MIN_AVG_GAME_MINUTES,
 } from '@/rotation/engine'
-import type { GameMode } from '@/rotation/types'
+import type { GameMode, MatchmakingMode } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
 const MODES: { value: GameMode; label: string }[] = [
@@ -22,6 +30,7 @@ export function SetupScreen() {
   const [location, setLocation] = useState('')
   const [courts, setCourts] = useState('4')
   const [mode, setMode] = useState<GameMode>('doubles')
+  const [matchmaking, setMatchmaking] = useState<MatchmakingMode>('balanced')
   const [gameMinutes, setGameMinutes] = useState(String(DEFAULT_AVG_GAME_MINUTES))
 
   const courtCount = Number(courts)
@@ -33,7 +42,10 @@ export function SetupScreen() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!formValid) return
-    startSession(location.trim() || 'Open play', mode, courtCount, gameMinutesValue)
+    startSession(location.trim() || 'Open play', mode, courtCount, {
+      avgGameMinutes: gameMinutesValue,
+      matchmaking: mode === 'doubles' ? matchmaking : 'balanced',
+    })
   }
 
   return (
@@ -88,6 +100,27 @@ export function SetupScreen() {
               ))}
             </div>
           </div>
+
+          {mode === 'doubles' && (
+            <div className="space-y-2">
+              <Label htmlFor="matchmaking">Matchmaking</Label>
+              <Select value={matchmaking} onValueChange={(v) => setMatchmaking(v as MatchmakingMode)}>
+                <SelectTrigger id="matchmaking" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MATCHMAKING_MODES.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                {MATCHMAKING_MODES.find((m) => m.value === matchmaking)?.description}
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="game-minutes">Average game length (minutes)</Label>

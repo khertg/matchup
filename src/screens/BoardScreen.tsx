@@ -9,6 +9,7 @@ import {
   MAX_AVG_GAME_MINUTES,
   MIN_AVG_GAME_MINUTES,
 } from '@/rotation/engine'
+import { selectGroup } from '@/matchmaking/grouping'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -49,6 +50,12 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const undo = useSessionStore((s) => s.undo)
   const cancelMatch = useSessionStore((s) => s.cancelMatch)
   const replacePlayer = useSessionStore((s) => s.replacePlayer)
+  const startCourt = useSessionStore((s) => s.startCourt)
+
+  // Only true when a court is open although a game could be formed (mixed doubles waiting on genders).
+  const canStart =
+    session.courts.some((c) => !c.teams) &&
+    selectGroup(session, session.queue, { ignoreMode: true }) !== null
 
   function handleResult(courtId: number, winner: 0 | 1) {
     recordResult(courtId, winner)
@@ -61,6 +68,11 @@ export function BoardScreen({ session }: { session: SessionState }) {
         },
       },
     })
+  }
+
+  function handleStart(courtId: number) {
+    startCourt(courtId)
+    toast(`Court ${courtId} started`)
   }
 
   function handleReplace(courtId: number, outId: number, inId: number) {
@@ -78,6 +90,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
             court={court}
             players={session.players}
             queue={session.queue}
+            partners={session.partners}
+            canStart={canStart}
+            onStart={() => handleStart(court.id)}
             onReplace={(outId, inId) => handleReplace(court.id, outId, inId)}
             onResult={(winner) => handleResult(court.id, winner)}
             onCancel={() => cancelMatch(court.id)}

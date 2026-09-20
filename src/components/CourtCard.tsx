@@ -1,3 +1,4 @@
+import { Lock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,14 +11,29 @@ interface Props {
   players: Record<number, RosterPlayer>
   /** Waiting player ids in queue order, offered as substitutes. */
   queue: number[]
+  /** Locked partner pairs, to mark teams that are locked together. */
+  partners: [number, number][]
   onReplace: (outId: number, inId: number) => void
+  /** True when waiting players could start a game here despite the matchmaking mode. */
+  canStart: boolean
+  onStart: () => void
   onResult: (winner: 0 | 1) => void
   onCancel: () => void
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
 
-export function CourtCard({ court, players, queue, onReplace, onResult, onCancel }: Props) {
+export function CourtCard({
+  court,
+  players,
+  queue,
+  partners,
+  onReplace,
+  canStart,
+  onStart,
+  onResult,
+  onCancel,
+}: Props) {
   return (
     <Card role="region" aria-label={`Court ${court.id}`}>
       <CardHeader>
@@ -30,8 +46,18 @@ export function CourtCard({ court, players, queue, onReplace, onResult, onCancel
         {court.teams ? (
           <>
             {court.teams.map((team, i) => (
-              <div key={TEAM_NAMES[i]} className="rounded-lg border p-2">
-                <p className="text-xs font-medium text-muted-foreground">{TEAM_NAMES[i]}</p>
+              <div
+                key={TEAM_NAMES[i]}
+                role="group"
+                aria-label={TEAM_NAMES[i]}
+                className="rounded-lg border p-2"
+              >
+                <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  {TEAM_NAMES[i]}
+                  {partners.some(([x, y]) => team.includes(x) && team.includes(y)) && (
+                    <Lock className="size-3" aria-label="Locked partners" />
+                  )}
+                </p>
                 <ul>
                   {team.map((id) => (
                     <li key={id} className="flex items-center gap-2 py-0.5">
@@ -62,9 +88,18 @@ export function CourtCard({ court, players, queue, onReplace, onResult, onCancel
             </Button>
           </>
         ) : (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Waiting for players to check in
-          </p>
+          <div className="space-y-3 py-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              {canStart
+                ? 'No group fits this matchmaking mode yet. Check in more players, or start with whoever is waiting.'
+                : 'Waiting for players to check in'}
+            </p>
+            {canStart && (
+              <Button variant="outline" className="h-11 w-full" onClick={onStart}>
+                Start with waiting players
+              </Button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

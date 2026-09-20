@@ -2,11 +2,13 @@ import Dexie, { type EntityTable } from 'dexie'
 
 export type SkillLevel = 1 | 2 | 3 | 4 | 5 | 6
 
+export type Gender = 'M' | 'F'
+
 export interface Player {
   id?: number
   name: string
   skill: SkillLevel
-  gender?: 'M' | 'F'
+  gender?: Gender
 }
 
 export interface Session {
