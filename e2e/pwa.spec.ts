@@ -19,6 +19,6 @@ test('keeps working offline after the first load', async ({ page, context }) => 
   await context.setOffline(true)
   await page.reload()
 
-  await expect(page.getByText('Pickleball open play manager')).toBeVisible()
+  await expect(page.getByText('Set up an open play session')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible()
 })

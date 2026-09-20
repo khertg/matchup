@@ -1,17 +1,22 @@
 import { expect, test } from '@playwright/test'
 
-test('renders the home screen', async ({ page }) => {
+test('renders the setup screen', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveTitle('Matchup')
-  await expect(page.getByText('Pickleball open play manager')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Check in players' })).toBeVisible()
+  await expect(page.getByText('Set up an open play session')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Doubles' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Singles' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('button', { name: 'Start session' })).toBeEnabled()
 })
 
-test('shows a toast when a session is started', async ({ page }) => {
+test('blocks an invalid number of courts', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Start session' }).click()
-  await expect(page.getByText('Court 1 is ready')).toBeVisible()
+  await page.getByLabel('Number of courts (1 to 15)').fill('16')
+  await expect(page.getByText('Enter a whole number from 1 to 15.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start session' })).toBeDisabled()
+
+  await page.getByLabel('Number of courts (1 to 15)').fill('15')
+  await expect(page.getByRole('button', { name: 'Start session' })).toBeEnabled()
 })
 
 test('loads without console errors', async ({ page }) => {

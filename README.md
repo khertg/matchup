@@ -14,6 +14,14 @@ Free, offline-first pickleball open play manager (see `pickleq-specs.md`).
 
 Requires Node 20.19+ (built with Node 26).
 
+## Using the app
+
+1. **Setup:** enter a location, the number of courts (1 to 15) and Doubles or Singles, then Start session.
+2. **Check-in tab:** add players by name and skill level. Returning players auto-complete from the saved roster (IndexedDB). Matches stage automatically as soon as a court is free and enough players wait.
+3. **Board tab:** courts show both teams; press "Team A won" or "Team B won" to record a result. Players rejoin the back of the queue and the court refills. Undo is available for 10 seconds, until anything else changes.
+
+The active session is saved on the device, so a reload or going offline keeps it.
+
 ## UI (shadcn/ui)
 
 Components live in `src/components/ui` and are ours to edit. Add more with `npx shadcn@latest add <name>`. Import them via the `@/` alias, e.g. `@/components/ui/button`. Theme tokens (green primary, light and dark) are in `src/index.css`; dark mode is toggled through `next-themes`.
