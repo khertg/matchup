@@ -1,14 +1,25 @@
+import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { skillLabel } from '@/lib/skill'
-import type { SkillLevel } from '@/db/db'
+import type { RosterPlayer } from '@/rotation/types'
 
 interface Props {
   /** Player ids, Team A first and then Team B. Empty when no group can be formed. */
   nextUp: number[]
-  players: Record<number, { name: string; skill: SkillLevel }>
+  players: Record<number, RosterPlayer>
   /** Shown when nobody can be listed, so people know what is being waited for. */
   emptyMessage: string
+  /**
+   * Staff only: the other waiting players, in queue order, who could take a place in the group.
+   * Without `onReplace` the card is read-only, as on the players' live page.
+   */
+  waiting?: RosterPlayer[]
+  onReplace?: (outId: number, inId: number) => void
+  /** The group was chosen by staff, so it can be reset to the automatic one. */
+  picked?: boolean
+  onReset?: () => void
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
@@ -17,14 +28,24 @@ const TEAM_NAMES = ['Team A', 'Team B'] as const
  * The group that will play next, already split into teams. Staff read it to call
  * people up before starting a game; the live board shows the same card to players.
  */
-export function NextUpCard({ nextUp, players, emptyMessage }: Props) {
+export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset }: Props) {
   const half = nextUp.length / 2
   const teams = [nextUp.slice(0, half), nextUp.slice(half)]
 
   return (
     <Card role="group" aria-label="Next up">
       <CardHeader>
-        <CardTitle>Next up</CardTitle>
+        <CardTitle className="flex items-center justify-between gap-2">
+          <span>Next up</span>
+          {picked && onReset && (
+            <span className="flex items-center gap-2 text-sm font-normal text-muted-foreground">
+              Chosen by staff
+              <Button variant="outline" size="sm" onClick={onReset}>
+                Reset
+              </Button>
+            </span>
+          )}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {nextUp.length === 0 ? (
@@ -42,6 +63,14 @@ export function NextUpCard({ nextUp, players, emptyMessage }: Props) {
                         <Badge variant="secondary" title={skillLabel(players[id].skill)}>
                           Lv {players[id].skill}
                         </Badge>
+                      )}
+                      {onReplace && players[id] && (
+                        <ReplacePlayerDialog
+                          mode="nextUp"
+                          player={players[id]}
+                          waiting={waiting}
+                          onReplace={(inId) => onReplace(id, inId)}
+                        />
                       )}
                     </li>
                   ))}

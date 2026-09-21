@@ -237,8 +237,50 @@ describe('session store', () => {
     store().startGame(1)
     store().replacePlayer(1, 1, 6)
     expect(store().session!.courts[0].teams!.flat()).toContain(6)
+    expect(store().session!.onBreak).toEqual([])
+    expect(store().session!.queue).toEqual([1, 5])
+  })
+
+  it('can send the player who comes off on a break instead', () => {
+    store().startSession('Club', 'doubles', 1)
+    checkInMany(6)
+    store().startGame(1)
+    store().replacePlayer(1, 1, 6, { sendOnBreak: true })
     expect(store().session!.onBreak).toEqual([1])
     expect(store().session!.queue).toEqual([5])
+  })
+
+  describe('changing who is next up', () => {
+    it('keeps the chosen group until a game starts, and clears the pending result undo', () => {
+      store().startSession('Club', 'doubles', 2)
+      checkInMany(8)
+      store().startGame(1)
+      store().recordResult(1, 0)
+      store().replaceNextUp(5, 1)
+      expect(store().undo()).toBe(false)
+      expect(store().session!.nextUpPick).toBeDefined()
+      store().startGame(2)
+      expect(store().session!.courts[1].teams!.flat()).toContain(1)
+      expect(store().session!.nextUpPick).toBeUndefined()
+    })
+
+    it('can be reset, and survives a reload', async () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(6)
+      store().replaceNextUp(1, 6)
+      await useSessionStore.persist.rehydrate()
+      expect(store().session!.nextUpPick).toEqual(expect.arrayContaining([6]))
+      store().resetNextUp()
+      expect(store().session!.nextUpPick).toBeUndefined()
+    })
+
+    it('refuses an impossible change and changes nothing', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(6)
+      const before = store().session
+      expect(() => store().replaceNextUp(5, 6)).toThrow()
+      expect(store().session).toBe(before)
+    })
   })
 
   it('starts a match with the locked pair on one team, and locking never starts one', () => {

@@ -84,3 +84,14 @@ export async function recordWin(
   await dialog.getByRole('button', { name: 'Record score' }).click()
   await expect(dialog).toHaveCount(0)
 }
+
+/** Cancel the game on a court, confirming the question it asks first. */
+export async function cancelGame(page: Page, courtName = 'Court 1') {
+  await page
+    .getByRole('region', { name: courtName, exact: true })
+    .getByRole('button', { name: 'Cancel game' })
+    .click()
+  const dialog = page.getByRole('dialog', { name: 'Cancel this game?' })
+  await dialog.getByRole('button', { name: 'Cancel game' }).click()
+  await expect(dialog).toHaveCount(0)
+}

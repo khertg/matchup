@@ -11,6 +11,7 @@ import {
   isValidGameMinutes,
   MAX_AVG_GAME_MINUTES,
   MIN_AVG_GAME_MINUTES,
+  isNextUpPicked,
   nextGroup,
 } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
@@ -53,6 +54,8 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const undo = useSessionStore((s) => s.undo)
   const cancelMatch = useSessionStore((s) => s.cancelMatch)
   const replacePlayer = useSessionStore((s) => s.replacePlayer)
+  const replaceNextUp = useSessionStore((s) => s.replaceNextUp)
+  const resetNextUp = useSessionStore((s) => s.resetNextUp)
   const startGame = useSessionStore((s) => s.startGame)
 
   // Games never start by themselves. This is the group staff would start next, and what each
@@ -86,14 +89,33 @@ export function BoardScreen({ session }: { session: SessionState }) {
     announce(`${courtName(courtId)}: ${TEAM_NAMES[winner]} won ${Math.max(scoreA, scoreB)}–${Math.min(scoreA, scoreB)}`)
   }
 
+  function handleCancel(courtId: number) {
+    cancelMatch(courtId)
+    toast(`${courtName(courtId)}: game cancelled`)
+  }
+
   function handleStart(courtId: number, options?: { ignoreMode?: boolean }) {
     startGame(courtId, options)
     toast(`${courtName(courtId)} started`)
   }
 
-  function handleReplace(courtId: number, outId: number, inId: number) {
-    replacePlayer(courtId, outId, inId)
-    toast(`${session.players[inId].name} replaced ${session.players[outId].name}`)
+  function handleReplace(courtId: number, outId: number, inId: number, sendOnBreak: boolean) {
+    const wasLocked = session.partners.some((pair) => pair.includes(outId))
+    replacePlayer(courtId, outId, inId, { sendOnBreak })
+    const out = session.players[outId].name
+    toast(
+      `${session.players[inId].name} replaced ${out}. ${out} ${sendOnBreak ? 'is on a break' : 'is first in the queue'}.` +
+        (wasLocked ? ' Their partner lock was removed.' : ''),
+    )
+  }
+
+  function handleReplaceNextUp(outId: number, inId: number) {
+    const wasLocked = session.partners.some((pair) => pair.includes(outId) || pair.includes(inId))
+    replaceNextUp(outId, inId)
+    toast(
+      `${session.players[inId].name} is next up instead of ${session.players[outId].name}.` +
+        (wasLocked ? ' Partner locks were removed.' : ''),
+    )
   }
 
   return (
@@ -116,9 +138,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
             startState={startState}
             waitingMessage={waitingMessage(session)}
             onStart={(options) => handleStart(court.id, options)}
-            onReplace={(outId, inId) => handleReplace(court.id, outId, inId)}
+            onReplace={(outId, inId, options) => handleReplace(court.id, outId, inId, options.sendOnBreak)}
             onScore={(a, b) => handleScore(court.id, a, b)}
-            onCancel={() => cancelMatch(court.id)}
+            onCancel={() => handleCancel(court.id)}
           />
         ))}
       </div>
@@ -126,6 +148,10 @@ export function BoardScreen({ session }: { session: SessionState }) {
         nextUp={group?.players ?? []}
         players={session.players}
         emptyMessage={waitingMessage(session)}
+        waiting={session.queue.filter((id) => !group?.players.includes(id)).map((id) => session.players[id])}
+        onReplace={handleReplaceNextUp}
+        picked={isNextUpPicked(session)}
+        onReset={resetNextUp}
       />
       <QueueList session={session} nextUp={group?.players} />
     </div>

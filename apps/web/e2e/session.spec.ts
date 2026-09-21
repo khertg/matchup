@@ -82,6 +82,71 @@ test('records a result, leaves the court open and undoes it', async ({ page }) =
   await expect(page.getByText('Queue (1)')).toBeVisible()
 })
 
+test.describe('cancelling a game', () => {
+  async function playingCourt(page: Page) {
+    await startSession(page)
+    await checkIn(page, FIVE)
+    await startGame(page)
+    const court = page.getByRole('region', { name: 'Court 1', exact: true })
+    await court.getByRole('button', { name: 'Cancel game' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Cancel this game?' })
+    await expect(dialog).toBeVisible()
+    return { court, dialog }
+  }
+
+  test('asks first, and says what will happen', async ({ page }) => {
+    const { court, dialog } = await playingCourt(page)
+    await expect(dialog).toContainText('Court 1')
+    await expect(dialog).toContainText('no result, score or time is recorded')
+    await expect(dialog).toContainText('4 players go back to the front of the queue')
+    // Nothing has happened behind it.
+    await page.keyboard.press('Escape')
+    await expect(court.getByText('In play')).toBeVisible()
+    await expect(page.getByText('Queue (1)')).toBeVisible()
+  })
+
+  test('Keep playing, Escape and clicking outside all leave the game alone', async ({ page }) => {
+    const { court, dialog } = await playingCourt(page)
+    await dialog.getByRole('button', { name: 'Keep playing' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(court.getByText('In play')).toBeVisible()
+
+    await court.getByRole('button', { name: 'Cancel game' }).click()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(court.getByText('In play')).toBeVisible()
+
+    await court.getByRole('button', { name: 'Cancel game' }).click()
+    await page.mouse.click(2, 2)
+    await expect(dialog).toHaveCount(0)
+    await expect(court.getByText('In play')).toBeVisible()
+    await expect(page.getByText('Court 1: game cancelled')).toHaveCount(0)
+  })
+
+  test('confirming empties the court and puts the players first in the queue, recording nothing', async ({ page }) => {
+    const { court, dialog } = await playingCourt(page)
+    await dialog.getByRole('button', { name: 'Cancel game' }).click()
+
+    await expect(page.getByText('Court 1: game cancelled')).toBeVisible()
+    await expect(court.getByText('Open')).toBeVisible()
+    await expect(page.getByText('Queue (5)')).toBeVisible()
+    // The four who were playing are next up again; Eve is still last in line.
+    const nextUp = page.getByRole('group', { name: 'Next up' })
+    for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(nextUp.getByText(name)).toBeVisible()
+    await expect(nextUp.getByText('Eve')).toHaveCount(0)
+
+    await page.getByRole('tab', { name: 'Standings' }).click()
+    await expect(page.getByText('No games played yet.')).toBeVisible()
+  })
+
+  test('offers no undo afterwards', async ({ page }) => {
+    const { dialog } = await playingCourt(page)
+    await dialog.getByRole('button', { name: 'Cancel game' }).click()
+    await expect(page.getByText('Court 1: game cancelled')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0)
+  })
+})
+
 test('sends the next group to whichever court staff choose', async ({ page }) => {
   await startSession(page, { courts: 2 })
   await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Flo', 'Gus', 'Hal'])
@@ -163,11 +228,13 @@ test('replaces a playing player with someone waiting', async ({ page }) => {
   await expect(dialog.getByText('Replace Ann')).toBeVisible()
   await dialog.getByRole('button', { name: /Eve/ }).click()
 
-  await expect(page.getByText('Eve replaced Ann')).toBeVisible()
+  await expect(page.getByText('Eve replaced Ann. Ann is first in the queue.')).toBeVisible()
   await expect(court.getByText('Eve')).toBeVisible()
   await expect(court.getByText('Ann')).toHaveCount(0)
+  // Nobody went on a break: Ann is waiting, first in line.
   await page.getByRole('tab', { name: 'Check-in' }).click()
-  await expect(page.getByText('On a break (1)')).toBeVisible()
+  await expect(page.getByText('On a break')).toHaveCount(0)
+  await expect(page.getByText('Waiting (1) · Playing (4)')).toBeVisible()
 })
 
 test('offers no substitute when nobody is waiting', async ({ page }) => {

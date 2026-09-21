@@ -58,6 +58,9 @@ test.describe('live viewer', () => {
     const nextUpTop = (await nextUp.boundingBox())!.y
     const queueTop = (await page.getByText(/^Queue \(/).boundingBox())!.y
     expect(nextUpTop).toBeLessThan(queueTop)
+    // Players can look but not change anything, including who is next up.
+    await expect(page.getByRole('button', { name: /in Next up$/ })).toHaveCount(0)
+    await expect(nextUp.getByRole('button')).toHaveCount(0)
     // Players can look but not start anything.
     await expect(page.getByRole('button', { name: /Start/ })).toHaveCount(0)
   })

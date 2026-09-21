@@ -60,4 +60,9 @@ export interface SessionState {
   queue: number[]
   /** Checked-out players (on a break); not in the queue. */
   onBreak: number[]
+  /**
+   * The next group as staff chose it (see replaceNextUp), overriding the automatic pick while every
+   * one of them is still waiting. Missing means automatic.
+   */
+  nextUpPick?: number[]
 }

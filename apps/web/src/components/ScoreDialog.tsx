@@ -23,6 +23,9 @@ interface Props {
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
 
+/** Games are usually played to 11, so the winner's box starts there; only the other score is typed. */
+const DEFAULT_WINNING_SCORE = '11'
+
 /** A blank field is not a number, so it is never a valid score. */
 const parse = (text: string) => (text.trim() === '' ? NaN : Number(text))
 
@@ -46,8 +49,8 @@ function ScoreForm({
   onClose,
   onSubmit,
 }: Omit<Props, 'winner'> & { winner: 0 | 1 }) {
-  const [textA, setTextA] = useState('')
-  const [textB, setTextB] = useState('')
+  const [textA, setTextA] = useState(winner === 0 ? DEFAULT_WINNING_SCORE : '')
+  const [textB, setTextB] = useState(winner === 1 ? DEFAULT_WINNING_SCORE : '')
 
   const a = parse(textA)
   const b = parse(textB)
@@ -69,7 +72,7 @@ function ScoreForm({
       <DialogHeader>
         <DialogTitle>{TEAM_NAMES[winner]} won</DialogTitle>
         <DialogDescription>
-          {courtName}: enter each team&apos;s score. {TEAM_NAMES[winner]}&apos;s score must be the higher one.
+          {courtName}: enter each team&apos;s score. {TEAM_NAMES[winner]}&apos;s score starts at 11 and must be the higher one.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -82,7 +85,7 @@ function ScoreForm({
               inputMode="numeric"
               min={0}
               max={MAX_SCORE}
-              autoFocus
+              autoFocus={winner === 1}
               value={textA}
               onChange={(e) => setTextA(e.target.value)}
               aria-invalid={typedInvalid(textA, a)}
@@ -96,6 +99,7 @@ function ScoreForm({
               inputMode="numeric"
               min={0}
               max={MAX_SCORE}
+              autoFocus={winner === 0}
               value={textB}
               onChange={(e) => setTextB(e.target.value)}
               aria-invalid={typedInvalid(textB, b)}

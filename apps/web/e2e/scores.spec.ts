@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { checkIn, recordWin, startGame, startSession } from './helpers'
+import { cancelGame, checkIn, recordWin, startGame, startSession } from './helpers'
 
 // Standings columns: 0 rank, 1 player, 2 GP, 3 W, 4 L, 5 Win %, 6 +/-, 7 Opp., 8 Time, 9 share.
 const DIFF = 6
@@ -54,7 +54,7 @@ test.describe('entering a score', () => {
     await startSingles(page)
     const dialog = await openScorePopup(page, 'B')
     await expect(dialog).toContainText('Court 1')
-    await expect(dialog).toContainText("Team B's score must be the higher one")
+    await expect(dialog).toContainText("Team B's score starts at 11 and must be the higher one")
     // Nothing is recorded yet: the game is still on the court.
     await expect(page.getByText('Court 1: Team B won')).toHaveCount(0)
     await page.keyboard.press('Escape')
@@ -176,19 +176,63 @@ test.describe('entering a score', () => {
     await expect(submit).toBeDisabled()
   })
 
-  test('starts empty each time, and Enter records the score', async ({ page }) => {
+  test('starts the winner at 11, so only the other score is typed', async ({ page }) => {
     await startSingles(page)
-    let dialog = await openScorePopup(page)
-    await dialog.getByLabel('Team A score').fill('3')
+    let dialog = await openScorePopup(page, 'A')
+    await expect(dialog.getByLabel('Team A score')).toHaveValue('11')
+    await expect(dialog.getByLabel('Team B score')).toHaveValue('')
+    await expect(dialog.getByLabel('Team B score')).toBeFocused() // the score that still needs typing
+    await expect(dialog.getByRole('button', { name: 'Record score' })).toBeDisabled()
+    await dialog.getByLabel('Team B score').fill('7')
+    await expect(dialog.getByRole('button', { name: 'Record score' })).toBeEnabled()
     await page.keyboard.press('Escape')
 
-    dialog = await openScorePopup(page)
+    // Team B won: the boxes are the other way round.
+    dialog = await openScorePopup(page, 'B')
+    await expect(dialog.getByLabel('Team B score')).toHaveValue('11')
     await expect(dialog.getByLabel('Team A score')).toHaveValue('')
+    await expect(dialog.getByLabel('Team A score')).toBeFocused()
+    await expect(dialog.getByRole('button', { name: 'Record score' })).toBeDisabled()
+  })
 
-    await dialog.getByLabel('Team A score').fill('11')
+  test('typing only the other score and pressing Enter records 11 and that score', async ({ page }) => {
+    await startSingles(page)
+    const dialog = await openScorePopup(page, 'A')
     await dialog.getByLabel('Team B score').fill('4')
     await dialog.getByLabel('Team B score').press('Enter')
     await expect(page.getByText('Court 1: Team A won 11–4')).toBeVisible()
+
+    await startGame(page)
+    const second = await openScorePopup(page, 'B')
+    await second.getByLabel('Team A score').fill('9')
+    await second.getByLabel('Team A score').press('Enter')
+    await expect(page.getByText('Court 1: Team B won 11–9')).toBeVisible()
+  })
+
+  test('the winner can still be given another score, and the pop-up starts fresh each time', async ({ page }) => {
+    await startSingles(page)
+    let dialog = await openScorePopup(page, 'A')
+    await dialog.getByLabel('Team A score').fill('15')
+    await dialog.getByLabel('Team B score').fill('13')
+    await page.keyboard.press('Escape')
+
+    dialog = await openScorePopup(page, 'A')
+    await expect(dialog.getByLabel('Team A score')).toHaveValue('11')
+    await expect(dialog.getByLabel('Team B score')).toHaveValue('')
+    await dialog.getByLabel('Team A score').fill('15')
+    await dialog.getByLabel('Team B score').fill('13')
+    await dialog.getByRole('button', { name: 'Record score' }).click()
+    await expect(page.getByText('Court 1: Team A won 15–13')).toBeVisible()
+  })
+
+  test('a losing score of 11 or more is refused with the reason', async ({ page }) => {
+    await startSingles(page)
+    const dialog = await openScorePopup(page, 'A')
+    await dialog.getByLabel('Team B score').fill('11')
+    await expect(dialog.getByRole('alert')).toContainText('The scores are level')
+    await dialog.getByLabel('Team B score').fill('12')
+    await expect(dialog.getByRole('alert')).toContainText('Team A won, so their score must be higher.')
+    await expect(dialog.getByRole('button', { name: 'Record score' })).toBeDisabled()
   })
 })
 
@@ -311,7 +355,7 @@ test.describe('time played', () => {
     await page.clock.install()
     await startSingles(page)
     await page.clock.fastForward('20:00')
-    await court(page).getByRole('button', { name: 'Cancel game' }).click()
+    await cancelGame(page)
     await startGame(page)
     await enterScore(page, 11, 6)
 

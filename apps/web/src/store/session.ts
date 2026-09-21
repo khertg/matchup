@@ -13,9 +13,12 @@ import {
   recordResult as recordResultEngine,
   recordScore as recordScoreEngine,
   renameCourt as renameCourtEngine,
+  replaceNextUp as replaceNextUpEngine,
   replacePlayer as replacePlayerEngine,
+  resetNextUp as resetNextUpEngine,
   setAvgGameMinutes as setAvgGameMinutesEngine,
   type NextGroupOptions,
+  type ReplacePlayerOptions,
   type SessionOptions,
   startGame as startGameEngine,
   unlockPartners as unlockPartnersEngine,
@@ -71,8 +74,15 @@ interface SessionStore {
   moveCourt: (courtId: number, offset: -1 | 1) => void
   /** Close a court. A game in progress is cancelled and its players return to the front of the queue. */
   closeCourt: (courtId: number) => void
-  /** Swap a playing player for a waiting one (defaults to the front of the queue). */
-  replacePlayer: (courtId: number, outId: number, inId?: number) => void
+  /**
+   * Swap a playing player for a waiting one (defaults to the front of the queue). The player who
+   * comes off goes to the front of the queue, or on a break with `sendOnBreak`.
+   */
+  replacePlayer: (courtId: number, outId: number, inId?: number, options?: ReplacePlayerOptions) => void
+  /** Put a waiting player in the next group in place of one of its players. The group stays as chosen. */
+  replaceNextUp: (outId: number, inId: number) => void
+  /** Go back to the automatic next group. */
+  resetNextUp: () => void
   /** Lock two checked-in players as doubles partners. */
   lockPartners: (a: number, b: number) => void
   unlockPartners: (playerId: number) => void
@@ -204,9 +214,19 @@ export const useSessionStore = create<SessionStore>()(
         set({ session: closeCourtEngine(session, courtId), previous: null })
       },
 
-      replacePlayer: (courtId, outId, inId) => {
+      replacePlayer: (courtId, outId, inId, options) => {
         const session = requireSession(get().session)
-        set({ session: replacePlayerEngine(session, courtId, outId, inId), previous: null })
+        set({ session: replacePlayerEngine(session, courtId, outId, inId, options), previous: null })
+      },
+
+      replaceNextUp: (outId, inId) => {
+        const session = requireSession(get().session)
+        set({ session: replaceNextUpEngine(session, outId, inId), previous: null })
+      },
+
+      resetNextUp: () => {
+        const session = requireSession(get().session)
+        set({ session: resetNextUpEngine(session), previous: null })
       },
 
       lockPartners: (a, b) => {

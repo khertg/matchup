@@ -196,7 +196,7 @@ export function checkOut(state: SessionState, playerId: number): SessionState {
   }
   if (!state.queue.includes(playerId)) return state
   return {
-    ...state,
+    ...withoutPickIncluding(state, playerId),
     queue: state.queue.filter((id) => id !== playerId),
     onBreak: [...state.onBreak, playerId],
   }
@@ -223,6 +223,8 @@ export interface NextGroupOptions {
  * exactly the teams startGame puts on court.
  */
 export function nextGroup(state: SessionState, options: NextGroupOptions = {}): NextGroup | null {
+  const picked = pickedGroup(state)
+  if (picked) return picked
   if (state.mode === 'singles') {
     if (state.queue.length < 2) return null
     const [a, b] = state.queue
@@ -232,6 +234,55 @@ export function nextGroup(state: SessionState, options: NextGroupOptions = {}): 
   if (!group) return null
   const teams = splitGroup(state, group)
   return { players: teams.flat(), teams }
+}
+
+/** The staff-chosen group, split into teams, while all of it is still waiting; otherwise null. */
+function pickedGroup(state: SessionState): NextGroup | null {
+  const pick = state.nextUpPick
+  if (!pick || pick.length !== playersPerCourt(state.mode)) return null
+  if (new Set(pick).size !== pick.length || !pick.every((id) => state.queue.includes(id))) return null
+  const teams: Teams = state.mode === 'singles' ? [[pick[0]], [pick[1]]] : splitGroup(state, pick)
+  return { players: teams.flat(), teams }
+}
+
+/** Whether the next group is one staff chose, rather than the automatic pick. */
+export const isNextUpPicked = (state: SessionState) => pickedGroup(state) !== null
+
+/** The state without a staff-chosen group. Anything that changes who is waiting or playing ends the choice. */
+function withoutPick(state: SessionState): SessionState {
+  if (state.nextUpPick === undefined) return state
+  const { nextUpPick: _pick, ...rest } = state
+  return rest
+}
+
+/** The state without the staff-chosen group if this player is in it. */
+function withoutPickIncluding(state: SessionState, playerId: number): SessionState {
+  return state.nextUpPick?.includes(playerId) ? withoutPick(state) : state
+}
+
+/**
+ * Change who is in the next group: `inId` (waiting, not already in it) takes the place of `outId`
+ * (in it). `outId` stays in the queue where they were. The group is kept as chosen until a game
+ * starts or one of them leaves the queue. Locked pairs of both players are dissolved, since a pair
+ * cannot stay together across the change.
+ */
+export function replaceNextUp(state: SessionState, outId: number, inId: number): SessionState {
+  const group = nextGroup(state)
+  if (!group) throw new Error('There is no next group to change')
+  if (!group.players.includes(outId)) throw new Error(`Player ${outId} is not in the next group`)
+  if (group.players.includes(inId) || !state.queue.includes(inId)) {
+    throw new Error('The replacement must be a waiting player who is not already in the next group')
+  }
+  return {
+    ...state,
+    nextUpPick: group.players.map((id) => (id === outId ? inId : id)),
+    partners: state.partners.filter((pair) => !pair.includes(outId) && !pair.includes(inId)),
+  }
+}
+
+/** Go back to the automatic next group. */
+export function resetNextUp(state: SessionState): SessionState {
+  return withoutPick(state)
 }
 
 export interface StartGameOptions extends NextGroupOptions {
@@ -252,7 +303,7 @@ export function startGame(state: SessionState, courtId: number, options: StartGa
   const group = nextGroup(state, options)
   if (!group) throw new Error('Not enough players are waiting to start a game')
   return {
-    ...state,
+    ...withoutPick(state),
     courts: state.courts.map((c) =>
       c.id === courtId
         ? { ...c, teams: group.teams, ...(options.now === undefined ? {} : { startedAt: options.now }) }
@@ -409,15 +460,22 @@ export function cancelMatch(state: SessionState, courtId: number): SessionState 
   }
 }
 
+export interface ReplacePlayerOptions {
+  /** Send the player who comes off on a break. Otherwise they go to the front of the queue. */
+  sendOnBreak?: boolean
+}
+
 /**
- * Swap a player out of a live game. The substitute defaults to the front of
- * the queue and takes the same side; the leaving player goes on a break.
+ * Swap a player out of a live game. The substitute defaults to the front of the queue and takes
+ * the same side. The player who comes off goes to the front of the queue, or on a break when
+ * asked to.
  */
 export function replacePlayer(
   state: SessionState,
   courtId: number,
   outId: number,
   inId: number | undefined = state.queue[0],
+  { sendOnBreak = false }: ReplacePlayerOptions = {},
 ): SessionState {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams?.flat().includes(outId)) {
@@ -427,13 +485,14 @@ export function replacePlayer(
     throw new Error('Substitute must be a player waiting in the queue')
   }
   const swap = (side: number[]) => side.map((id) => (id === outId ? inId : id))
+  const waiting = state.queue.filter((id) => id !== inId)
   return {
-    ...state,
+    ...withoutPickIncluding(state, inId),
     courts: state.courts.map((c) =>
       c.id === courtId ? { ...c, teams: [swap(court.teams![0]), swap(court.teams![1])] } : c,
     ),
-    queue: state.queue.filter((id) => id !== inId),
-    onBreak: [...state.onBreak, outId],
+    queue: sendOnBreak ? waiting : [outId, ...waiting],
+    onBreak: sendOnBreak ? [...state.onBreak, outId] : state.onBreak,
     // Whoever leaves is no longer bound to their partner.
     partners: state.partners.filter((pair) => !pair.includes(outId)),
   }

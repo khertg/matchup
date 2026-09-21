@@ -384,6 +384,34 @@ test.describe('two browsers', () => {
   })
 })
 
+test.describe('changing who is next up', () => {
+  test('a player’s phone shows the group staff chose, and follows a reset', async ({ page, browser, request }) => {
+    const club = uniqueClub('Chosen')
+    await apiCreateClub(request, club)
+    const viewerContext = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      serviceWorkers: 'block',
+    })
+    const viewer = await viewerContext.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+    await signInAndStart(page, club, 'Chosen Night')
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    const viewerNext = viewer.getByRole('group', { name: 'Next up' })
+    for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(viewerNext.getByText(name)).toBeVisible({ timeout: 8000 })
+
+    const staffNext = page.getByRole('group', { name: 'Next up' })
+    await staffNext.getByRole('button', { name: 'Change Ann in Next up' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /Eve/ }).click()
+    await expect(viewerNext.getByText('Eve')).toBeVisible({ timeout: 8000 })
+    await expect(viewerNext.getByText('Ann')).toHaveCount(0)
+
+    await staffNext.getByRole('button', { name: 'Reset' }).click()
+    await expect(viewerNext.getByText('Ann')).toBeVisible({ timeout: 8000 })
+    await expect(viewerNext.getByText('Eve')).toHaveCount(0)
+    await viewerContext.close()
+  })
+})
+
 test.describe('managing courts', () => {
   test('a player’s phone follows courts being added, renamed, reordered and closed', async ({ page, browser, request }) => {
     const club = uniqueClub('Courts')

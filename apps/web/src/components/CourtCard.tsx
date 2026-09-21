@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CancelGameDialog } from '@/components/CancelGameDialog'
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
 import { ScoreDialog } from '@/components/ScoreDialog'
 import { skillLabel } from '@/lib/skill'
@@ -18,7 +19,7 @@ interface Props {
   readOnly?: boolean
   /** Waiting player ids in queue order, offered as substitutes. */
   queue?: number[]
-  onReplace?: (outId: number, inId: number) => void
+  onReplace?: (outId: number, inId: number, options: { sendOnBreak: boolean }) => void
   /**
    * What an open court can do. "ready": a next group exists, so Start game is offered.
    * "override": no group fits the matchmaking mode (mixed doubles), but staff may start
@@ -56,6 +57,7 @@ export function CourtCard({
 }: Props) {
   // The team whose win button was pressed; the score pop-up is open while this is set.
   const [pendingWinner, setPendingWinner] = useState<0 | 1 | null>(null)
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
 
   return (
     <Card role="region" aria-label={court.name}>
@@ -94,7 +96,7 @@ export function CourtCard({
                         <ReplacePlayerDialog
                           player={players[id]}
                           waiting={queue.map((qid) => players[qid])}
-                          onReplace={(inId) => onReplace(id, inId)}
+                          onReplace={(inId, options) => onReplace(id, inId, options)}
                         />
                       )}
                     </li>
@@ -118,9 +120,16 @@ export function CourtCard({
                   onClose={() => setPendingWinner(null)}
                   onSubmit={(a, b) => onScore?.(a, b)}
                 />
-                <Button variant="ghost" className="w-full" onClick={onCancel}>
+                <Button variant="ghost" className="w-full" onClick={() => setConfirmingCancel(true)}>
                   Cancel game
                 </Button>
+                <CancelGameDialog
+                  courtName={court.name}
+                  players={court.teams.flat().length}
+                  open={confirmingCancel}
+                  onOpenChange={setConfirmingCancel}
+                  onConfirm={() => onCancel?.()}
+                />
               </>
             )}
           </>
