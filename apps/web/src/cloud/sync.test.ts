@@ -16,7 +16,7 @@ import type { RosterPlayer } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi } from './api'
 import { useClubAuth } from './auth'
-import { checkLogin, flushPendingLifetime, startCloudSync, useSyncStore } from './sync'
+import { checkLogin, flushPendingLifetime, startCloudSync, syncMedia, useSyncStore } from './sync'
 
 const club = { slug: 'downtown', name: 'Downtown', token: 'tok-1' }
 
@@ -116,6 +116,15 @@ describe('flushPendingLifetime', () => {
     expect(await flushPendingLifetime(cloudApi)).toBe(false)
     expect(await flushPendingLifetime(null)).toBe(false)
     expect(api.recordLifetime).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncMedia when the device storage cannot be read', () => {
+  // This file has no IndexedDB, like a private window that blocks it.
+  it('reports a failed sync instead of rejecting, so callers that do not wait never see an unhandled error', async () => {
+    const { cloudApi } = fakeApi()
+    useClubAuth.setState({ club })
+    await expect(syncMedia(cloudApi)).resolves.toBe(false)
   })
 })
 

@@ -151,7 +151,6 @@ function avatarRequest(avatar: PlayerAvatar): PutAvatarRequest {
 export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> {
   const club = useClubAuth.getState().club
   if (!api || !club) return false
-  await adoptClub(club.slug)
   // A request the server will never accept is dropped: retrying cannot help.
   const attempt = async (send: () => Promise<void>) => {
     try {
@@ -161,6 +160,9 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
     }
   }
   try {
+    // Inside the try: if the device's storage cannot be read this is a failed sync, never a rejection
+    // that nobody handles (callers do `void syncMedia()`).
+    await adoptClub(club.slug)
     const share = await getSharePhotos()
     if (!share && (await getPhotoPurgePending())) {
       await api.deleteAvatarPhotos(club.token)
