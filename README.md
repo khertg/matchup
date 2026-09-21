@@ -61,7 +61,7 @@ Components live in `apps/web/src/components/ui` and are ours to edit. Add more w
 **Development** (`docker-compose.yml`): the web app, the API and a Postgres database, all with hot reload.
 
 ```bash
-docker compose up            # web http://localhost:5173, API http://localhost:8787, Postgres on :5432
+docker compose up            # web http://localhost:5173, API http://localhost:8787, Postgres on :5432, Adminer http://localhost:8080
 docker compose down -v       # after changing dependencies, so the containers get the new packages
 ```
 
