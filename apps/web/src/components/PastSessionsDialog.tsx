@@ -166,15 +166,17 @@ export function PastSessionsDialog() {
     try {
       // A session that came from the club is kept on this device too, so it stays here after resuming.
       if (loaded.fromClub) {
+        const clubSlug = useClubAuth.getState().club?.slug
         const saved = await archiveSession({
           id: loaded.id,
           location: loaded.location,
           startedAt: loaded.startedAt,
           session: loaded.session,
           lifetimeCounted: loaded.lifetimeCounted,
+          clubSlug,
           now: loaded.endedAt,
         })
-        if (saved) await markHistorySynced(saved.id)
+        if (saved) await markHistorySynced(saved.id, clubSlug)
       }
       loadSession(loaded.location, loaded.session, {
         sessionId: loaded.id,

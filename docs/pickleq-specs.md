@@ -76,7 +76,7 @@ Players follow the live queue, up-next matches, and standings from their own pho
 - Stats cards downloadable as images
 
 ### Cloud & Club Features
-- Optional club setup with auto-generated URL and password (min. 4 characters)
+- Club login is required when a cloud is configured: staff create a club (auto-generated URL, password of at least 8 characters for new passwords) or log in before using the app; the login is kept on the device, so the app keeps working offline. Without a cloud the app runs entirely on the device
 - Cloud sync for multi-device staff access and lifetime stats
 - Self-serve password recovery
 - Public leaderboard accessible anytime post-session

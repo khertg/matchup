@@ -11,7 +11,7 @@ let counter = 0
 
 export function uniqueClub(label = 'Club') {
   const name = `${label} ${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 5)}`
-  return { name, slug: slugify(name), password: 'secret' }
+  return { name, slug: slugify(name), password: 'secret-pass' }
 }
 
 export type TestClub = ReturnType<typeof uniqueClub>

@@ -41,6 +41,47 @@ beforeEach(async () => {
   useClubAuth.setState({ club, pendingLifetime: [] })
 })
 
+describe('syncHistory across clubs', () => {
+  const archiveFor = (id: string, clubSlug?: string) =>
+    archiveSession({ id, location: `Club ${id}`, startedAt: 1, session: someSession(), lifetimeCounted: {}, clubSlug, now: 1_000 })
+
+  it('never sends a session that ended under another club, and sends it when that club logs in', async () => {
+    await archiveFor('theirs', 'uptown')
+    const { api, cloudApi } = fakeApi()
+
+    expect(await syncHistory(cloudApi)).toBe(true) // logged in as downtown
+    expect(api.putHistory).not.toHaveBeenCalled()
+    expect(await unsyncedHistory('uptown')).toHaveLength(1)
+
+    useClubAuth.setState({ club: { slug: 'uptown', name: 'Uptown', token: 'tok-2' } })
+    await syncHistory(cloudApi)
+    expect(api.putHistory).toHaveBeenCalledTimes(1)
+    expect(api.putHistory.mock.calls[0][0]).toBe('tok-2')
+    expect(await unsyncedHistory('uptown')).toHaveLength(0)
+  })
+
+  it("sends this club's own sessions and leaves the other club's alone in the same pass", async () => {
+    await archiveFor('mine', 'downtown')
+    await archiveFor('theirs', 'uptown')
+    const { api, cloudApi } = fakeApi()
+    await syncHistory(cloudApi)
+    expect(api.putHistory.mock.calls.map((c) => c[1])).toEqual(['mine'])
+  })
+
+  it('gives a session from before clubs were recorded to the first club that syncs it, and no other', async () => {
+    await archiveFor('old')
+    const { api, cloudApi } = fakeApi()
+    await syncHistory(cloudApi)
+    expect(api.putHistory).toHaveBeenCalledTimes(1)
+    expect((await db.history.get('old'))?.clubSlug).toBe('downtown')
+    // It is now downtown's: even if it had to be sent again, it would not go to uptown.
+    await db.history.update('old', { synced: false })
+    useClubAuth.setState({ club: { slug: 'uptown', name: 'Uptown', token: 'tok-2' } })
+    await syncHistory(cloudApi)
+    expect(api.putHistory).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('syncHistory', () => {
   it('sends every session the club does not have, and marks them sent', async () => {
     await archive('a', 1_000)
@@ -55,7 +96,7 @@ describe('syncHistory', () => {
     expect(entry).toMatchObject({ mode: 'doubles', players: 4, games: 0 })
     expect(new Date(entry.endedAt as string).toISOString()).toBe(entry.endedAt)
     expect(backup).toMatchObject({ schemaVersion: 1, lifetimeCounted: {} })
-    expect(await unsyncedHistory()).toHaveLength(0)
+    expect(await unsyncedHistory('downtown')).toHaveLength(0)
   })
 
   it('sends nothing the second time', async () => {
@@ -82,11 +123,11 @@ describe('syncHistory', () => {
       throw new CloudError('network', 'offline')
     })
     expect(await syncHistory(cloudApi)).toBe(false)
-    expect(await unsyncedHistory()).toHaveLength(1)
+    expect(await unsyncedHistory('downtown')).toHaveLength(1)
 
     const working = fakeApi()
     expect(await syncHistory(working.cloudApi)).toBe(true)
-    expect(await unsyncedHistory()).toHaveLength(0)
+    expect(await unsyncedHistory('downtown')).toHaveLength(0)
   })
 
   it('gives up on a session the server will never accept, without holding up the others', async () => {
@@ -97,7 +138,7 @@ describe('syncHistory', () => {
     })
     expect(await syncHistory(cloudApi)).toBe(true)
     expect(api.putHistory).toHaveBeenCalledTimes(2)
-    expect(await unsyncedHistory()).toHaveLength(0)
+    expect(await unsyncedHistory('downtown')).toHaveLength(0)
   })
 
   it('signs out and keeps everything when the login has expired', async () => {
@@ -107,7 +148,7 @@ describe('syncHistory', () => {
     })
     expect(await syncHistory(cloudApi)).toBe(false)
     expect(useClubAuth.getState().club).toBeNull()
-    expect(await unsyncedHistory()).toHaveLength(1)
+    expect(await unsyncedHistory('downtown')).toHaveLength(1)
   })
 
   it('does nothing when signed out or without a cloud', async () => {
@@ -118,6 +159,6 @@ describe('syncHistory', () => {
     useClubAuth.setState({ club })
     expect(await syncHistory(null)).toBe(false)
     expect(api.putHistory).not.toHaveBeenCalled()
-    expect(await unsyncedHistory()).toHaveLength(1)
+    expect(await unsyncedHistory('downtown')).toHaveLength(1)
   })
 })

@@ -82,3 +82,28 @@ jobs:
         run: >-
           docker run --rm -w /app matchup-api node --input-type=module
           -e "const { hash, verify } = await import('@node-rs/argon2'); const h = await hash('x'); if (!h.startsWith('\$argon2id\$') || !(await verify(h, 'x'))) process.exit(1)"
+
+  # The production stack (Caddy + API + Postgres) has to start and serve the app with its security
+  # headers; nothing else exercises deploy/Caddyfile. DOMAIN=:80 is plain HTTP for testing.
+  prod-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DOMAIN: ':80'
+      HTTP_PORT: '8080'
+      POSTGRES_PASSWORD: ci-only-password
+      GIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the production stack
+        run: docker compose -f deploy/docker-compose.prod.yml up -d --build
+      - name: Smoke test
+        env:
+          EXPECT_COMMIT: ${{ github.sha }}
+        run: bash deploy/smoke.sh http://localhost:8080
+      - name: Container logs
+        if: failure()
+        run: docker compose -f deploy/docker-compose.prod.yml logs --no-color --tail 200
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f deploy/docker-compose.prod.yml down -v

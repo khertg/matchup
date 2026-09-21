@@ -63,7 +63,7 @@ export async function createClub(
   input: { name?: string; slug?: string; password?: string; ip?: string } = {},
 ): Promise<Grant & { slug: string; password: string }> {
   const slug = input.slug ?? `club-${Math.random().toString(36).slice(2, 10)}`
-  const password = input.password ?? 'secret'
+  const password = input.password ?? 'secret-pass'
   const response = await app.inject({
     method: 'POST',
     url: '/api/clubs',

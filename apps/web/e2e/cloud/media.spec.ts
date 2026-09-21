@@ -1,7 +1,10 @@
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test'
+import { failOnCspViolations } from '../cspWatch'
 import { checkIn } from '../helpers'
 import { avatarOf, openAvatarEditor, setEmojiAvatar, setLogo, setPhotoAvatar, viewAvatar } from '../avatarHelpers'
 import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
+
+failOnCspViolations(test)
 
 async function signIn(page: Page, club: TestClub) {
   await page.goto('/')
@@ -189,5 +192,30 @@ test.describe('club media on the live page', () => {
     await page.getByRole('button', { name: 'Change club logo' }).click()
     await page.getByRole('dialog', { name: 'Club logo' }).getByRole('button', { name: 'Remove logo' }).click()
     await expect.poll(async () => (await index(request, club.slug)()).logo).toBeNull()
+  })
+})
+
+test.describe('two clubs on one device', () => {
+  test("a logo that was not sent yet is never sent to the next club that logs in", async ({ page, request }) => {
+    const clubA = uniqueClub('Alpha')
+    const clubB = uniqueClub('Bravo')
+    await apiCreateClub(request, clubA)
+    await apiCreateClub(request, clubB)
+
+    await signIn(page, clubA)
+    // Alpha sets a logo with no connection: it stays on the device, waiting to be sent.
+    await page.route('**/api/**', (route) => route.abort('connectionrefused'))
+    await setLogo(page)
+    await expect(page.getByTestId('club-logo')).toBeVisible()
+    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.unroute('**/api/**')
+
+    await uiLogin(page, clubB)
+    await expectSignedIn(page)
+    await page.waitForTimeout(2000)
+    expect((await index(request, clubB.slug)()).logo).toBeNull()
+    expect((await index(request, clubA.slug)()).logo).toBeNull() // and Alpha still has not got it either
+    // It is still on this device.
+    await expect(page.getByTestId('club-logo')).toBeVisible()
   })
 })

@@ -63,7 +63,14 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
 
     const lifetimeCounted = useSessionStore.getState().lifetimeCounted
     try {
-      await archiveSession({ id: sessionId, location, startedAt, session, lifetimeCounted })
+      await archiveSession({
+        id: sessionId,
+        location,
+        startedAt,
+        session,
+        lifetimeCounted,
+        clubSlug: useClubAuth.getState().club?.slug,
+      })
     } catch {
       toast.error('Could not keep a copy of the session, so it is still open. Try again.')
       setSaving(false)

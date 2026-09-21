@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
+import { failOnCspViolations } from '../cspWatch'
 import { apiCreateClub, apiLive, apiPublish, bearer, liveSnapshot, uniqueClub } from './support'
+
+failOnCspViolations(test)
 
 /** A club that is already running a session, published straight to the API. */
 async function runningClub(request: APIRequestContext, snapshot: object = liveSnapshot()) {

@@ -100,9 +100,27 @@ describe('sync bookkeeping', () => {
   it('lists what the club does not have yet, until it is marked as sent', async () => {
     await archive('a', session(), 1_000)
     await archive('b', session(), 2_000)
-    expect((await unsyncedHistory()).map((r) => r.id).sort()).toEqual(['a', 'b'])
+    expect((await unsyncedHistory('downtown')).map((r) => r.id).sort()).toEqual(['a', 'b'])
     await markHistorySynced('a')
-    expect((await unsyncedHistory()).map((r) => r.id)).toEqual(['b'])
+    expect((await unsyncedHistory('downtown')).map((r) => r.id)).toEqual(['b'])
+  })
+
+  it('only offers a club its own sessions, and ones no club has claimed yet', async () => {
+    await archiveSession({ id: 'mine', location: 'L', startedAt: 1, session: session(), lifetimeCounted: {}, clubSlug: 'downtown' })
+    await archiveSession({ id: 'theirs', location: 'L', startedAt: 1, session: session(), lifetimeCounted: {}, clubSlug: 'uptown' })
+    await archive('unclaimed', session(), 3_000)
+    expect((await unsyncedHistory('downtown')).map((r) => r.id).sort()).toEqual(['mine', 'unclaimed'])
+    expect((await unsyncedHistory('uptown')).map((r) => r.id).sort()).toEqual(['theirs', 'unclaimed'])
+    expect((await unsyncedHistory('elsewhere')).map((r) => r.id)).toEqual(['unclaimed'])
+  })
+
+  it('remembers the club that ended a session, and marking it sent records the club too', async () => {
+    const saved = await archiveSession({ id: 'a', location: 'L', startedAt: 1, session: session(), lifetimeCounted: {}, clubSlug: 'downtown' })
+    expect(saved?.clubSlug).toBe('downtown')
+    await archive('b', session(), 2_000)
+    expect((await getHistory('b'))?.clubSlug).toBeUndefined()
+    await markHistorySynced('b', 'downtown')
+    expect(await getHistory('b')).toMatchObject({ synced: true, clubSlug: 'downtown' })
   })
 
   it('deletes a session', async () => {

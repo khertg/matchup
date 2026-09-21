@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test'
+import { failOnCspViolations } from '../cspWatch'
 import { apiCreateClub, apiPublish, uniqueClub } from './support'
+
+failOnCspViolations(test)
 
 const VERSION = /^v\d+\.\d+\.\d+ · \S+/
 

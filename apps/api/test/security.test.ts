@@ -71,7 +71,7 @@ describe('rate limits', () => {
       const response = await a.inject({
         method: 'POST',
         url: '/api/clubs',
-        payload: { name: 'A', slug: `spam-club-${i}`, password: 'secret' },
+        payload: { name: 'A', slug: `spam-club-${i}`, password: 'secret-pass' },
         remoteAddress: '10.0.0.1',
       })
       codes.push(response.statusCode)
@@ -121,50 +121,50 @@ describe('login lockout', () => {
 
   it('locks a club for one address after repeated failures, even for the right password', async () => {
     const a = await app({}, { guard: guard() })
-    await createClub(a, { slug: 'downtown-club', password: 'secret' })
+    await createClub(a, { slug: 'downtown-club', password: 'secret-pass' })
     for (let i = 0; i < 3; i++) expect((await login(a, 'downtown-club', 'wrong', '10.0.0.1')).statusCode).toBe(401)
 
-    const locked = await login(a, 'downtown-club', 'secret', '10.0.0.1')
+    const locked = await login(a, 'downtown-club', 'secret-pass', '10.0.0.1')
     expect(locked.statusCode).toBe(429)
     expect(locked.json().error).toBe('rate_limited')
     expect(Number(locked.headers['retry-after'])).toBe(15 * 60)
 
     // Someone else is not affected by this address's mistakes.
-    expect((await login(a, 'downtown-club', 'secret', '10.0.0.2')).statusCode).toBe(200)
+    expect((await login(a, 'downtown-club', 'secret-pass', '10.0.0.2')).statusCode).toBe(200)
   })
 
   it('unlocks when the window has passed', async () => {
     const a = await app({}, { guard: guard() })
-    await createClub(a, { slug: 'downtown-club', password: 'secret' })
+    await createClub(a, { slug: 'downtown-club', password: 'secret-pass' })
     for (let i = 0; i < 3; i++) await login(a, 'downtown-club', 'wrong', '10.0.0.1')
-    expect((await login(a, 'downtown-club', 'secret', '10.0.0.1')).statusCode).toBe(429)
+    expect((await login(a, 'downtown-club', 'secret-pass', '10.0.0.1')).statusCode).toBe(429)
 
     clock.now += 15 * 60_000 + 1
-    expect((await login(a, 'downtown-club', 'secret', '10.0.0.1')).statusCode).toBe(200)
+    expect((await login(a, 'downtown-club', 'secret-pass', '10.0.0.1')).statusCode).toBe(200)
   })
 
   it('locks the club for everyone when guesses come from many addresses', async () => {
     const a = await app({}, { guard: guard() })
-    await createClub(a, { slug: 'downtown-club', password: 'secret' })
+    await createClub(a, { slug: 'downtown-club', password: 'secret-pass' })
     for (let i = 0; i < 6; i++) await login(a, 'downtown-club', 'wrong', `10.0.1.${i}`)
-    expect((await login(a, 'downtown-club', 'secret', '10.9.9.9')).statusCode).toBe(429)
+    expect((await login(a, 'downtown-club', 'secret-pass', '10.9.9.9')).statusCode).toBe(429)
   })
 
   it('forgives earlier mistakes from an address after a correct login', async () => {
     const a = await app({}, { guard: guard() })
-    await createClub(a, { slug: 'downtown-club', password: 'secret' })
+    await createClub(a, { slug: 'downtown-club', password: 'secret-pass' })
     // Two slips then a success, twice. Without forgiveness the second round would pass
     // the per-address limit of three and lock this address out.
     for (let round = 0; round < 2; round++) {
       await login(a, 'downtown-club', 'wrong', '10.0.0.1')
       await login(a, 'downtown-club', 'wrong', '10.0.0.1')
-      expect((await login(a, 'downtown-club', 'secret', '10.0.0.1')).statusCode).toBe(200)
+      expect((await login(a, 'downtown-club', 'secret-pass', '10.0.0.1')).statusCode).toBe(200)
     }
   })
 
   it('locks clubs that do not exist in exactly the same way, so lockouts reveal nothing', async () => {
     const a = await app({}, { guard: guard() })
-    await createClub(a, { slug: 'real-club', password: 'secret' })
+    await createClub(a, { slug: 'real-club', password: 'secret-pass' })
     const outcomes = async (slug: string) => {
       const codes: number[] = []
       for (let i = 0; i < 5; i++) codes.push((await login(a, slug, 'wrong', '10.0.0.1')).statusCode)

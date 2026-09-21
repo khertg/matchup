@@ -2,14 +2,16 @@ import { toast } from 'sonner'
 import { create } from 'zustand'
 import { db } from '@/db/db'
 import { markHistorySynced, unsyncedHistory } from '@/db/history'
-import { markPhotosDirty } from '@/db/roster'
+import { clearAvatarDirty, markPhotosDirty } from '@/db/roster'
 import {
   getLogoSetting,
   getPhotoPurgePending,
   getSharePhotos,
+  getSyncClub,
   markLogoSynced,
   setPhotoPurgePending,
   setSharePhotos,
+  setSyncClub,
 } from '@/db/settings'
 import { avatarKey, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
 import { useSessionStore } from '@/store/session'
@@ -88,7 +90,7 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
   const club = useClubAuth.getState().club
   if (!api || !club) return false
   try {
-    for (const record of await unsyncedHistory()) {
+    for (const record of await unsyncedHistory(club.slug)) {
       try {
         await api.putHistory(
           club.token,
@@ -105,13 +107,33 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
         // A session the server will never accept stays on this device only; retrying cannot help.
         if (!isPermanent(error) || isExpiredLogin(error)) throw error
       }
-      await markHistorySynced(record.id)
+      await markHistorySynced(record.id, club.slug)
     }
     return true
   } catch (error) {
     handleAuthError(error)
     return false
   }
+}
+
+/**
+ * Make sure the logo and avatar changes waiting on this device are for the club that is logged in.
+ * The first club to log in takes them. If a different club logs in later, the earlier club's unsent
+ * logo and avatar changes are dropped (never sent to the new club), and photo sharing goes back to off,
+ * which is the private default for a club that has not chosen it. Sessions are tagged with their club
+ * and the leaderboard totals with their slug, so those already stay with the right club.
+ * Safe to call repeatedly.
+ */
+export async function adoptClub(slug: string): Promise<void> {
+  const previous = await getSyncClub()
+  if (previous === slug) return
+  if (previous !== undefined) {
+    await clearAvatarDirty()
+    await markLogoSynced()
+    await setPhotoPurgePending(false)
+    await setSharePhotos(false)
+  }
+  await setSyncClub(slug)
 }
 
 /** What the club is sent for an avatar: emoji and initials always, a photo only while photos are shared. */
@@ -129,6 +151,7 @@ function avatarRequest(avatar: PlayerAvatar): PutAvatarRequest {
 export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> {
   const club = useClubAuth.getState().club
   if (!api || !club) return false
+  await adoptClub(club.slug)
   // A request the server will never accept is dropped: retrying cannot help.
   const attempt = async (send: () => Promise<void>) => {
     try {

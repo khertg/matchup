@@ -48,3 +48,8 @@ export async function addOrGetPlayer(
   if (id === undefined) throw new Error('Failed to save player')
   return { id, name: trimmed, skill, gender }
 }
+
+/** Forget which avatars are waiting to be sent to a club (they were for a different club). */
+export async function clearAvatarDirty(): Promise<void> {
+  await db.players.filter((p) => p.avatarDirty === true).modify({ avatarDirty: false })
+}
