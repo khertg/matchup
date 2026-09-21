@@ -40,6 +40,8 @@ Requires Node 24 (what CI and the Docker images use; built with Node 26).
 
 Matchmaking modes (doubles): *Auto-balanced* (first come, first served, even teams), *Skill-separated*, *Winners vs. Losers*, and *Mixed doubles* (one man and one woman per team). Mixed doubles never offers a non-mixed group as next up; if no valid group exists yet, use "Start with waiting players" on an open court.
 
+**Partners and opponents rotate in every mode.** The app remembers who teamed up, and who played against whom, in the last 12 finished games. Teams are split so the same partners are not paired again (then the same opponents), unless that would make clearly lopsided teams, and a foursome that has just played together counts as a few places further back in the queue, so someone waiting a little longer can take a spot. Winners vs. Losers keeps its ladder (winners still play winners), only the partners and opponents inside the group change. Locked partners always stay together. With very few players some repeats cannot be avoided.
+
 The active session is saved on the device, so a reload or going offline keeps it.
 
 ## Club logo and player avatars
