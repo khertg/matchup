@@ -35,7 +35,7 @@ export function SessionScreen({ session }: { session: SessionState }) {
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SyncBadge />
-          <SharePanel />
+          <SharePanel photoToggle />
           <EndSessionDialog session={session} />
         </div>
       </header>

@@ -91,9 +91,8 @@ test.describe('club media on the live page', () => {
     await expect(avatarOf(viewer.locator('ol > li').filter({ hasText: 'Ann' }), 'Ann')).toHaveAttribute('data-avatar-kind', 'initials')
     expect((await request.get(`/api/clubs/${club.slug}/avatars/ann/photo`)).status()).toBe(404)
 
-    // End the session to reach the club panel, and switch sharing on: the photo goes up.
-    await page.getByRole('button', { name: 'End session' }).click()
-    await page.getByRole('dialog').getByRole('button', { name: /^(Save and end session|End session)$/ }).click()
+    // Switch sharing on from the running session (Share live view): the photo goes up.
+    await page.getByRole('button', { name: 'Share live view' }).click()
     await shareBox(page).check()
     await expect.poll(async () => (await index(request, club.slug)()).avatars.ann?.kind).toBe('photo')
     const photo = await request.get(`/api/clubs/${club.slug}/avatars/ann/photo`)
@@ -105,6 +104,12 @@ test.describe('club media on the live page', () => {
     await expect.poll(async () => Object.keys((await index(request, club.slug)()).avatars)).toEqual(['bob'])
     expect((await request.get(`/api/clubs/${club.slug}/avatars/ann/photo`)).status()).toBe(404)
     await context.close()
+
+    // The choice is the same one the setup screen shows.
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /^(Save and end session|End session)$/ }).click()
+    await expect(shareBox(page)).not.toBeChecked()
   })
 
   test('with sharing on, the live page shows the photo, from the club', async ({ page, browser, request }) => {
