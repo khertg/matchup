@@ -120,14 +120,18 @@ test.describe('seeing an avatar large', () => {
     await checkIn(page, ['Ann Lee', 'Bob'])
     await setPhotoAvatar(page, 'Ann Lee')
 
+    // Big enough to make out in a list, not just in the large view.
+    const listed = (await avatarOf(queueRow(page, 'Ann Lee'), 'Ann Lee').boundingBox())!
+    expect(listed.width).toBeGreaterThanOrEqual(36)
+    expect(listed.height).toBeGreaterThanOrEqual(36)
     const small = await avatarOf(queueRow(page, 'Ann Lee'), 'Ann Lee').locator('img').getAttribute('src')
     const view = await viewAvatar(page, 'Ann Lee', queueRow(page, 'Ann Lee'))
     await expect(view.getByRole('heading', { name: 'Ann Lee' })).toBeVisible()
     const large = avatarOf(view, 'Ann Lee')
     await expect(large).toHaveAttribute('data-avatar-kind', 'photo')
     const box = (await large.boundingBox())!
-    expect(box.width).toBeGreaterThanOrEqual(150)
-    expect(box.height).toBeGreaterThanOrEqual(150)
+    expect(box.width).toBeGreaterThanOrEqual(200)
+    expect(box.height).toBeGreaterThanOrEqual(200)
     // It is the same picture, not a new one.
     await expect(large.locator('img')).toHaveAttribute('src', small!)
     await page.keyboard.press('Escape')
@@ -140,12 +144,12 @@ test.describe('seeing an avatar large', () => {
     await setEmojiAvatar(page, 'Bob', '🔥')
     const emoji = await viewAvatar(page, 'Bob')
     await expect(avatarOf(emoji, 'Bob')).toHaveAttribute('data-emoji', '🔥')
-    expect((await avatarOf(emoji, 'Bob').boundingBox())!.width).toBeGreaterThanOrEqual(150)
+    expect((await avatarOf(emoji, 'Bob').boundingBox())!.width).toBeGreaterThanOrEqual(200)
     await page.keyboard.press('Escape')
 
     const initials = await viewAvatar(page, 'Ann Lee')
     await expect(avatarOf(initials, 'Ann Lee')).toHaveAttribute('data-initials', 'AL')
-    expect((await avatarOf(initials, 'Ann Lee').boundingBox())!.width).toBeGreaterThanOrEqual(150)
+    expect((await avatarOf(initials, 'Ann Lee').boundingBox())!.width).toBeGreaterThanOrEqual(200)
   })
 
   test('is available wherever the small avatar is: queue, Next up, court, check-in list and standings', async ({ page }) => {
@@ -281,4 +285,18 @@ test.describe('where avatars are kept and shown', () => {
     const large = await viewAvatar(page, 'Ann', past)
     await expect(large.getByRole('button', { name: 'Change avatar' })).toHaveCount(0)
   })
+})
+
+test('the Replace dialog rows have room around the avatar', async ({ page }) => {
+  await startSession(page)
+  await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+  await startGame(page)
+  await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Replace Ann' }).click()
+  const option = page.getByRole('dialog').getByRole('button', { name: /Eve/ })
+  const row = (await option.boundingBox())!
+  const avatar = (await avatarOf(option, 'Eve').boundingBox())!
+  // The avatar is never squeezed against the top or bottom of its row.
+  expect(row.height).toBeGreaterThanOrEqual(avatar.height + 8)
+  expect(avatar.y - row.y).toBeGreaterThanOrEqual(4)
+  expect(row.y + row.height - (avatar.y + avatar.height)).toBeGreaterThanOrEqual(4)
 })

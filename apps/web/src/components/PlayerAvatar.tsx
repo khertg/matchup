@@ -5,13 +5,13 @@ import { cn } from '@/lib/utils'
 import { usePlayerAvatar, type ResolvedAvatar } from '@/lib/avatars'
 
 /** Emoji fill more of the badge than letters do. */
-const EMOJI_TEXT = { sm: 'text-sm', md: 'text-base', lg: 'text-3xl', xl: 'text-8xl' } as const
+const EMOJI_TEXT = { sm: 'text-xl', md: 'text-2xl', lg: 'text-4xl', xl: 'text-[8rem]' } as const
 
 const SIZES = {
-  sm: 'size-6 text-[10px]',
-  md: 'size-8 text-xs',
-  lg: 'size-16 text-xl',
-  xl: 'size-48 text-6xl',
+  sm: 'size-10 text-sm',
+  md: 'size-12 text-base',
+  lg: 'size-20 text-2xl',
+  xl: 'size-64 text-8xl',
 } as const
 
 interface ViewProps {
