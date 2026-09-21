@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { CourtCard } from '@/components/CourtCard'
-import { AddCourtButton, ManageCourtsDialog } from '@/components/ManageCourtsDialog'
+import { ManageCourtsDialog } from '@/components/ManageCourtsDialog'
 import { MatchLog } from '@/components/MatchLog'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
@@ -129,10 +129,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <GameLengthControl minutes={session.avgGameMinutes} />
-        <div className="flex flex-wrap items-start gap-2">
-          <AddCourtButton session={session} />
-          <ManageCourtsDialog session={session} />
-        </div>
+        <ManageCourtsDialog session={session} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {session.courts.map((court) => (

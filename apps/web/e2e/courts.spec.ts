@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame, startSession, recordWin } from './helpers'
+import { addCourt, checkIn, startGame, startSession, recordWin } from './helpers'
 
 const EIGHT = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal']
 
@@ -31,7 +31,7 @@ test.describe('adding a court', () => {
     await expect(page.getByText('1 court')).toBeVisible()
     await expect(page.getByText('Queue (4)')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Add court' }).click()
+    await addCourt(page)
 
     await expect(page.getByText('Court 2 added')).toBeVisible()
     await expect(page.getByText('2 courts')).toBeVisible()
@@ -49,7 +49,7 @@ test.describe('adding a court', () => {
     await startSession(page)
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
     await startGame(page)
-    await page.getByRole('button', { name: 'Add court' }).click()
+    await addCourt(page)
     const court2 = page.getByRole('region', { name: 'Court 2' })
     await expect(court2.getByText('Open')).toBeVisible()
     await expect(court2.getByRole('button', { name: 'Start game' })).toHaveCount(0)
@@ -57,20 +57,20 @@ test.describe('adding a court', () => {
 
   test('stops at 15 courts', async ({ page }) => {
     await startSession(page, { courts: 15 })
-    await expect(page.getByRole('button', { name: 'Add court' })).toBeDisabled()
-    await expect(page.getByText('Maximum of 15 courts')).toBeVisible()
-
     const dialog = await manage(page)
     await expect(dialog.getByRole('button', { name: 'Add court' })).toBeDisabled()
+    await expect(dialog.getByText('Maximum of 15 courts')).toBeVisible()
     await dialog.getByRole('button', { name: 'Close Court 15' }).click()
     await expect(dialog.getByRole('button', { name: 'Add court' })).toBeEnabled()
   })
 
-  test('adds from inside the manage dialog too', async ({ page }) => {
+  test('adding is only offered inside Manage courts, not on the Board', async ({ page }) => {
     await startSession(page)
+    await expect(page.getByRole('button', { name: 'Add court' })).toHaveCount(0)
     const dialog = await manage(page)
     await dialog.getByRole('button', { name: 'Add court' }).click()
     await expect(dialog.getByLabel('Name of Court 2')).toBeVisible()
+    await expect(page.getByText('Court 2 added')).toBeVisible()
   })
 
   test('reuses the lowest free number', async ({ page }) => {
@@ -80,7 +80,7 @@ test.describe('adding a court', () => {
     await closeDialog(page)
     expect(await courtOrder(page)).toEqual(['Court 1', 'Court 3'])
 
-    await page.getByRole('button', { name: 'Add court' }).click()
+    await addCourt(page)
     await expect(page.getByText('Court 2 added')).toBeVisible()
     expect(await courtOrder(page)).toEqual(['Court 1', 'Court 3', 'Court 2'])
   })

@@ -95,3 +95,12 @@ export async function cancelGame(page: Page, courtName = 'Court 1') {
   await dialog.getByRole('button', { name: 'Cancel game' }).click()
   await expect(dialog).toHaveCount(0)
 }
+
+/** Add a court the only way the app offers: through Manage courts. Leaves the dialog closed. */
+export async function addCourt(page: Page) {
+  await page.getByRole('button', { name: 'Manage courts' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Manage courts' })
+  await dialog.getByRole('button', { name: 'Add court' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+}
