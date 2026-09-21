@@ -85,7 +85,7 @@ export function ReplacePlayerDialog({ mode = 'court', player, waiting, onReplace
                 <li key={p.id}>
                   <Button
                     variant="outline"
-                    className="h-11 w-full justify-between"
+                    className="h-auto min-h-12 w-full justify-between py-2"
                     onClick={() => {
                       onReplace(p.id, { sendOnBreak: !nextUp && sendOnBreak })
                       setOpen(false)

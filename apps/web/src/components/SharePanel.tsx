@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useClubAuth } from '@/cloud/auth'
 import { viewerUrl } from '@/cloud/url'
+import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 
-export function SharePanel() {
+export function SharePanel({ photoToggle = false }: { photoToggle?: boolean }) {
   const club = useClubAuth((s) => s.club)
   const [open, setOpen] = useState(false)
   const [qr, setQr] = useState<string | null>(null)
@@ -73,6 +74,7 @@ export function SharePanel() {
           <Input readOnly value={url} aria-label="Live board link" onFocus={(e) => e.target.select()} />
           <Button onClick={copy}>Copy link</Button>
         </div>
+        {photoToggle && <PhotoSharingToggle />}
       </DialogContent>
     </Dialog>
   )
