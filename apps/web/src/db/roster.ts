@@ -1,4 +1,5 @@
 import type { PlayerAvatar } from '@/lib/avatar'
+import { cleanPlayerName } from '@/rotation/engine'
 import type { RosterPlayer } from '@/rotation/types'
 import { db, type Gender, type SkillLevel } from './db'
 
@@ -18,6 +19,22 @@ export async function markPhotosDirty(): Promise<void> {
 /** Change a saved player's skill level, so they start future sessions at it. */
 export async function setRosterSkill(playerId: number, skill: SkillLevel): Promise<void> {
   await db.players.update(playerId, { skill })
+}
+
+/**
+ * Rename a saved player. The new name is trimmed and must not belong to another saved player
+ * (ignoring case); changing only the capitals of their own name is fine. Their totals and avatar
+ * stay with them. Returns the old and new names, and throws a RangeError with a readable message
+ * when the name is not allowed.
+ */
+export async function renameRosterPlayer(playerId: number, name: string): Promise<{ from: string; to: string }> {
+  const to = cleanPlayerName(name)
+  const player = await db.players.get(playerId)
+  if (!player) throw new Error('This player is not saved on this device')
+  const clash = await db.players.where('name').equalsIgnoreCase(to).first()
+  if (clash && clash.id !== playerId) throw new RangeError(`${to} is already saved as a player`)
+  if (player.name !== to) await db.players.update(playerId, { name: to })
+  return { from: player.name, to }
 }
 
 /**

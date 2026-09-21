@@ -17,6 +17,7 @@ import {
   replacePlayer as replacePlayerEngine,
   resetNextUp as resetNextUpEngine,
   setAvgGameMinutes as setAvgGameMinutesEngine,
+  renamePlayer as renamePlayerEngine,
   setPlayerSkill as setPlayerSkillEngine,
   type NextGroupOptions,
   type ReplacePlayerOptions,
@@ -51,6 +52,8 @@ interface SessionStore {
   setAvgGameMinutes: (minutes: number) => void
   /** Change a checked-in player's skill level. Future matching follows it; a pending result undo stays. */
   setPlayerSkill: (playerId: number, skill: SkillLevel) => void
+  /** Rename a checked-in player. Throws a RangeError with a readable message if the name is not allowed. */
+  renamePlayer: (playerId: number, name: string) => void
   /** Returns false if the player was already queued or playing. */
   checkInPlayer: (player: RosterPlayer) => boolean
   /** Check several players in at once, in the order given. Returns how many were newly checked in. */
@@ -148,6 +151,16 @@ export const useSessionStore = create<SessionStore>()(
         set({
           session: setPlayerSkillEngine(session, playerId, skill),
           previous: previous?.players[playerId] ? setPlayerSkillEngine(previous, playerId, skill) : previous,
+        })
+      },
+
+      renamePlayer: (playerId, name) => {
+        const session = requireSession(get().session)
+        const { previous } = get()
+        // A correction, like a skill change: undoing a result must never bring the old name back.
+        set({
+          session: renamePlayerEngine(session, playerId, name),
+          previous: previous?.players[playerId] ? renamePlayerEngine(previous, playerId, name) : previous,
         })
       },
 

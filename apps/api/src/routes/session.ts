@@ -5,12 +5,14 @@ import {
   parsePublicSnapshot,
   type PutHistoryRequest,
   type RecordLifetimeRequest,
+  type RenamePlayerRequest,
 } from '@matchup/shared'
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError } from '../errors'
 import { deleteHistory, getHistory, isHistoryId, listHistory, putHistory } from '../services/history'
 import { recordLifetime, MAX_PLAYERS_PER_BATCH } from '../services/lifetime'
+import { renamePlayer } from '../services/players'
 import { clearSession, getFullSession, publishSession } from '../services/sessions'
 import { authenticate } from './auth'
 
@@ -31,6 +33,16 @@ const historyBody = {
     players: { type: 'integer', minimum: 0, maximum: SNAPSHOT_LIMITS.players },
     games: { type: 'integer', minimum: 0, maximum: 1_000_000 },
     full: { type: 'object' },
+  },
+} as const
+
+const renameBody = {
+  type: 'object',
+  required: ['from', 'to'],
+  additionalProperties: false,
+  properties: {
+    from: { type: 'string', maxLength: 200 },
+    to: { type: 'string', maxLength: 200 },
   },
 } as const
 
@@ -106,6 +118,17 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
     async (request, reply) => {
       const { slug } = await authenticate(db, request)
       await recordLifetime(db, slug, request.body.batchId, request.body.players)
+      return reply.code(204).send()
+    },
+  )
+
+  // A player was renamed on a staff device: their leaderboard row and shared avatar follow the new name.
+  api.post<{ Body: RenamePlayerRequest }>(
+    '/players/rename',
+    { config: write, schema: { body: renameBody } },
+    async (request, reply) => {
+      const { slug } = await authenticate(db, request)
+      await renamePlayer(db, slug, request.body.from, request.body.to)
       return reply.code(204).send()
     },
   )
