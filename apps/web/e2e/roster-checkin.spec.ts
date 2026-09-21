@@ -52,7 +52,7 @@ test('checks in several returning players at once, in the order they were ticked
 })
 
 test('says "1 player" for a single pick, and keeps saved skill levels', async ({ page }) => {
-  await withRoster(page, [{ name: 'Zed', skill: '5 · Advanced' }])
+  await withRoster(page, [{ name: 'Zed', skill: '5 · Advanced (4.0-4.5)' }])
   await box(page, 'Zed').check()
   await expect(submit(page)).toHaveText('Check in 1 player')
   await submit(page).click()

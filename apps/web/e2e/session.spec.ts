@@ -216,6 +216,22 @@ test('saves the chosen skill level', async ({ page }) => {
   await expect(page.getByRole('listitem').filter({ hasText: 'Zed' }).getByText('Advanced')).toBeVisible()
 })
 
+test('offers the six skill levels with their official ratings', async ({ page }) => {
+  await startSession(page)
+  await page.getByRole('tab', { name: 'Check-in' }).click()
+  await page.getByLabel('Skill level').click()
+  const options = page.getByRole('option')
+  await expect(options).toHaveText([
+    '1 · Beginner (1.0)',
+    '2 · Novice (2.0-2.5)',
+    '3 · Intermediate (3.0)',
+    '4 · Upper Intermediate (3.5)',
+    '5 · Advanced (4.0-4.5)',
+    '6 · Expert (5.0+)',
+  ])
+  await expect(page.getByText('Advanced Beginner')).toHaveCount(0)
+})
+
 test('replaces a playing player with someone waiting', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)

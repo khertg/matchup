@@ -26,7 +26,7 @@ import {
 import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
 import { db, type Gender, type SkillLevel } from '@/db/db'
 import { addOrGetPlayer } from '@/db/roster'
-import { DEFAULT_SKILL, SKILL_LEVELS, skillLabel } from '@/lib/skill'
+import { DEFAULT_SKILL, SKILL_LEVELS, skillLabel, skillOptionLabel } from '@/lib/skill'
 import { lockStatus, playingIds, type AwayPartner } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
@@ -246,7 +246,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
                 <SelectContent>
                   {SKILL_LEVELS.map((s) => (
                     <SelectItem key={s.value} value={String(s.value)}>
-                      {s.value} · {s.label}
+                      {skillOptionLabel(s)}
                     </SelectItem>
                   ))}
                 </SelectContent>
