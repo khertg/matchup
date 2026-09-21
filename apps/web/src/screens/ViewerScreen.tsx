@@ -3,6 +3,7 @@ import { toCloudError, type LiveRow } from '@/cloud/api'
 import { cloud } from '@/cloud/client'
 import { parsePublicSnapshot, toViewerState, type PublicSnapshot } from '@/cloud/snapshot'
 import { CourtCard } from '@/components/CourtCard'
+import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -136,6 +137,11 @@ export function ViewerScreen({ slug }: { slug: string }) {
           <TabsTrigger value="standings">Standings</TabsTrigger>
         </TabsList>
         <TabsContent value="board" className="mt-4 space-y-4">
+          <NextUpCard
+            nextUp={snapshot.nextUp}
+            players={session.players}
+            emptyMessage="No group is ready yet. Waiting for more players."
+          />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {session.courts.map((court) => (
               <CourtCard
@@ -147,7 +153,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
               />
             ))}
           </div>
-          <QueueList session={session} />
+          <QueueList session={session} nextUp={snapshot.nextUp} />
         </TabsContent>
         <TabsContent value="standings" className="mt-4">
           <StandingsScreen session={session} location={snapshot.location} readOnly />

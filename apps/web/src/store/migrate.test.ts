@@ -31,6 +31,21 @@ describe('migrateSession', () => {
     expect(migrated).toMatchObject({ matchmaking: 'balanced', partners: [], lastResult: {}, stats: {} })
   })
 
+  it('names the courts of a v4 session Court <id>, keeping everything else', () => {
+    const current = createSession('doubles', 2, { matchmaking: 'skill' })
+    const v4 = { ...current, courts: current.courts.map(({ id, teams }) => ({ id, teams })) }
+    const migrated = migrateSession(v4 as never, 4)
+    expect(migrated?.courts.map((c) => c.name)).toEqual(['Court 1', 'Court 2'])
+    expect(migrated?.courts.map((c) => c.id)).toEqual([1, 2])
+    expect(migrated?.matchmaking).toBe('skill')
+  })
+
+  it('keeps the names of a session that already has them', () => {
+    const named = createSession('doubles', 2)
+    named.courts[1].name = 'Center Court'
+    expect(migrateSession(named, 4)?.courts[1].name).toBe('Center Court')
+  })
+
   it('adds empty stats to a v3 session without touching its other fields', () => {
     const { stats: _s, ...v3 } = createSession('doubles', 1, { matchmaking: 'mixed' })
     const migrated = migrateSession(v3 as never, 3)

@@ -84,10 +84,11 @@ export function sampleSnapshot(location = 'Sunset Courts'): PublicSnapshot {
     matchmaking: 'skill',
     avgGameMinutes: 12,
     courts: [
-      { id: 1, teams: [[1, 2], [3, 4]] },
-      { id: 2, teams: null },
+      { id: 1, name: 'Court 1', teams: [[1, 2], [3, 4]] },
+      { id: 2, name: 'Center Court', teams: null },
     ],
     queue: [5, 6],
+    nextUp: [],
     onBreak: [],
     partners: [[5, 6]],
     stats: { 1: { games: 2, wins: 2, losses: 0, opponentSkill: 6 } },

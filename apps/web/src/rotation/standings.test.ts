@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Player } from '@/db/db'
-import { assignCourts, checkIn, createSession, recordResult } from './engine'
+import { checkIn, createSession, recordResult } from './engine'
+import { fillCourts } from './testing'
 import { rankLifetime, rankPlayers } from './standings'
 import type { PlayerStats, RosterPlayer, SessionState } from './types'
 
@@ -28,7 +29,7 @@ describe('stats tracking', () => {
     s = checkIn(s, player(2, 'B', 2))
     s = checkIn(s, player(3, 'C', 4))
     s = checkIn(s, player(4, 'D', 2))
-    s = assignCourts(s)
+    s = fillCourts(s)
     const { state, winners, losers } = recordResult(s, 1, 0)
 
     for (const id of winners) expect(state.stats[id]).toMatchObject({ games: 1, wins: 1, losses: 0 })
@@ -43,10 +44,10 @@ describe('stats tracking', () => {
     let s = createSession('singles', 1)
     s = checkIn(s, player(1, 'A'))
     s = checkIn(s, player(2, 'B'))
-    s = assignCourts(s)
+    s = fillCourts(s)
     const first = recordResult(s, 1, 0)
     const before = structuredClone(first.state)
-    const second = recordResult(assignCourts(first.state), 1, 0)
+    const second = recordResult(fillCourts(first.state), 1, 0)
 
     expect(first.state).toEqual(before)
     const total = second.state.stats[1].games + second.state.stats[2].games

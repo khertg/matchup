@@ -15,10 +15,11 @@ const good = (): PublicSnapshot => ({
   matchmaking: 'skill',
   avgGameMinutes: 12,
   courts: [
-    { id: 1, teams: [[1, 2], [3, 4]] },
-    { id: 2, teams: null },
+    { id: 1, name: 'Court 1', teams: [[1, 2], [3, 4]] },
+    { id: 2, name: 'Center Court', teams: null },
   ],
   queue: [5, 6],
+  nextUp: [],
   onBreak: [],
   partners: [[5, 6]],
   stats: { 1: { games: 2, wins: 2, losses: 0, opponentSkill: 6 } },
@@ -79,6 +80,61 @@ describe('parsePublicSnapshot', () => {
     expect(
       parsePublicSnapshot({ ...good(), queue: Array.from({ length: SNAPSHOT_LIMITS.queue + 1 }, (_, i) => i) }),
     ).toBeNull()
+  })
+
+  describe('next up', () => {
+    it('keeps the group staff would start next', () => {
+      const snapshot = { ...good(), nextUp: [1, 2, 3, 4] }
+      expect(parsePublicSnapshot(snapshot)!.nextUp).toEqual([1, 2, 3, 4])
+    })
+
+    it('accepts a board from before "next up" existed and reads it as empty', () => {
+      const { nextUp: _omit, ...legacy } = good()
+      expect(parsePublicSnapshot(legacy)!.nextUp).toEqual([])
+    })
+
+    it('rejects a list that is not ids, or is too long', () => {
+      for (const nextUp of ['1,2', [1, 'a'], [-1], [1.5], [1, 2, 3, 4, 5], 7, null]) {
+        expect(parsePublicSnapshot({ ...good(), nextUp }), JSON.stringify(nextUp)).toBeNull()
+      }
+    })
+
+    it('returns a copy of the list', () => {
+      const input = { ...good(), nextUp: [1, 2] }
+      const parsed = parsePublicSnapshot(input)!
+      input.nextUp.push(3)
+      expect(parsed.nextUp).toEqual([1, 2])
+    })
+  })
+
+  describe('court names', () => {
+    it('keeps the names people gave their courts', () => {
+      expect(parsePublicSnapshot(good())!.courts.map((c) => c.name)).toEqual(['Court 1', 'Center Court'])
+    })
+
+    it('accepts courts from before names existed and names them "Court <id>"', () => {
+      const legacy = { ...good(), courts: [{ id: 1, teams: null }, { id: 7, teams: null }] }
+      expect(parsePublicSnapshot(legacy)!.courts.map((c) => c.name)).toEqual(['Court 1', 'Court 7'])
+    })
+
+    it('treats a blank name as missing', () => {
+      const blank = { ...good(), courts: [{ id: 3, name: '   ', teams: null }] }
+      expect(parsePublicSnapshot(blank)!.courts[0].name).toBe('Court 3')
+    })
+
+    it('rejects a name that is not text or is too long', () => {
+      for (const name of [42, null, {}, ['x'], 'n'.repeat(41)]) {
+        const bad = { ...good(), courts: [{ id: 1, name, teams: null }] }
+        expect(parsePublicSnapshot(bad), JSON.stringify(name)).toBeNull()
+      }
+      const longest = { ...good(), courts: [{ id: 1, name: 'n'.repeat(40), teams: null }] }
+      expect(parsePublicSnapshot(longest)).not.toBeNull()
+    })
+
+    it('drops unknown court fields but keeps the name', () => {
+      const dirty = { ...good(), courts: [{ id: 1, name: 'Court 1', teams: null, secret: 'x', notes: 'y' }] }
+      expect(JSON.stringify(parsePublicSnapshot(dirty)!.courts)).toBe('[{"id":1,"name":"Court 1","teams":null}]')
+    })
   })
 
   it('drops unknown fields, so private data can never slip through', () => {

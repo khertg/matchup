@@ -4,6 +4,7 @@ import {
   parsePublicSnapshot,
   type PublicSnapshot,
 } from '@matchup/shared'
+import { nextGroup } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { migrateSession, SESSION_STORE_VERSION } from '@/store/migrate'
 
@@ -35,6 +36,9 @@ export function toPublicSnapshot(location: string, session: SessionState): Publi
     avgGameMinutes: session.avgGameMinutes,
     courts: session.courts,
     queue: session.queue,
+    // Computed here, on the staff device, so the live board shows exactly what staff see
+    // (including mixed doubles and locked partners, which viewers cannot work out themselves).
+    nextUp: nextGroup(session)?.players ?? [],
     onBreak: session.onBreak,
     partners: session.partners,
     stats: session.stats,

@@ -55,3 +55,10 @@ export async function checkIn(page: Page, players: (string | PlayerSpec)[]) {
   }
   await page.getByRole('tab', { name: 'Board' }).click()
 }
+
+/** Press Start game on a court and wait for the game to be on it. Games never start by themselves. */
+export async function startGame(page: Page, courtName = 'Court 1') {
+  const court = page.getByRole('region', { name: courtName, exact: true })
+  await court.getByRole('button', { name: 'Start game' }).click()
+  await expect(court.getByText('In play')).toBeVisible()
+}

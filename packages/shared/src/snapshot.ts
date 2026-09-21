@@ -1,4 +1,4 @@
-import { MAX_LOCATION_LENGTH, MAX_PLAYER_NAME_LENGTH } from './protocol'
+import { MAX_COURT_NAME_LENGTH, MAX_LOCATION_LENGTH, MAX_PLAYER_NAME_LENGTH } from './protocol'
 
 /**
  * Two shapes travel to the API:
@@ -27,6 +27,8 @@ export type WireSkill = 1 | 2 | 3 | 4 | 5 | 6
 
 export interface WireCourt {
   id: number
+  /** What people call the court, e.g. "Court 2" or "Center Court". */
+  name: string
   teams: [number[], number[]] | null
 }
 
@@ -51,6 +53,11 @@ export interface PublicSnapshot {
   avgGameMinutes: number
   courts: WireCourt[]
   queue: number[]
+  /**
+   * The group staff would start next, as player ids: Team A first, then Team B (doubles has
+   * two on each side, singles one). Empty when no group can be formed yet.
+   */
+  nextUp: number[]
   onBreak: number[]
   partners: [number, number][]
   stats: Record<number, WireStats>
@@ -76,6 +83,10 @@ const isIdList = (v: unknown, max: number): v is number[] =>
 const isCount = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1_000_000
 const isText = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max
 
+/**
+ * Courts from before names existed have none, and are accepted: they are given the
+ * name "Court <id>" when the snapshot is copied. A name that is present must be short text.
+ */
 function validCourts(v: unknown): v is WireCourt[] {
   return (
     Array.isArray(v) &&
@@ -84,6 +95,7 @@ function validCourts(v: unknown): v is WireCourt[] {
       (c) =>
         isObject(c) &&
         isId(c.id) &&
+        (c.name === undefined || isText(c.name, MAX_COURT_NAME_LENGTH)) &&
         (c.teams === null ||
           (Array.isArray(c.teams) && c.teams.length === 2 && c.teams.every((t) => isIdList(t, 2)))),
     )
@@ -142,6 +154,8 @@ export function parsePublicSnapshot(raw: unknown): PublicSnapshot | null {
     Number.isFinite(raw.avgGameMinutes) &&
     validCourts(raw.courts) &&
     isIdList(raw.queue, SNAPSHOT_LIMITS.queue) &&
+    // Boards published before "next up" existed have none; that is accepted and read as empty.
+    (raw.nextUp === undefined || isIdList(raw.nextUp, 4)) &&
     isIdList(raw.onBreak, SNAPSHOT_LIMITS.queue) &&
     Array.isArray(raw.partners) &&
     raw.partners.length <= SNAPSHOT_LIMITS.players &&
@@ -162,9 +176,11 @@ function copyPublicSnapshot(s: PublicSnapshot): PublicSnapshot {
     avgGameMinutes: s.avgGameMinutes,
     courts: s.courts.map((c) => ({
       id: c.id,
+      name: typeof c.name === 'string' && c.name.trim() !== '' ? c.name : `Court ${c.id}`,
       teams: c.teams ? [[...c.teams[0]], [...c.teams[1]]] : null,
     })),
     queue: [...s.queue],
+    nextUp: Array.isArray(s.nextUp) ? [...s.nextUp] : [],
     onBreak: [...s.onBreak],
     partners: s.partners.map(([a, b]) => [a, b] as [number, number]),
     stats: Object.fromEntries(

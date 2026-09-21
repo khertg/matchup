@@ -2,7 +2,7 @@ import { DEFAULT_AVG_GAME_MINUTES } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 
 /** Bump whenever the persisted session shape changes, and extend migrateSession. */
-export const SESSION_STORE_VERSION = 4
+export const SESSION_STORE_VERSION = 5
 
 /** Upgrade a session saved by an older build to the current shape. */
 export function migrateSession(
@@ -14,5 +14,12 @@ export function migrateSession(
   if (fromVersion < 2) next = { ...next, avgGameMinutes: DEFAULT_AVG_GAME_MINUTES }
   if (fromVersion < 3) next = { ...next, matchmaking: 'balanced', partners: [], lastResult: {} }
   if (fromVersion < 4) next = { ...next, stats: {} }
+  // Courts gained editable names; existing ones keep the "Court N" they were always shown as.
+  if (fromVersion < 5) {
+    next = {
+      ...next,
+      courts: next.courts.map((court) => ({ ...court, name: court.name ?? `Court ${court.id}` })),
+    }
+  }
   return next
 }

@@ -1,5 +1,6 @@
+import { MAX_COURT_NAME_LENGTH } from '@matchup/shared'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
-import type { GameMode, MatchmakingMode, RosterPlayer, SessionState } from './types'
+import type { Court, GameMode, MatchmakingMode, RosterPlayer, SessionState, Teams } from './types'
 
 /**
  * Court rotation engine. Every function is pure: it returns a new state and
@@ -7,6 +8,10 @@ import type { GameMode, MatchmakingMode, RosterPlayer, SessionState } from './ty
  */
 
 export const playersPerCourt = (mode: GameMode) => (mode === 'doubles' ? 4 : 2)
+
+export const MIN_COURTS = 1
+export const MAX_COURTS = 15
+export { MAX_COURT_NAME_LENGTH }
 
 export const DEFAULT_AVG_GAME_MINUTES = 12
 export const MIN_AVG_GAME_MINUTES = 5
@@ -26,8 +31,8 @@ export function createSession(
   courtCount: number,
   { avgGameMinutes = DEFAULT_AVG_GAME_MINUTES, matchmaking = 'balanced' }: SessionOptions = {},
 ): SessionState {
-  if (!Number.isInteger(courtCount) || courtCount < 1 || courtCount > 15) {
-    throw new RangeError('courtCount must be an integer from 1 to 15')
+  if (!Number.isInteger(courtCount) || courtCount < MIN_COURTS || courtCount > MAX_COURTS) {
+    throw new RangeError(`courtCount must be an integer from ${MIN_COURTS} to ${MAX_COURTS}`)
   }
   if (!isValidGameMinutes(avgGameMinutes)) {
     throw new RangeError('avgGameMinutes must be an integer from 5 to 60')
@@ -39,10 +44,90 @@ export function createSession(
     partners: [],
     lastResult: {},
     stats: {},
-    courts: Array.from({ length: courtCount }, (_, i) => ({ id: i + 1, teams: null })),
+    courts: Array.from({ length: courtCount }, (_, i) => ({
+      id: i + 1,
+      name: `Court ${i + 1}`,
+      teams: null,
+    })),
     players: {},
     queue: [],
     onBreak: [],
+  }
+}
+
+// ---- court management ------------------------------------------------------
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+
+/** The lowest "Court N" not in use, so closing Court 2 and adding a court brings Court 2 back. */
+export function defaultCourtName(courts: Court[]): string {
+  for (let n = 1; ; n++) {
+    const name = `Court ${n}`
+    if (!courts.some((court) => sameName(court.name, name))) return name
+  }
+}
+
+/** A name that is trimmed, 1 to 40 characters, and unique among the other courts. */
+function checkCourtName(courts: Court[], name: string, exceptId?: number): string {
+  const trimmed = name.trim()
+  if (trimmed.length < 1) throw new RangeError('Give the court a name')
+  if (trimmed.length > MAX_COURT_NAME_LENGTH) {
+    throw new RangeError(`Court names can be at most ${MAX_COURT_NAME_LENGTH} characters`)
+  }
+  if (courts.some((court) => court.id !== exceptId && sameName(court.name, trimmed))) {
+    throw new RangeError('Another court already has that name')
+  }
+  return trimmed
+}
+
+function findCourt(state: SessionState, courtId: number): Court {
+  const court = state.courts.find((c) => c.id === courtId)
+  if (!court) throw new Error(`Court ${courtId} does not exist`)
+  return court
+}
+
+/** Open another court, named with the lowest free number unless a name is given. */
+export function addCourt(state: SessionState, name?: string): SessionState {
+  if (state.courts.length >= MAX_COURTS) {
+    throw new RangeError(`A session can have at most ${MAX_COURTS} courts`)
+  }
+  const id = Math.max(0, ...state.courts.map((c) => c.id)) + 1
+  const courtName = name === undefined ? defaultCourtName(state.courts) : checkCourtName(state.courts, name)
+  return { ...state, courts: [...state.courts, { id, name: courtName, teams: null }] }
+}
+
+/** Rename a court. A game in progress is unaffected. */
+export function renameCourt(state: SessionState, courtId: number, name: string): SessionState {
+  findCourt(state, courtId)
+  const courtName = checkCourtName(state.courts, name, courtId)
+  return {
+    ...state,
+    courts: state.courts.map((c) => (c.id === courtId ? { ...c, name: courtName } : c)),
+  }
+}
+
+/** Move a court one place up (-1) or down (1) in the board order. Does nothing at either end. */
+export function moveCourt(state: SessionState, courtId: number, offset: -1 | 1): SessionState {
+  const index = state.courts.findIndex((c) => c.id === courtId)
+  if (index === -1) throw new Error(`Court ${courtId} does not exist`)
+  const target = index + offset
+  if (target < 0 || target >= state.courts.length) return state
+  const courts = [...state.courts]
+  ;[courts[index], courts[target]] = [courts[target], courts[index]]
+  return { ...state, courts }
+}
+
+/**
+ * Close a court. A game in progress is cancelled with no result and its players
+ * go back to the front of the queue. A session always keeps at least one court.
+ */
+export function closeCourt(state: SessionState, courtId: number): SessionState {
+  const court = findCourt(state, courtId)
+  if (state.courts.length <= MIN_COURTS) throw new RangeError('A session needs at least one court')
+  return {
+    ...state,
+    courts: state.courts.filter((c) => c.id !== courtId),
+    queue: court.teams ? [...court.teams.flat(), ...state.queue] : state.queue,
   }
 }
 
@@ -87,28 +172,52 @@ export function checkOut(state: SessionState, playerId: number): SessionState {
   }
 }
 
+/** The group that would play next, already split into teams. */
+export interface NextGroup {
+  /** Team A first, then Team B. */
+  players: number[]
+  teams: Teams
+}
+
+export interface NextGroupOptions {
+  /** Choose as if the mode were auto-balanced (the mixed-doubles "start with who is waiting" override). */
+  ignoreMode?: boolean
+}
+
 /**
- * Fill every empty court from the queue. Singles is strictly first come, first
- * served. Doubles groups are chosen by the session's matchmaking mode and split
- * into teams (see src/matchmaking/grouping.ts). A court stays empty until a
- * valid group can be formed.
+ * Who would play next, or null if no group can be formed yet. Games never start
+ * by themselves: staff see this group as "Next up" and start it on a court of
+ * their choice. Singles is first come, first served (two players). Doubles
+ * groups follow the session's matchmaking mode and locked partners and are
+ * split into teams (see src/matchmaking/grouping.ts). The teams shown here are
+ * exactly the teams startGame puts on court.
  */
-export function assignCourts(state: SessionState): SessionState {
-  let queue = state.queue
-  const courts = state.courts.map((court) => {
-    if (court.teams) return court
-    if (state.mode === 'singles') {
-      if (queue.length < 2) return court
-      const [a, b] = queue
-      queue = queue.slice(2)
-      return { ...court, teams: [[a], [b]] as [number[], number[]] }
-    }
-    const group = selectGroup(state, queue)
-    if (!group) return court
-    queue = queue.filter((id) => !group.includes(id))
-    return { ...court, teams: splitGroup(state, group) }
-  })
-  return { ...state, courts, queue }
+export function nextGroup(state: SessionState, options: NextGroupOptions = {}): NextGroup | null {
+  if (state.mode === 'singles') {
+    if (state.queue.length < 2) return null
+    const [a, b] = state.queue
+    return { players: [a, b], teams: [[a], [b]] }
+  }
+  const group = selectGroup(state, state.queue, options)
+  if (!group) return null
+  const teams = splitGroup(state, group)
+  return { players: teams.flat(), teams }
+}
+
+/**
+ * Put the next group on an open court. Throws if the court is busy or unknown,
+ * or if no group can be formed. The players leave the queue.
+ */
+export function startGame(state: SessionState, courtId: number, options: NextGroupOptions = {}): SessionState {
+  const court = findCourt(state, courtId)
+  if (court.teams) throw new Error(`${court.name} already has a game in progress`)
+  const group = nextGroup(state, options)
+  if (!group) throw new Error('Not enough players are waiting to start a game')
+  return {
+    ...state,
+    courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: group.teams } : c)),
+    queue: state.queue.filter((id) => !group.players.includes(id)),
+  }
 }
 
 export interface GameResult {
@@ -120,7 +229,7 @@ export interface GameResult {
 /**
  * Record a finished game. `winner` is the index (0 or 1) of the winning side.
  * The court is freed and both sides rejoin the back of the queue, winners
- * first. Call assignCourts afterwards to stage the next match.
+ * first. Nothing starts by itself: staff start the next game with startGame.
  */
 export function recordResult(state: SessionState, courtId: number, winner: 0 | 1): GameResult {
   const court = state.courts.find((c) => c.id === courtId)
@@ -158,23 +267,6 @@ export function recordResult(state: SessionState, courtId: number, winner: 0 | 1
       },
       stats,
     },
-  }
-}
-
-/**
- * Stage a game on an empty court from whoever is waiting, ignoring the
- * matchmaking mode. Lets staff start a mixed-doubles court that has no valid
- * mixed group yet. Locked partners are still kept together.
- */
-export function startCourtManually(state: SessionState, courtId: number): SessionState {
-  const court = state.courts.find((c) => c.id === courtId)
-  if (!court || court.teams) throw new Error(`Court ${courtId} is not open`)
-  const group = selectGroup(state, state.queue, { ignoreMode: true })
-  if (!group) throw new Error('Not enough players are waiting to start a game')
-  return {
-    ...state,
-    courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: splitGroup(state, group) } : c)),
-    queue: state.queue.filter((id) => !group.includes(id)),
   }
 }
 

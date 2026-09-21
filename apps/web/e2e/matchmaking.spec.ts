@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { checkIn, choose, startSession } from './helpers'
+import { checkIn, choose, startSession, startGame } from './helpers'
 
 const MODES = ['Auto-balanced', 'Skill-separated', 'Winners vs. Losers', 'Mixed doubles']
 
@@ -49,8 +49,11 @@ test.describe('mixed doubles', () => {
     await expect(court.getByText('Open')).toBeVisible()
     await expect(court.getByRole('button', { name: 'Start with waiting players' })).toBeVisible()
 
+    await expect(page.getByRole('group', { name: 'Next up' })).toContainText('Waiting for two men and two women')
+
     await checkIn(page, [{ name: 'Fay', gender: 'Female' }])
-    await expect(court.getByText('In play')).toBeVisible()
+    await expect(court.getByText('Open')).toBeVisible() // still nothing starts by itself
+    await startGame(page)
     // The earliest two men and both women play; the other men wait.
     for (const name of ['Alex', 'Ben', 'Eva', 'Fay']) await expect(court.getByText(name)).toBeVisible()
     for (const name of ['Carl', 'Dan']) await expect(court.getByText(name)).toHaveCount(0)
@@ -79,7 +82,11 @@ test.describe('partner locking', () => {
 
     await checkIn(page, ['Dee'])
     const court = page.getByRole('region', { name: 'Court 1' })
-    await expect(court.getByText('In play')).toBeVisible()
+    await expect(court.getByText('Open')).toBeVisible()
+    // Next up already shows the pair together.
+    const preview = page.getByRole('group', { name: 'Next up' }).locator('div.rounded-lg').filter({ hasText: 'Ann' })
+    await expect(preview.getByText('Cy')).toBeVisible()
+    await startGame(page)
     const annsTeam = court.getByRole('group').filter({ has: page.getByText('Ann') })
     await expect(annsTeam.getByText('Cy')).toBeVisible()
     await expect(annsTeam.getByLabel('Locked partners')).toBeVisible()

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RosterCheckIn } from '@/components/RosterCheckIn'
 import {
   Select,
   SelectContent,
@@ -216,6 +217,8 @@ export function CheckInScreen({ session }: { session: SessionState }) {
           </form>
         </CardContent>
       </Card>
+
+      <RosterCheckIn session={session} roster={roster} />
 
       <Card>
         <CardHeader>

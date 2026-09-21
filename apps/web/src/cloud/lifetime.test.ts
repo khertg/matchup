@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assignCourts, checkIn, createSession, recordResult } from '@/rotation/engine'
+import { checkIn, createSession, recordResult } from '@/rotation/engine'
+import { fillCourts } from '@/rotation/testing'
 import { newBatchId } from './id'
 import { toLifetimePlayers } from './lifetime'
 
@@ -9,7 +10,7 @@ describe('toLifetimePlayers', () => {
     s = checkIn(s, { id: 1, name: 'Ann', skill: 3 })
     s = checkIn(s, { id: 2, name: 'Bob', skill: 3 })
     s = checkIn(s, { id: 3, name: 'Cy', skill: 3 })
-    s = recordResult(assignCourts(s), 1, 0).state
+    s = recordResult(fillCourts(s), 1, 0).state
 
     const players = toLifetimePlayers(s)
     expect(players.map((p) => p.name).sort()).toEqual(['Ann', 'Bob'])

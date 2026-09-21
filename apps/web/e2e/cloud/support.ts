@@ -39,6 +39,7 @@ export function liveSnapshot(location = 'Sunset Courts') {
       { id: 2, teams: null },
     ],
     queue: [5, 6],
+    nextUp: [],
     onBreak: [],
     partners: [[5, 6]],
     stats: {

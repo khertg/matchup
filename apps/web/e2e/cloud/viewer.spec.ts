@@ -35,6 +35,35 @@ test.describe('live viewer', () => {
     await expect(page.getByRole('tab', { name: 'Check-in' })).toHaveCount(0)
   })
 
+  test('shows who is next up, and marks them in the queue', async ({ page, request }) => {
+    const { club } = await runningClub(request, {
+      ...liveSnapshot(),
+      courts: [
+        { id: 1, name: 'Court 1', teams: null },
+        { id: 2, name: 'Court 2', teams: null },
+      ],
+      queue: [1, 2, 3, 4, 5, 6],
+      partners: [],
+      nextUp: [1, 3, 2, 4],
+    })
+    await page.goto(`/club/${club.slug}`)
+
+    const nextUp = page.getByRole('group', { name: 'Next up' })
+    await expect(nextUp.getByText('Team A', { exact: true })).toBeVisible()
+    await expect(nextUp.getByText('Team B', { exact: true })).toBeVisible()
+    for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(nextUp.getByText(name)).toBeVisible()
+    await expect(nextUp.getByText('Eve')).toHaveCount(0)
+    await expect(page.getByText('Next up', { exact: true })).toHaveCount(5) // card title + four queue badges
+    // Players can look but not start anything.
+    await expect(page.getByRole('button', { name: /Start/ })).toHaveCount(0)
+  })
+
+  test('says so when no group is ready yet', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
+    await expect(page.getByRole('group', { name: 'Next up' })).toContainText('No group is ready yet')
+  })
+
   test('shows standings with medals and no share buttons', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.goto(`/club/${club.slug}`)

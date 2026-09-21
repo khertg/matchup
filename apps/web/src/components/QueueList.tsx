@@ -6,7 +6,13 @@ import { skillLabel } from '@/lib/skill'
 import { estimateWaitMinutes } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 
-export function QueueList({ session }: { session: SessionState }) {
+interface Props {
+  session: SessionState
+  /** Ids of the group that will play next; they get a "Next up" badge instead of a wait estimate. */
+  nextUp?: number[]
+}
+
+export function QueueList({ session, nextUp = [] }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -37,7 +43,13 @@ export function QueueList({ session }: { session: SessionState }) {
                     Lv {player.skill}
                   </Badge>
                   <span className="w-20 text-right text-sm text-muted-foreground">
-                    {wait ? `~${wait} min` : 'Up next'}
+                    {nextUp.includes(id) ? (
+                      <Badge>Next up</Badge>
+                    ) : wait ? (
+                      `~${wait} min`
+                    ) : (
+                      'Waiting'
+                    )}
                   </span>
                 </li>
               )

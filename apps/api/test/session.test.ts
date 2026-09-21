@@ -113,6 +113,64 @@ describe('publishing a session', () => {
     }
   })
 
+  it('keeps the names staff gave their courts, in board order', async () => {
+    const { token, slug } = await createClub(app)
+    const snapshot = {
+      ...sampleSnapshot(),
+      courts: [
+        { id: 3, name: 'Center Court', teams: null },
+        { id: 1, name: 'Court 1', teams: null },
+      ],
+    }
+    expect((await put(token, { public: snapshot, full: sampleBackup() })).statusCode).toBe(200)
+    const courts = (await live(slug)).json().state.courts
+    expect(courts.map((c: { id: number; name: string }) => [c.id, c.name])).toEqual([
+      [3, 'Center Court'],
+      [1, 'Court 1'],
+    ])
+  })
+
+  it('accepts a session from an older app whose courts have no names, and names them', async () => {
+    const { token, slug } = await createClub(app)
+    const legacy = { ...sampleSnapshot(), courts: [{ id: 1, teams: null }, { id: 2, teams: null }] }
+    expect((await put(token, { public: legacy, full: sampleBackup() })).statusCode).toBe(200)
+    const names = (await live(slug)).json().state.courts.map((c: { name: string }) => c.name)
+    expect(names).toEqual(['Court 1', 'Court 2'])
+  })
+
+  it('publishes the next group to the live board', async () => {
+    const { token, slug } = await createClub(app)
+    const snapshot = { ...sampleSnapshot(), nextUp: [5, 6, 7, 8] }
+    expect((await put(token, { public: snapshot, full: sampleBackup() })).statusCode).toBe(200)
+    expect((await live(slug)).json().state.nextUp).toEqual([5, 6, 7, 8])
+  })
+
+  it('accepts a session from an older app that has no next group, and shows none', async () => {
+    const { token, slug } = await createClub(app)
+    const { nextUp: _omitted, ...legacy } = sampleSnapshot()
+    expect((await put(token, { public: legacy, full: sampleBackup() })).statusCode).toBe(200)
+    expect((await live(slug)).json().state.nextUp).toEqual([])
+  })
+
+  it('rejects a next group that is not a short list of ids', async () => {
+    const { token } = await createClub(app)
+    for (const nextUp of ['5', [1, 2, 3, 4, 5], [1.5, 2], [-1, 2], null]) {
+      const response = await put(token, { public: { ...sampleSnapshot(), nextUp }, full: sampleBackup() })
+      expect(response.statusCode, JSON.stringify(nextUp)).toBe(400)
+      expect(response.json().error).toBe('invalid_snapshot')
+    }
+  })
+
+  it('rejects court names that are not text or are too long', async () => {
+    const { token } = await createClub(app)
+    for (const name of [42, null, 'n'.repeat(41)]) {
+      const snapshot = { ...sampleSnapshot(), courts: [{ id: 1, name, teams: null }] }
+      const response = await put(token, { public: snapshot, full: sampleBackup() })
+      expect(response.statusCode, JSON.stringify(name)).toBe(400)
+      expect(response.json().error).toBe('invalid_snapshot')
+    }
+  })
+
   it('replaces the previous session instead of adding another', async () => {
     const { token, slug } = await createClub(app)
     await publish(app, token, 'First')

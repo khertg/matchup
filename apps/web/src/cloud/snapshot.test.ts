@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assignCourts, checkIn, createSession, recordResult } from '@/rotation/engine'
+import { checkIn, createSession, recordResult } from '@/rotation/engine'
+import { fillCourts } from '@/rotation/testing'
 import type { SessionState } from '@/rotation/types'
 import {
   parseFullBackup,
@@ -14,7 +15,7 @@ function playedSession(): SessionState {
   for (let id = 1; id <= 5; id++) {
     s = checkIn(s, { id, name: `P${id}`, skill: 3, gender: id % 2 ? 'M' : 'F' })
   }
-  return recordResult(assignCourts(s), 1, 0).state
+  return recordResult(fillCourts(s), 1, 0).state
 }
 
 describe('public snapshot', () => {

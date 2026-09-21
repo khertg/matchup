@@ -17,7 +17,9 @@ import {
   DEFAULT_AVG_GAME_MINUTES,
   isValidGameMinutes,
   MAX_AVG_GAME_MINUTES,
+  MAX_COURTS,
   MIN_AVG_GAME_MINUTES,
+  MIN_COURTS,
 } from '@/rotation/engine'
 import { MAX_LOCATION_LENGTH } from '@matchup/shared'
 import type { GameMode, MatchmakingMode } from '@/rotation/types'
@@ -37,7 +39,7 @@ function SetupCard() {
   const [gameMinutes, setGameMinutes] = useState(String(DEFAULT_AVG_GAME_MINUTES))
 
   const courtCount = Number(courts)
-  const courtsValid = Number.isInteger(courtCount) && courtCount >= 1 && courtCount <= 15
+  const courtsValid = Number.isInteger(courtCount) && courtCount >= MIN_COURTS && courtCount <= MAX_COURTS
   const gameMinutesValue = Number(gameMinutes)
   const gameMinutesValid = isValidGameMinutes(gameMinutesValue)
   const formValid = courtsValid && gameMinutesValid
@@ -71,19 +73,23 @@ function SetupCard() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="courts">Number of courts (1 to 15)</Label>
+            <Label htmlFor="courts">
+              Number of courts ({MIN_COURTS} to {MAX_COURTS})
+            </Label>
             <Input
               id="courts"
               type="number"
               inputMode="numeric"
-              min={1}
-              max={15}
+              min={MIN_COURTS}
+              max={MAX_COURTS}
               value={courts}
               onChange={(e) => setCourts(e.target.value)}
               aria-invalid={!courtsValid}
             />
             {!courtsValid && (
-              <p className="text-sm text-destructive">Enter a whole number from 1 to 15.</p>
+              <p className="text-sm text-destructive">
+                Enter a whole number from {MIN_COURTS} to {MAX_COURTS}.
+              </p>
             )}
           </div>
 

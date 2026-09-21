@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assignCourts, checkIn, createSession, lockPartners } from '@/rotation/engine'
+import { checkIn, createSession, lockPartners } from '@/rotation/engine'
+import { fillCourts } from '@/rotation/testing'
 import type { MatchmakingMode, RosterPlayer, SessionState } from '@/rotation/types'
 import { LOOKAHEAD_UNITS, selectGroup, splitGroup } from './grouping'
 
@@ -154,13 +155,13 @@ describe('selectGroup: mixed doubles', () => {
   })
 })
 
-describe('assignCourts with modes', () => {
+describe('starting games with modes', () => {
   it('fills two courts with different groups in one pass', () => {
     let s = createSession('doubles', 2, { matchmaking: 'skill' })
     ;([[1], [1], [6], [6], [1], [1], [6], [6]] as Spec[]).forEach(([skill], i) => {
       s = checkIn(s, { id: i + 1, name: `P${i + 1}`, skill })
     })
-    s = assignCourts(s)
+    s = fillCourts(s)
     const courts = s.courts.map((c) => side(c.teams!.flat()))
     expect(courts).toEqual(['1,2,5,6', '3,4,7,8'])
     expect(s.queue).toEqual([])
@@ -170,7 +171,7 @@ describe('assignCourts with modes', () => {
     let s = createSession('doubles', 1)
     for (let id = 1; id <= 3; id++) s = checkIn(s, { id, name: `P${id}`, skill: 3 })
     s = lockPartners(s, 1, 2)
-    s = assignCourts(s)
+    s = fillCourts(s)
     // Only three players wait, so nothing can be staged yet.
     expect(s.courts[0].teams).toBeNull()
   })

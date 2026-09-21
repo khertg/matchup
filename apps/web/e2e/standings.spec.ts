@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startSession } from './helpers'
+import { checkIn, startGame, startSession } from './helpers'
 
 /** Singles on one court: Ann is always Team A, so "Team A won" makes Ann win every time. */
 async function singlesWithGames(page: Page, teamAWins: number) {
@@ -8,6 +8,7 @@ async function singlesWithGames(page: Page, teamAWins: number) {
   await checkIn(page, ['Ann', 'Bob'])
   const court = page.getByRole('region', { name: 'Court 1' })
   for (let i = 0; i < teamAWins; i++) {
+    await startGame(page)
     await court.getByRole('button', { name: 'Team A won' }).click()
     await expect(page.getByText('Court 1: Team A won').first()).toBeVisible()
   }

@@ -34,13 +34,68 @@ describe('session store', () => {
     expect(store().session?.queue).toEqual([])
   })
 
-  it('stages a match automatically once four players are checked in', () => {
+  it('does not start a game by itself, however many players check in', () => {
+    store().startSession('Club', 'doubles', 2)
+    checkInMany(8)
+    expect(store().session!.courts.every((c) => c.teams === null)).toBe(true)
+    expect(store().session!.queue).toHaveLength(8)
+  })
+
+  it('starts the next group on the chosen court', () => {
+    store().startSession('Club', 'doubles', 2)
+    checkInMany(6)
+    store().startGame(2)
+    expect(store().session!.courts[0].teams).toBeNull()
+    expect(store().session!.courts[1].teams?.flat().sort()).toEqual([1, 2, 3, 4])
+    expect(store().session!.queue).toEqual([5, 6])
+  })
+
+  it('refuses to start with too few players and changes nothing', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(3)
-    expect(store().session!.courts[0].teams).toBeNull()
-    checkInMany(4)
-    expect(store().session!.courts[0].teams?.flat().sort()).toEqual([1, 2, 3, 4])
-    expect(store().session!.queue).toEqual([])
+    expect(() => store().startGame(1)).toThrow('Not enough players')
+    expect(store().session!.queue).toEqual([1, 2, 3])
+  })
+
+  it('clears the pending result undo when a game starts', () => {
+    store().startSession('Club', 'doubles', 2)
+    checkInMany(8)
+    store().startGame(1)
+    store().recordResult(1, 0)
+    store().startGame(1)
+    expect(store().undo()).toBe(false)
+  })
+
+  describe('checking in several players', () => {
+    it('queues them in the order given, without starting anything', () => {
+      store().startSession('Club', 'doubles', 1)
+      expect(store().checkInPlayers([player(3), player(1), player(2), player(4)])).toBe(4)
+      expect(store().session!.queue).toEqual([3, 1, 2, 4])
+      expect(store().session!.courts[0].teams).toBeNull()
+    })
+
+    it('skips anyone already checked in and says how many were new', () => {
+      store().startSession('Club', 'doubles', 1)
+      store().checkInPlayer(player(2))
+      expect(store().checkInPlayers([player(1), player(2), player(3), player(3)])).toBe(2)
+      expect(store().session!.queue).toEqual([2, 1, 3])
+    })
+
+    it('clears the pending result undo once, and does nothing for an empty or repeated list', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().recordResult(1, 0)
+      const before = store().session
+      expect(store().checkInPlayers([])).toBe(0)
+      expect(store().checkInPlayers([player(1)])).toBe(0)
+      expect(store().session).toBe(before)
+      expect(store().undo()).toBe(true) // still possible: nothing changed
+
+      store().recordResult(1, 0)
+      expect(store().checkInPlayers([player(5), player(6)])).toBe(2)
+      expect(store().undo()).toBe(false)
+    })
   })
 
   it('reports false when a player is checked in twice', () => {
@@ -49,17 +104,20 @@ describe('session store', () => {
     expect(store().checkInPlayer(player(1))).toBe(false)
   })
 
-  it('requeues players after a result and refills the court from the queue', () => {
+  it('requeues players after a result and leaves the court open', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(8)
+    store().startGame(1)
     store().recordResult(1, 0)
-    expect(store().session!.courts[0].teams?.flat().sort()).toEqual([5, 6, 7, 8])
-    expect(store().session!.queue.slice().sort()).toEqual([1, 2, 3, 4])
+    expect(store().session!.courts[0].teams).toBeNull()
+    expect(store().session!.queue.slice(0, 4).sort()).toEqual([5, 6, 7, 8])
+    expect(store().session!.queue.slice(4).sort()).toEqual([1, 2, 3, 4])
   })
 
   it('undoes the last result', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(8)
+    store().startGame(1)
     const before = store().session
     store().recordResult(1, 1)
     expect(store().undo()).toBe(true)
@@ -69,15 +127,17 @@ describe('session store', () => {
   it('refuses to undo after another change so later actions are not lost', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(8)
+    store().startGame(1)
     store().recordResult(1, 0)
     store().checkInPlayer(player(9))
     expect(store().undo()).toBe(false)
     expect(store().session!.queue).toContain(9)
   })
 
-  it('cancels a match without restaging it immediately', () => {
+  it('cancels a match and puts its players back in the queue', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(4)
+    store().startGame(1)
     store().cancelMatch(1)
     expect(store().session!.courts[0].teams).toBeNull()
     expect(store().session!.queue).toHaveLength(4)
@@ -99,6 +159,7 @@ describe('session store', () => {
   it('keeps a pending undo and does not revert the game length when it changes', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(8)
+    store().startGame(1)
     store().recordResult(1, 0)
     store().setAvgGameMinutes(30)
     expect(store().undo()).toBe(true)
@@ -109,18 +170,19 @@ describe('session store', () => {
   it('replaces a playing player with a chosen waiting one', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(6)
+    store().startGame(1)
     store().replacePlayer(1, 1, 6)
     expect(store().session!.courts[0].teams!.flat()).toContain(6)
     expect(store().session!.onBreak).toEqual([1])
     expect(store().session!.queue).toEqual([5])
   })
 
-  it('stages a match with the locked pair on one team once four players are in', () => {
+  it('starts a match with the locked pair on one team, and locking never starts one', () => {
     store().startSession('Club', 'doubles', 1)
-    checkInMany(3)
+    checkInMany(4)
     store().lockPartners(1, 3)
     expect(store().session!.courts[0].teams).toBeNull()
-    store().checkInPlayer(player(4))
+    store().startGame(1)
     const teams = store().session!.courts[0].teams!
     expect(teams.some((t) => t.includes(1) && t.includes(3))).toBe(true)
   })
@@ -130,14 +192,15 @@ describe('session store', () => {
     for (let id = 1; id <= 4; id++) {
       store().checkInPlayer({ id, name: `P${id}`, skill: 3, gender: 'M' })
     }
-    expect(store().session!.courts[0].teams).toBeNull()
-    store().startCourt(1)
+    expect(() => store().startGame(1)).toThrow('Not enough players')
+    store().startGame(1, { ignoreMode: true })
     expect(store().session!.courts[0].teams!.flat().sort()).toEqual([1, 2, 3, 4])
   })
 
   it('tracks stats per result and undo reverts them', () => {
     store().startSession('Club', 'doubles', 1)
     checkInMany(4)
+    store().startGame(1)
     store().recordResult(1, 0)
     expect(Object.keys(store().session!.stats)).toHaveLength(4)
     expect(store().undo()).toBe(true)
@@ -155,6 +218,92 @@ describe('session store', () => {
   it('starts a session with the chosen matchmaking mode', () => {
     store().startSession('Club', 'doubles', 1, { matchmaking: 'mixed' })
     expect(store().session!.matchmaking).toBe('mixed')
+  })
+
+  describe('managing courts', () => {
+    const courts = () => store().session!.courts
+
+    it('adds a new court open, without starting anything on it', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(8)
+      store().addCourt()
+      expect(courts()).toHaveLength(2)
+      expect(courts()[1].name).toBe('Court 2')
+      expect(courts()[1].teams).toBeNull()
+      expect(store().session!.queue).toHaveLength(8)
+    })
+
+    it('lets staff start the new court by hand', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(8)
+      store().startGame(1)
+      store().addCourt()
+      store().startGame(2)
+      expect(courts()[1].teams?.flat().sort()).toEqual([5, 6, 7, 8])
+      expect(store().session!.queue).toEqual([])
+    })
+
+    it('puts a cancelled game’s players first in the queue when a busy court closes', () => {
+      store().startSession('Club', 'doubles', 2)
+      checkInMany(4)
+      store().startGame(1)
+      store().closeCourt(1)
+      expect(courts().map((c) => c.id)).toEqual([2])
+      expect(courts()[0].teams).toBeNull()
+      expect(store().session!.queue.slice().sort()).toEqual([1, 2, 3, 4])
+    })
+
+    it('keeps the queue order of a cancelled game’s players ahead of those still waiting', () => {
+      store().startSession('Club', 'doubles', 2)
+      checkInMany(5) // player 5 waits
+      store().startGame(1)
+      store().closeCourt(1)
+      expect(courts().map((c) => c.id)).toEqual([2])
+      expect(store().session!.queue.slice(0, 4).sort()).toEqual([1, 2, 3, 4])
+      expect(store().session!.queue[4]).toBe(5)
+    })
+
+    it('renames and reorders courts, and results still land on the right court', () => {
+      store().startSession('Club', 'doubles', 3)
+      checkInMany(4)
+      store().startGame(1)
+      store().renameCourt(1, 'Center Court')
+      store().moveCourt(1, 1)
+      expect(courts().map((c) => c.name)).toEqual(['Court 2', 'Center Court', 'Court 3'])
+      store().recordResult(1, 0) // by id, unaffected by the new order
+      expect(courts().find((c) => c.id === 1)!.teams).toBeNull()
+      expect(courts().every((c) => c.teams === null)).toBe(true)
+      expect(store().session!.queue.slice().sort()).toEqual([1, 2, 3, 4])
+    })
+
+    it('lets an invalid name through as an error instead of changing anything', () => {
+      store().startSession('Club', 'doubles', 2)
+      expect(() => store().renameCourt(1, 'court 2')).toThrow(RangeError)
+      expect(courts().map((c) => c.name)).toEqual(['Court 1', 'Court 2'])
+    })
+
+    it('every court change clears the pending result undo', () => {
+      const actions: [string, () => void][] = [
+        ['add', () => store().addCourt()],
+        ['rename', () => store().renameCourt(1, 'Renamed')],
+        ['move', () => store().moveCourt(1, 1)],
+        ['close', () => store().closeCourt(2)],
+      ]
+      for (const [label, act] of actions) {
+        store().startSession('Club', 'doubles', 2)
+        checkInMany(8)
+        store().startGame(1)
+        store().recordResult(1, 0)
+        act()
+        expect(store().undo(), label).toBe(false)
+      }
+    })
+
+    it('will not close the last court', () => {
+      store().startSession('Club', 'doubles', 1)
+      expect(() => store().closeCourt(1)).toThrow(RangeError)
+      expect(courts()).toHaveLength(1)
+    })
   })
 
   it('ends the session', () => {

@@ -68,6 +68,8 @@ There is deliberately **no endpoint that lists clubs**.
   club does the same hashing work as a wrong password, so timing reveals nothing either.
 - The **live board never contains private data**: the public snapshot is copied field by field, so a genders or
   results history sent by a buggy client cannot reach viewers.
+  The board carries `nextUp` (up to four player ids, Team A then Team B) worked out by the staff device; older clients
+  may omit it and viewers then see no next group.
 - Requests are validated strictly (no type coercion, unknown fields rejected), bodies are capped, errors never
   include internal detail, and secrets are never logged.
 - **Limits of the current design:** the login lockout and the live-stream fan-out are in memory, which is right

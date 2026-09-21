@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { checkIn, startSession } from './helpers'
+import { checkIn, startGame, startSession } from './helpers'
 
 const FIVE = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve']
 
@@ -11,39 +11,91 @@ test('starts a session with the chosen courts and mode', async ({ page }) => {
   await expect(page.getByText('No one waiting')).toBeVisible()
 })
 
-test('stages a match automatically and queues the extra player', async ({ page }) => {
+test('does not start a game by itself, and shows who is next up', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
 
   const court = page.getByRole('region', { name: 'Court 1' })
-  await expect(court.getByText('In play')).toBeVisible()
+  await expect(court.getByText('Open')).toBeVisible()
+  await expect(court.getByText('In play')).toHaveCount(0)
+  await expect(page.getByText('Queue (5)')).toBeVisible()
+
+  // Next up is the first four, already split into teams; the fifth keeps waiting.
+  const nextUp = page.getByRole('group', { name: 'Next up' })
+  await expect(nextUp.getByText('Team A', { exact: true })).toBeVisible()
+  await expect(nextUp.getByText('Team B', { exact: true })).toBeVisible()
+  await expect(nextUp.getByText('Eve')).toHaveCount(0)
+  for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(nextUp.getByText(name)).toBeVisible()
+  await expect(page.getByText('Next up', { exact: true })).toHaveCount(5) // card title + four queue badges
+})
+
+test('starts the next four on the court and queues the extra player', async ({ page }) => {
+  await startSession(page)
+  await checkIn(page, FIVE)
+  await startGame(page)
+
+  const court = page.getByRole('region', { name: 'Court 1' })
+  await expect(page.getByText('Court 1 started')).toBeVisible()
   await expect(court.getByText('Team A', { exact: true })).toBeVisible()
   await expect(court.getByText('Team B', { exact: true })).toBeVisible()
   await expect(court.getByText('Eve')).toHaveCount(0)
   await expect(page.getByText('Queue (1)')).toBeVisible()
   // The only court is busy, so the waiting player sees a wait estimate (12 min average game, 1 court).
   await expect(page.getByText('~12 min')).toBeVisible()
+  // Only Eve is left, so nobody is next up until someone else checks in.
+  await expect(page.getByRole('group', { name: 'Next up' }).getByText('Waiting for 3 more players.')).toBeVisible()
 })
 
-test('records a result, rotates the queue and undoes it', async ({ page }) => {
+test('records a result, leaves the court open and undoes it', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
+  await startGame(page)
   const court = page.getByRole('region', { name: 'Court 1' })
 
   await court.getByRole('button', { name: 'Team A won' }).click()
   await expect(page.getByText('Court 1: Team A won')).toBeVisible()
-  // The waiting player is now on court and one of the previous players waits.
-  await expect(court.getByText('Eve')).toBeVisible()
-  await expect(page.getByText('Queue (1)')).toBeVisible()
+  // Nothing starts by itself: the court is open, and everyone is queued with Eve first.
+  await expect(court.getByText('Open')).toBeVisible()
+  await expect(page.getByText('Queue (5)')).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Next up' }).getByText('Eve')).toBeVisible()
 
   await page.getByRole('button', { name: 'Undo' }).click()
-  await expect(court.getByText('Eve')).toHaveCount(0)
+  await expect(court.getByText('In play')).toBeVisible()
   await expect(page.getByText('Queue (1)')).toBeVisible()
+})
+
+test('sends the next group to whichever court staff choose', async ({ page }) => {
+  await startSession(page, { courts: 2 })
+  await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Flo', 'Gus', 'Hal'])
+
+  await startGame(page, 'Court 2')
+  await expect(page.getByRole('region', { name: 'Court 1' }).getByText('Open')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Court 2' }).getByText('Ann')).toBeVisible()
+  // Next up has moved on to the following four.
+  const nextUp = page.getByRole('group', { name: 'Next up' })
+  await expect(nextUp.getByText('Eve')).toBeVisible()
+  await expect(nextUp.getByText('Ann')).toHaveCount(0)
+
+  await startGame(page, 'Court 1')
+  await expect(page.getByText('No one waiting')).toBeVisible()
+})
+
+test('skips a player on a break when choosing who is next up', async ({ page }) => {
+  await startSession(page)
+  await checkIn(page, FIVE)
+  await page.getByRole('tab', { name: 'Check-in' }).click()
+  await page.getByRole('listitem').filter({ hasText: 'Ann' }).getByRole('button', { name: 'Take a break' }).click()
+  await page.getByRole('tab', { name: 'Board' }).click()
+
+  const nextUp = page.getByRole('group', { name: 'Next up' })
+  await expect(nextUp.getByText('Ann')).toHaveCount(0)
+  await expect(nextUp.getByText('Eve')).toBeVisible()
 })
 
 test('refuses to undo once the session has changed', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
+  await startGame(page)
   const court = page.getByRole('region', { name: 'Court 1' })
 
   await court.getByRole('button', { name: 'Team B won' }).click()
@@ -52,12 +104,13 @@ test('refuses to undo once the session has changed', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByText("Can't undo: the session changed after that result")).toBeVisible()
-  await expect(page.getByText('Queue (2)')).toBeVisible()
+  await expect(page.getByText('Queue (6)')).toBeVisible()
 })
 
 test('lets a waiting player take a break and come back', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
+  await startGame(page)
 
   await page.getByRole('tab', { name: 'Check-in' }).click()
   await page.getByRole('button', { name: 'Take a break' }).click()
@@ -84,6 +137,7 @@ test('saves the chosen skill level', async ({ page }) => {
 test('replaces a playing player with someone waiting', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
+  await startGame(page)
   const court = page.getByRole('region', { name: 'Court 1' })
   await expect(court.getByText('Ann')).toBeVisible()
 
@@ -102,6 +156,7 @@ test('replaces a playing player with someone waiting', async ({ page }) => {
 test('offers no substitute when nobody is waiting', async ({ page }) => {
   await startSession(page)
   await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+  await startGame(page)
   await page.getByRole('button', { name: 'Replace Ann' }).click()
   await expect(page.getByText('No one is waiting to substitute')).toBeVisible()
 })
@@ -109,6 +164,7 @@ test('offers no substitute when nobody is waiting', async ({ page }) => {
 test('uses the game length from setup and lets it be changed', async ({ page }) => {
   await startSession(page, { gameMinutes: 20 })
   await checkIn(page, FIVE)
+  await startGame(page)
   await expect(page.getByText('~20 min')).toBeVisible()
 
   await page.getByLabel('Game length (min)').fill('30')
@@ -118,6 +174,7 @@ test('uses the game length from setup and lets it be changed', async ({ page }) 
 test('keeps the session after a reload', async ({ page }) => {
   await startSession(page, { location: 'Persistent Club' })
   await checkIn(page, FIVE)
+  await startGame(page)
 
   await page.reload()
 
@@ -129,6 +186,7 @@ test('keeps the session after a reload', async ({ page }) => {
 test('keeps working offline', async ({ page, context }) => {
   await startSession(page)
   await checkIn(page, FIVE)
+  await startGame(page)
 
   await context.setOffline(true)
   await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Team A won' }).click()

@@ -16,9 +16,15 @@ interface Props {
   /** Waiting player ids in queue order, offered as substitutes. */
   queue?: number[]
   onReplace?: (outId: number, inId: number) => void
-  /** True when waiting players could start a game here despite the matchmaking mode. */
-  canStart?: boolean
-  onStart?: () => void
+  /**
+   * What an open court can do. "ready": a next group exists, so Start game is offered.
+   * "override": no group fits the matchmaking mode (mixed doubles), but staff may start
+   * with whoever is waiting. "none": not enough players yet.
+   */
+  startState?: 'ready' | 'override' | 'none'
+  /** Why no game can start yet, shown on an open court when startState is "none". */
+  waitingMessage?: string
+  onStart?: (options?: { ignoreMode?: boolean }) => void
   onResult?: (winner: 0 | 1) => void
   onCancel?: () => void
 }
@@ -32,16 +38,17 @@ export function CourtCard({
   readOnly = false,
   queue = [],
   onReplace,
-  canStart = false,
+  startState = 'none',
+  waitingMessage = 'Waiting for players to check in',
   onStart,
   onResult,
   onCancel,
 }: Props) {
   return (
-    <Card role="region" aria-label={`Court ${court.id}`}>
+    <Card role="region" aria-label={court.name}>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          Court {court.id}
+        <CardTitle className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate">{court.name}</span>
           {court.teams ? <Badge>In play</Badge> : <Badge variant="outline">Open</Badge>}
         </CardTitle>
       </CardHeader>
@@ -98,15 +105,27 @@ export function CourtCard({
           </>
         ) : (
           <div className="space-y-3 py-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              {canStart && !readOnly
-                ? 'No group fits this matchmaking mode yet. Check in more players, or start with whoever is waiting.'
-                : 'Waiting for players to check in'}
-            </p>
-            {canStart && !readOnly && (
-              <Button variant="outline" className="h-11 w-full" onClick={onStart}>
-                Start with waiting players
-              </Button>
+            {readOnly ? (
+              <p className="text-sm text-muted-foreground">Waiting for the next game</p>
+            ) : startState === 'ready' ? (
+              <>
+                <p className="text-sm text-muted-foreground">Ready for the next game</p>
+                <Button className="h-11 w-full" onClick={() => onStart?.()}>
+                  Start game
+                </Button>
+              </>
+            ) : startState === 'override' ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  No group fits this matchmaking mode yet. Check in more players, or start with whoever is
+                  waiting.
+                </p>
+                <Button variant="outline" className="h-11 w-full" onClick={() => onStart?.({ ignoreMode: true })}>
+                  Start with waiting players
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{waitingMessage}</p>
             )}
           </div>
         )}

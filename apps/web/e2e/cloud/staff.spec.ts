@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn } from '../helpers'
+import { checkIn, startGame } from '../helpers'
 import {
   apiCreateClub,
   apiLive,
@@ -246,6 +246,31 @@ test.describe('publishing the live session', () => {
     await expect(page.getByRole('status')).toHaveText('Live and synced')
   })
 
+  test('publishes a whole roster check-in as one update carrying everyone', async ({ page, request }) => {
+    const club = uniqueClub('Batch')
+    await apiCreateClub(request, club)
+    await signInAndStart(page, club, 'Regulars')
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
+    await page.getByLabel('Location').fill('Regulars Again')
+    await page.getByRole('button', { name: 'Start session' }).click()
+    await expect(page.getByRole('heading', { name: 'Regulars Again' })).toBeVisible()
+    await expect.poll(queueLength(request, club.slug)).toBe(0)
+
+    const publishes: string[] = []
+    page.on('request', (r) => {
+      if (r.method() === 'PUT' && r.url().endsWith('/api/session')) publishes.push(r.url())
+    })
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await page.getByRole('group', { name: 'Check in from the roster' }).getByRole('button', { name: 'Select all shown' }).click()
+    await page.getByRole('button', { name: 'Check in 4 players' }).click()
+
+    await expect.poll(queueLength(request, club.slug)).toBe(4)
+    await expect(page.getByRole('status')).toHaveText('Live and synced')
+    expect(publishes).toHaveLength(1)
+  })
+
   test('holds changes while offline and sends them when the connection returns', async ({ page, context, request }) => {
     const club = uniqueClub('Offline')
     await apiCreateClub(request, club)
@@ -334,7 +359,15 @@ test.describe('two browsers', () => {
     await expect(viewer.getByRole('heading', { name: 'Live Night' })).toBeVisible({ timeout: 8000 })
 
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    // Nothing has started, and the phone shows who is next up: the same four as staff see.
     const court = viewer.getByRole('region', { name: 'Court 1' })
+    const nextUp = viewer.getByRole('group', { name: 'Next up' })
+    for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(nextUp.getByText(name)).toBeVisible({ timeout: 8000 })
+    await expect(nextUp.getByText('Eve')).toHaveCount(0)
+    await expect(court.getByText('Open')).toBeVisible()
+
+    // Staff start the game: it appears on the phone, and next up moves on.
+    await startGame(page)
     await expect(court.getByText('In play')).toBeVisible({ timeout: 8000 })
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(court.getByText(name)).toBeVisible()
     await expect(viewer.getByText('Queue (1)')).toBeVisible()
@@ -351,12 +384,83 @@ test.describe('two browsers', () => {
   })
 })
 
+test.describe('managing courts', () => {
+  test('a player’s phone follows courts being added, renamed, reordered and closed', async ({ page, browser, request }) => {
+    const club = uniqueClub('Courts')
+    await apiCreateClub(request, club)
+    const viewerContext = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      serviceWorkers: 'block',
+    })
+    const viewer = await viewerContext.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+    await signInAndStart(page, club, 'Court Night') // starts with the default four courts
+
+    // Court cards set role="region" themselves; the attribute keeps out the toast area.
+    const viewerCourts = () =>
+      viewer.locator('[role="region"]').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
+    const expectCourts = (names: string[]) =>
+      expect.poll(viewerCourts, { timeout: 8000 }).toEqual(names)
+
+    await expectCourts(['Court 1', 'Court 2', 'Court 3', 'Court 4'])
+
+    await page.getByRole('button', { name: 'Add court' }).click()
+    await expectCourts(['Court 1', 'Court 2', 'Court 3', 'Court 4', 'Court 5'])
+
+    await page.getByRole('button', { name: 'Manage courts' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Manage courts' })
+    const field = dialog.getByLabel('Name of Court 1')
+    await field.fill('Center Court')
+    await field.press('Enter')
+    await expectCourts(['Center Court', 'Court 2', 'Court 3', 'Court 4', 'Court 5'])
+
+    await dialog.getByRole('button', { name: 'Move Center Court down' }).click()
+    await expectCourts(['Court 2', 'Center Court', 'Court 3', 'Court 4', 'Court 5'])
+
+    await dialog.getByRole('button', { name: 'Close Court 4' }).click()
+    await expectCourts(['Court 2', 'Center Court', 'Court 3', 'Court 5'])
+
+    // And the server holds the same board.
+    const board = (await (await apiLive(request, club.slug)).json()).state.courts
+    expect(board.map((c: { name: string }) => c.name)).toEqual(['Court 2', 'Center Court', 'Court 3', 'Court 5'])
+    await viewerContext.close()
+  })
+
+  test('a court added while people wait stays open until staff start it, and the viewer sees the game', async ({ page, browser, request }) => {
+    const club = uniqueClub('Fill')
+    await apiCreateClub(request, club)
+    const viewerContext = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      serviceWorkers: 'block',
+    })
+    const viewer = await viewerContext.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+
+    await page.goto('/')
+    await uiLogin(page, club)
+    await expectSignedIn(page)
+    await page.getByLabel('Number of courts (1 to 15)').fill('1')
+    await page.getByRole('button', { name: 'Start session' }).click()
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal'])
+    await startGame(page)
+
+    await page.getByRole('button', { name: 'Add court' }).click()
+    const court2 = viewer.getByRole('region', { name: 'Court 2' })
+    await expect(court2.getByText('Open')).toBeVisible({ timeout: 8000 })
+    await startGame(page, 'Court 2')
+    await expect(court2.getByText('In play')).toBeVisible({ timeout: 8000 })
+    for (const name of ['Eve', 'Fay', 'Gus', 'Hal']) await expect(court2.getByText(name)).toBeVisible()
+    await viewerContext.close()
+  })
+})
+
 test.describe('resuming on another device', () => {
   test('offers the session another staff device was running and loads it', async ({ page, browser, request }) => {
     const club = uniqueClub('Resumable')
     await apiCreateClub(request, club)
     await signInAndStart(page, club, 'Saved Night')
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    await startGame(page)
     await expect.poll(queueLength(request, club.slug)).toBe(1)
 
     const second = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
@@ -390,6 +494,7 @@ test.describe('club leaderboard', () => {
     await page.getByRole('button', { name: 'Singles' }).click()
     await page.getByRole('button', { name: 'Start session' }).click()
     await checkIn(page, ['Ann', 'Bob'])
+    await startGame(page)
     await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Team A won' }).click()
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()

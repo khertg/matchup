@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { assignCourts, checkIn, createSession, recordResult } from '@/rotation/engine'
+import { checkIn, createSession, recordResult } from '@/rotation/engine'
+import { fillCourts } from '@/rotation/testing'
 import type { SessionState } from '@/rotation/types'
 import { db } from './db'
 import { saveLifetimeStats } from './lifetime'
@@ -13,7 +14,7 @@ beforeEach(async () => {
 async function playOneGame(names: string[]): Promise<SessionState> {
   let s = createSession('doubles', 1)
   for (const name of names) s = checkIn(s, await addOrGetPlayer(name, 3))
-  return recordResult(assignCourts(s), 1, 0).state
+  return recordResult(fillCourts(s), 1, 0).state
 }
 
 describe('addOrGetPlayer', () => {

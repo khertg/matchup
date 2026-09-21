@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { CourtCard } from '@/components/CourtCard'
+import { AddCourtButton, ManageCourtsDialog } from '@/components/ManageCourtsDialog'
+import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { waitingMessage } from '@/lib/nextUp'
 import {
   isValidGameMinutes,
   MAX_AVG_GAME_MINUTES,
   MIN_AVG_GAME_MINUTES,
+  nextGroup,
 } from '@/rotation/engine'
-import { selectGroup } from '@/matchmaking/grouping'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -50,16 +53,23 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const undo = useSessionStore((s) => s.undo)
   const cancelMatch = useSessionStore((s) => s.cancelMatch)
   const replacePlayer = useSessionStore((s) => s.replacePlayer)
-  const startCourt = useSessionStore((s) => s.startCourt)
+  const startGame = useSessionStore((s) => s.startGame)
 
-  // Only true when a court is open although a game could be formed (mixed doubles waiting on genders).
-  const canStart =
-    session.courts.some((c) => !c.teams) &&
-    selectGroup(session, session.queue, { ignoreMode: true }) !== null
+  // Games never start by themselves. This is the group staff would start next, and what each
+  // open court offers: start it, start with whoever is waiting (mixed doubles), or wait.
+  const group = nextGroup(session)
+  const startState = group
+    ? 'ready'
+    : nextGroup(session, { ignoreMode: true })
+      ? 'override'
+      : 'none'
+
+  const courtName = (courtId: number) =>
+    session.courts.find((c) => c.id === courtId)?.name ?? `Court ${courtId}`
 
   function handleResult(courtId: number, winner: 0 | 1) {
     recordResult(courtId, winner)
-    toast(`Court ${courtId}: ${TEAM_NAMES[winner]} won`, {
+    toast(`${courtName(courtId)}: ${TEAM_NAMES[winner]} won`, {
       duration: 10_000,
       action: {
         label: 'Undo',
@@ -70,9 +80,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
     })
   }
 
-  function handleStart(courtId: number) {
-    startCourt(courtId)
-    toast(`Court ${courtId} started`)
+  function handleStart(courtId: number, options?: { ignoreMode?: boolean }) {
+    startGame(courtId, options)
+    toast(`${courtName(courtId)} started`)
   }
 
   function handleReplace(courtId: number, outId: number, inId: number) {
@@ -82,7 +92,18 @@ export function BoardScreen({ session }: { session: SessionState }) {
 
   return (
     <div className="space-y-4">
-      <GameLengthControl minutes={session.avgGameMinutes} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <GameLengthControl minutes={session.avgGameMinutes} />
+        <div className="flex flex-wrap items-start gap-2">
+          <AddCourtButton session={session} />
+          <ManageCourtsDialog session={session} />
+        </div>
+      </div>
+      <NextUpCard
+        nextUp={group?.players ?? []}
+        players={session.players}
+        emptyMessage={waitingMessage(session)}
+      />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {session.courts.map((court) => (
           <CourtCard
@@ -91,15 +112,16 @@ export function BoardScreen({ session }: { session: SessionState }) {
             players={session.players}
             queue={session.queue}
             partners={session.partners}
-            canStart={canStart}
-            onStart={() => handleStart(court.id)}
+            startState={startState}
+            waitingMessage={waitingMessage(session)}
+            onStart={(options) => handleStart(court.id, options)}
             onReplace={(outId, inId) => handleReplace(court.id, outId, inId)}
             onResult={(winner) => handleResult(court.id, winner)}
             onCancel={() => cancelMatch(court.id)}
           />
         ))}
       </div>
-      <QueueList session={session} />
+      <QueueList session={session} nextUp={group?.players} />
     </div>
   )
 }

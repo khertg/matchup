@@ -35,6 +35,7 @@ export const MAX_PASSWORD_LENGTH = 128
 export const MAX_CLUB_NAME_LENGTH = 80
 export const MAX_PLAYER_NAME_LENGTH = 80
 export const MAX_LOCATION_LENGTH = 120
+export const MAX_COURT_NAME_LENGTH = 40
 
 // ---- requests and responses -------------------------------------------------
 

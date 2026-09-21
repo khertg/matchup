@@ -22,7 +22,10 @@ export interface PlayerStats {
 export type Teams = [number[], number[]]
 
 export interface Court {
+  /** Never changes and is never reused while the court exists; results and undo refer to it. */
   id: number
+  /** What people call the court. Editable, and unique within the session. */
+  name: string
   /** null while the court is empty. */
   teams: Teams | null
 }
