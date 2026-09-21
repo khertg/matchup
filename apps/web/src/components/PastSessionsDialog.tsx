@@ -223,7 +223,7 @@ export function PastSessionsDialog() {
                 {viewing.session.mode === 'doubles' ? ` · ${matchmakingLabel(viewing.session.matchmaking)}` : ''}
               </DialogDescription>
             </DialogHeader>
-            <StandingsScreen session={viewing.session} location={viewing.location} readOnly />
+            <StandingsScreen session={viewing.session} location={viewing.location} readOnly repeatStats />
             {confirmDelete ? (
               <div
                 role="group"

@@ -1,5 +1,6 @@
 import { MedalBadge } from '@/components/MedalBadge'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { RepeatStats } from '@/components/RepeatStats'
 import { StatsCardDialog } from '@/components/StatsCardDialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -25,13 +26,16 @@ interface Props {
   location: string
   /** Read-only views (the public viewer page) hide the share-card buttons. */
   readOnly?: boolean
+  /** Also show how often partners and opponents repeated. Needs the finished games, which the public live page does not have. */
+  repeatStats?: boolean
 }
 
-export function StandingsScreen({ session, location, readOnly = false }: Props) {
+export function StandingsScreen({ session, location, readOnly = false, repeatStats = false }: Props) {
   const standings = rankPlayers(session)
   const date = new Date().toLocaleDateString()
 
   return (
+    <div className="space-y-4">
     <Card>
       <CardHeader>
         <CardTitle>Standings</CardTitle>
@@ -108,5 +112,7 @@ export function StandingsScreen({ session, location, readOnly = false }: Props) 
         )}
       </CardContent>
     </Card>
+    {repeatStats && <RepeatStats session={session} />}
+    </div>
   )
 }
