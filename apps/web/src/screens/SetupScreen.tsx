@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ClubLogo, LogoEditorDialog } from '@/components/ClubLogo'
 import { ClubPanel } from '@/components/ClubPanel'
 import { LifetimeLeaderboard } from '@/components/LifetimeLeaderboard'
 import { PastSessionsDialog } from '@/components/PastSessionsDialog'
@@ -57,8 +58,14 @@ function SetupCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Matchup</CardTitle>
+        <div className="flex items-center gap-3">
+          <ClubLogo className="max-h-14" />
+          <CardTitle className="text-2xl">Matchup</CardTitle>
+        </div>
         <CardDescription>Set up an open play session</CardDescription>
+        <div>
+          <LogoEditorDialog />
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Player } from '@/db/db'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import { setRosterSkill } from '@/db/roster'
 import { skillLabel } from '@/lib/skill'
@@ -123,10 +124,13 @@ export function RosterCheckIn({ session, roster }: Props) {
                         type="checkbox"
                         className="size-4 accent-primary"
                         checked={chosen.includes(id)}
+                        // Named by the player alone: the row also holds the avatar and level buttons.
+                        aria-label={p.name}
                         disabled={blocked}
                         onChange={() => toggle(id)}
                       />
-                      <span className="flex-1">{p.name}</span>
+                      <PlayerAvatar id={id} name={p.name} size="sm" editable viewable />
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
                       {blocked && <span className="text-xs text-muted-foreground">Set gender first</span>}
                       <SkillBadge
                         player={p}

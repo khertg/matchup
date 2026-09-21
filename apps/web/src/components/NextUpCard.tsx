@@ -1,6 +1,7 @@
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
 import type { RosterPlayer } from '@/rotation/types'
@@ -22,6 +23,8 @@ interface Props {
   onReset?: () => void
   /** Staff only: change a player's skill level from their badge. */
   onSkillChange?: (playerId: number, skill: SkillLevel) => void
+  /** Staff only: tap a player's avatar to change it. */
+  editable?: boolean
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
@@ -30,7 +33,7 @@ const TEAM_NAMES = ['Team A', 'Team B'] as const
  * The group that will play next, already split into teams. Staff read it to call
  * people up before starting a game; the live board shows the same card to players.
  */
-export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset, onSkillChange }: Props) {
+export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset, onSkillChange, editable = false }: Props) {
   const half = nextUp.length / 2
   const teams = [nextUp.slice(0, half), nextUp.slice(half)]
 
@@ -60,7 +63,10 @@ export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onRepl
                 <ul>
                   {team.map((id) => (
                     <li key={id} className="flex items-center justify-between gap-2 py-0.5">
-                      <span>{players[id]?.name ?? 'Player'}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <PlayerAvatar id={id} name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
+                        <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
+                      </span>
                       {players[id] && (
                         <SkillBadge
                           player={players[id]}

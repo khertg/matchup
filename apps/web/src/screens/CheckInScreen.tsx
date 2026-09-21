@@ -25,6 +25,7 @@ import {
 import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
 import { db, type Gender, type SkillLevel } from '@/db/db'
 import { addOrGetPlayer } from '@/db/roster'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import { DEFAULT_SKILL, SKILL_LEVELS, skillOptionLabel } from '@/lib/skill'
 import { useSkillEditor } from '@/lib/useSkillEditor'
@@ -293,7 +294,10 @@ export function CheckInScreen({ session }: { session: SessionState }) {
             <ul className="divide-y">
               {session.queue.map((id) => (
                 <li key={id} className="flex items-center gap-3 py-2">
-                  <span className="flex-1">{session.players[id].name}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <PlayerAvatar id={id} name={session.players[id].name} editable viewable />
+                    <span className="min-w-0 truncate">{session.players[id].name}</span>
+                  </span>
                   <SkillBadge player={session.players[id]} display="name" onChange={(skill) => changeSkill(id, skill)} />
                   <Button variant="outline" size="sm" onClick={() => checkOutPlayer(id)}>
                     Take a break
@@ -316,7 +320,10 @@ export function CheckInScreen({ session }: { session: SessionState }) {
             <ul className="divide-y">
               {session.onBreak.map((id) => (
                 <li key={id} className="flex items-center gap-3 py-2">
-                  <span className="flex-1">{session.players[id].name}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <PlayerAvatar id={id} name={session.players[id].name} editable />
+                    <span className="min-w-0 truncate">{session.players[id].name}</span>
+                  </span>
                   <SkillBadge player={session.players[id]} display="name" onChange={(skill) => changeSkill(id, skill)} />
                   <Button variant="outline" size="sm" onClick={() => checkInPlayer(session.players[id])}>
                     Back to queue

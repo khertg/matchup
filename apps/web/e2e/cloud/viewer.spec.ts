@@ -61,7 +61,10 @@ test.describe('live viewer', () => {
     expect(nextUpTop).toBeLessThan(queueTop)
     // Players can look but not change anything, including who is next up.
     await expect(page.getByRole('button', { name: /in Next up$/ })).toHaveCount(0)
-    await expect(nextUp.getByRole('button')).toHaveCount(0)
+    // The only buttons are the ones that show a picture large.
+    for (const button of await nextUp.getByRole('button').all()) {
+      await expect(button).toHaveAccessibleName(/^View .*avatar$/)
+    }
     // Players can look but not start anything.
     await expect(page.getByRole('button', { name: /Start/ })).toHaveCount(0)
   })

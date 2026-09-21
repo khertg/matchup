@@ -1,17 +1,19 @@
 import type {
   AuthGrant,
+  AvatarIndex,
   ErrorCode,
   HistorySummary,
   LifetimePlayer,
   LiveRow,
   LoginResponse,
   PublicSnapshot,
+  PutAvatarRequest,
   PutHistoryRequest,
   ResetPasswordResponse,
 } from '@matchup/shared'
 import type { FullBackup } from './snapshot'
 
-export type { HistorySummary, LifetimePlayer, LiveRow, PutHistoryRequest }
+export type { AvatarIndex, HistorySummary, LifetimePlayer, LiveRow, PutAvatarRequest, PutHistoryRequest }
 
 /**
  * Everything the app needs from a cloud backend. The web app talks only to
@@ -40,6 +42,21 @@ export interface CloudApi {
   /** One ended session in full (a FullBackup), or null if it is gone. */
   fetchHistory(token: string, id: string): Promise<unknown | null>
   deleteHistory(token: string, id: string): Promise<void>
+
+  /** Set the club's logo. `data` is the image as base64 text. */
+  putLogo(token: string, data: string): Promise<void>
+  deleteLogo(token: string): Promise<void>
+  /** Set a player's avatar; `key` is the lower-case player name. */
+  putAvatar(token: string, key: string, avatar: PutAvatarRequest): Promise<void>
+  deleteAvatar(token: string, key: string): Promise<void>
+  /** Take every player photo down (emoji and initials avatars stay). */
+  deleteAvatarPhotos(token: string): Promise<void>
+  /** Every avatar the club has and its logo's version. Public, so the live page can use it. */
+  fetchAvatarIndex(slug: string): Promise<AvatarIndex>
+  /** Where the club's logo image is, at this version. */
+  logoUrl(slug: string, version: number): string
+  /** Where a player's photo is, at this version. */
+  avatarPhotoUrl(slug: string, key: string, version: number): string
 
   /** The public live board for a club, or null when no session is running. */
   fetchLive(slug: string): Promise<LiveRow | null>

@@ -1,4 +1,6 @@
 import type { Ref } from 'react'
+import { ClubLogo } from '@/components/ClubLogo'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import type { Standing } from '@/rotation/standings'
 
 interface Props {
@@ -23,7 +25,10 @@ export function StatsCard({ standing, location, date, ref }: Props) {
       style={{ background: 'linear-gradient(135deg, #14532d 0%, #16a34a 100%)' }}
     >
       <div className="flex items-center justify-between text-sm font-semibold tracking-widest">
-        <span>MATCHUP</span>
+        <span className="flex items-center gap-2">
+          <ClubLogo className="max-h-7 max-w-24 rounded" />
+          MATCHUP
+        </span>
         <span className="opacity-80">{date}</span>
       </div>
 
@@ -31,7 +36,10 @@ export function StatsCard({ standing, location, date, ref }: Props) {
         <p className="text-sm uppercase tracking-wide opacity-80">
           {medal ? MEDAL_TEXT[medal] : `Rank #${rank}`}
         </p>
-        <p className="mt-1 break-words text-4xl leading-tight font-bold">{name}</p>
+        <div className="mt-1 flex items-center gap-3">
+          <PlayerAvatar id={standing.id} name={name} size="lg" className="ring-2 ring-white/70" />
+          <p className="min-w-0 break-words text-4xl leading-tight font-bold">{name}</p>
+        </div>
         <p className="mt-1 text-lg opacity-90">
           Finished #{rank} at {location}
         </p>

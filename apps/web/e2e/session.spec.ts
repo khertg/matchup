@@ -117,7 +117,7 @@ test.describe('cancelling a game', () => {
     await expect(court.getByText('In play')).toBeVisible()
 
     await court.getByRole('button', { name: 'Cancel game' }).click()
-    await page.mouse.click(2, 2)
+    await page.locator('[data-slot="dialog-overlay"]').click({ position: { x: 4, y: 4 } })
     await expect(dialog).toHaveCount(0)
     await expect(court.getByText('In play')).toBeVisible()
     await expect(page.getByText('Court 1: game cancelled')).toHaveCount(0)

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CancelGameDialog } from '@/components/CancelGameDialog'
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
 import { ScoreDialog } from '@/components/ScoreDialog'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
 import { formatDuration, useNow } from '@/lib/time'
@@ -92,7 +93,10 @@ export function CourtCard({
                 <ul>
                   {team.map((id) => (
                     <li key={id} className="flex items-center gap-2 py-0.5">
-                      <span className="flex-1">{players[id]?.name}</span>
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        {players[id] && <PlayerAvatar id={id} name={players[id].name} size="sm" editable={!readOnly} viewable />}
+                        <span className="min-w-0 truncate">{players[id]?.name}</span>
+                      </span>
                       {players[id] && (
                         <SkillBadge
                           player={players[id]}

@@ -158,8 +158,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
         picked={isNextUpPicked(session)}
         onReset={resetNextUp}
         onSkillChange={changeSkill}
+        editable
       />
-      <QueueList session={session} nextUp={group?.players} onSkillChange={changeSkill} />
+      <QueueList session={session} nextUp={group?.players} onSkillChange={changeSkill} editable />
       <MatchLog matches={session.matches ?? []} players={session.players} />
     </div>
   )

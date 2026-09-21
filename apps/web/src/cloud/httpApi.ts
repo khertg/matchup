@@ -1,6 +1,7 @@
 import {
   isErrorCode,
   type AuthGrant,
+  type AvatarIndex,
   type HistorySummary,
   type LifetimePlayer,
   type LiveRow,
@@ -112,6 +113,33 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
     async deleteHistory(token, id) {
       await request('DELETE', `/history/${encodeURIComponent(id)}`, { token })
     },
+
+    async putLogo(token, data) {
+      await request('PUT', '/logo', { token, body: { logo: { data } } })
+    },
+
+    async deleteLogo(token) {
+      await request('DELETE', '/logo', { token })
+    },
+
+    async putAvatar(token, key, avatar) {
+      await request('PUT', `/avatars/${encodeURIComponent(key)}`, { token, body: avatar })
+    },
+
+    async deleteAvatar(token, key) {
+      await request('DELETE', `/avatars/${encodeURIComponent(key)}`, { token })
+    },
+
+    async deleteAvatarPhotos(token) {
+      await request('DELETE', '/avatars', { token })
+    },
+
+    fetchAvatarIndex: (slug) => request<AvatarIndex>('GET', `/clubs/${slugPath(slug)}/avatars`),
+
+    logoUrl: (slug, version) => `${base}/clubs/${slugPath(slug)}/logo?v=${version}`,
+
+    avatarPhotoUrl: (slug, key, version) =>
+      `${base}/clubs/${slugPath(slug)}/avatars/${encodeURIComponent(key)}/photo?v=${version}`,
 
     fetchLive: (slug) => request<LiveRow>('GET', `/clubs/${slugPath(slug)}/live`, { nullOn404: true }),
 

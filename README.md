@@ -42,6 +42,14 @@ Matchmaking modes (doubles): *Auto-balanced* (first come, first served, even tea
 
 The active session is saved on the device, so a reload or going offline keeps it.
 
+## Club logo and player avatars
+
+Every player has a round **avatar** and the club can have a **logo**, both changeable at any time.
+
+- **Avatars:** with nothing set a player shows their initials on a colour taken from their name. **Tap any avatar to see the picture large** (on the Board, Next up, courts, Check-in lists, roster list and standings, and on the players' live page). Staff get a **Change avatar** button in that large view to choose a **photo** (from a file, or taken with the camera on a phone), an **emoji**, or a **colour**, or to remove it. After choosing or taking a photo you **crop it yourself**: drag the picture inside the round frame and pinch, scroll or use the slider to zoom (arrow keys and + / - work too). Photos are saved as a 128px square and shrunk, so they stay small and work offline. An avatar belongs to the roster player, so it shows everywhere they appear, in every future session, on the stats card and on the end-of-session podium.
+- **Logo:** add or change it with the **Club logo** button on the setup screen. You can optionally **crop it with a free rectangle** (or use the whole picture). It shows on the setup screen, the session header, the stats card and the players' live page.
+- **In the club cloud (signed in):** the logo and emoji and initials avatars are sent to the club, so the players' live page and other staff devices show them. **Photos are not shared unless staff switch on "Show player photos on the live page"** in the club panel (off by default, because anyone with the live link can then see them); switching it off removes the photos from the server. A device's own avatar wins over the club's for the same player, and the club's is matched by name.
+
 ## Cloud sync and live board (optional)
 
 With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the setup screen offers a **Cloud club**. Staff create a club (and get a one-time **recovery code**) or log in, then get:

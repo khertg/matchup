@@ -1,3 +1,4 @@
+import { ClubLogo } from '@/components/ClubLogo'
 import { EndSessionDialog } from '@/components/EndSessionDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { SyncBadge } from '@/components/SyncBadge'
@@ -16,7 +17,9 @@ export function SessionScreen({ session }: { session: SessionState }) {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between gap-2">
-        <div>
+        <div className="flex min-w-0 items-center gap-3">
+          <ClubLogo className="max-h-12" />
+          <div className="min-w-0">
           <h1 className="text-2xl font-bold">{location}</h1>
           <div className="mt-1 flex flex-wrap gap-2">
             <Badge variant="secondary">{session.mode === 'doubles' ? 'Doubles' : 'Singles'}</Badge>
@@ -26,6 +29,7 @@ export function SessionScreen({ session }: { session: SessionState }) {
             <Badge variant="secondary">
               {session.courts.length} {session.courts.length === 1 ? 'court' : 'courts'}
             </Badge>
+          </div>
           </div>
         </div>
 

@@ -1,4 +1,5 @@
 import { MedalBadge } from '@/components/MedalBadge'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { StatsCardDialog } from '@/components/StatsCardDialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -76,7 +77,12 @@ export function StandingsScreen({ session, location, readOnly = false }: Props) 
                         <MedalBadge medal={row.medal} />
                       </span>
                     </TableCell>
-                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <span className="flex items-center gap-2">
+                        <PlayerAvatar id={row.id} name={row.name} size="sm" editable={!readOnly} viewable />
+                        {row.name}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-right">{row.games}</TableCell>
                     <TableCell className="text-right">{row.wins}</TableCell>
                     <TableCell className="text-right">{row.losses}</TableCell>

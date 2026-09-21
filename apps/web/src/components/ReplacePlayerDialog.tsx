@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import type { RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -90,7 +91,8 @@ export function ReplacePlayerDialog({ mode = 'court', player, waiting, onReplace
                       setOpen(false)
                     }}
                   >
-                    <span>
+                    <span className="flex items-center gap-2">
+                      <PlayerAvatar id={p.id} name={p.name} size="sm" />
                       {p.name}
                       {!nextUp && index === 0 && (
                         <span className="ml-2 text-xs text-muted-foreground">next in line</span>

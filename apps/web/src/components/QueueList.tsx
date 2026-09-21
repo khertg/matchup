@@ -2,6 +2,7 @@ import { Lock } from 'lucide-react'
 import { partnerOf } from '@/matchmaking/grouping'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
 import { estimateWaitMinutes } from '@/rotation/engine'
@@ -13,9 +14,11 @@ interface Props {
   nextUp?: number[]
   /** Staff only: change a player's skill level from their badge. */
   onSkillChange?: (playerId: number, skill: SkillLevel) => void
+  /** Staff only: tap a player's avatar to change it. */
+  editable?: boolean
 }
 
-export function QueueList({ session, nextUp = [], onSkillChange }: Props) {
+export function QueueList({ session, nextUp = [], onSkillChange, editable = false }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -33,8 +36,9 @@ export function QueueList({ session, nextUp = [], onSkillChange }: Props) {
               return (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="w-6 text-sm text-muted-foreground">{index + 1}</span>
-                  <span className="flex flex-1 items-center gap-1">
-                    {player.name}
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <PlayerAvatar id={id} name={player.name} size="sm" editable={editable} viewable />
+                    <span className="min-w-0 truncate">{player.name}</span>
                     {partner !== undefined && (
                       <Lock
                         className="size-3 text-muted-foreground"

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { clubSlugFromPath } from '@matchup/shared'
 import { startCloudSync } from '@/cloud/sync'
+import { AvatarProvider } from '@/components/AvatarProvider'
 import { Toaster } from '@/components/ui/sonner'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { SetupScreen } from '@/screens/SetupScreen'
@@ -21,6 +22,7 @@ export default function App() {
 
   return (
     // Extra bottom padding lets the last controls scroll clear of the toasts pinned to the screen bottom.
+    <AvatarProvider viewerSlug={isViewerPath ? (viewerSlug ?? undefined) : undefined}>
     <main className="mx-auto max-w-5xl p-4 pb-32 sm:p-6 sm:pb-32">
       {isViewerPath ? (
         viewerSlug ? (
@@ -37,5 +39,6 @@ export default function App() {
       )}
       <Toaster />
     </main>
+    </AvatarProvider>
   )
 }

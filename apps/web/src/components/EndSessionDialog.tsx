@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { MedalBadge } from '@/components/MedalBadge'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -106,7 +107,8 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
             {podium.map((row) => (
               <li key={row.id} className="flex items-center gap-3 px-3 py-2">
                 <span className="w-6 text-sm text-muted-foreground">{row.rank}</span>
-                <span className="flex min-w-0 flex-1 items-center gap-1 font-medium">
+                <span className="flex min-w-0 flex-1 items-center gap-2 font-medium">
+                  <PlayerAvatar id={row.id} name={row.name} size="sm" />
                   <span className="min-w-0 truncate">{row.name}</span>
                   <MedalBadge medal={row.medal} />
                 </span>

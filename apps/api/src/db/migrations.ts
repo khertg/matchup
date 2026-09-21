@@ -83,4 +83,30 @@ export const MIGRATIONS: Migration[] = [
       create index session_history_recent_idx on session_history (club_slug, ended_at desc);
     `,
   },
+  {
+    id: '003_media',
+    sql: `
+      -- The club's logo, one per club. Images are stored as base64 text; the server checks
+      -- the bytes are a PNG, JPEG or WebP and of a sensible size before saving.
+      create table club_logos (
+        club_slug    text primary key references clubs (slug) on delete cascade,
+        content_type text not null check (content_type in ('image/png', 'image/jpeg', 'image/webp')),
+        data         text not null,
+        updated_at   timestamptz not null default now()
+      );
+
+      -- Player avatars, by lower-case player name (the same key as the club leaderboard).
+      create table club_avatars (
+        club_slug    text not null references clubs (slug) on delete cascade,
+        name_key     text not null check (char_length(name_key) between 1 and 80),
+        kind         text not null check (kind in ('photo', 'emoji', 'initials')),
+        emoji        text,
+        color        text check (color ~ '^#[0-9a-f]{6}$'),
+        content_type text check (content_type in ('image/png', 'image/jpeg', 'image/webp')),
+        photo        text,
+        updated_at   timestamptz not null default now(),
+        primary key (club_slug, name_key)
+      );
+    `,
+  },
 ]

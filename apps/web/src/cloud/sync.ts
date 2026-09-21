@@ -1,8 +1,19 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
+import { db } from '@/db/db'
 import { markHistorySynced, unsyncedHistory } from '@/db/history'
+import { markPhotosDirty } from '@/db/roster'
+import {
+  getLogoSetting,
+  getPhotoPurgePending,
+  getSharePhotos,
+  markLogoSynced,
+  setPhotoPurgePending,
+  setSharePhotos,
+} from '@/db/settings'
+import { avatarKey, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
 import { useSessionStore } from '@/store/session'
-import { CloudError, type CloudApi } from './api'
+import { CloudError, type CloudApi, type PutAvatarRequest } from './api'
 import { useClubAuth } from './auth'
 import { cloud } from './client'
 import { createPublisher, type SyncStatus } from './publisher'
@@ -87,6 +98,76 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
   }
 }
 
+/** What the club is sent for an avatar: emoji and initials always, a photo only while photos are shared. */
+function avatarRequest(avatar: PlayerAvatar): PutAvatarRequest {
+  if (avatar.kind === 'photo') return { kind: 'photo', photo: { data: dataUrlBase64(avatar.data) } }
+  if (avatar.kind === 'emoji') return { kind: 'emoji', emoji: avatar.value, color: avatar.color }
+  return { kind: 'initials', color: avatar.color }
+}
+
+/**
+ * Send the club logo and player avatars that changed on this device. Emoji and initials avatars and
+ * the logo always go; photos go only while photo sharing is on (otherwise the club's copy is removed).
+ * Safe to call repeatedly. Returns true when nothing is left waiting.
+ */
+export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> {
+  const club = useClubAuth.getState().club
+  if (!api || !club) return false
+  // A request the server will never accept is dropped: retrying cannot help.
+  const attempt = async (send: () => Promise<void>) => {
+    try {
+      await send()
+    } catch (error) {
+      if (!isPermanent(error) || isExpiredLogin(error)) throw error
+    }
+  }
+  try {
+    const share = await getSharePhotos()
+    if (!share && (await getPhotoPurgePending())) {
+      await api.deleteAvatarPhotos(club.token)
+      await setPhotoPurgePending(false)
+    }
+
+    const logo = await getLogoSetting()
+    if (logo?.dirty) {
+      await attempt(() => (logo.data ? api.putLogo(club.token, dataUrlBase64(logo.data)) : api.deleteLogo(club.token)))
+      await markLogoSynced()
+    }
+
+    for (const player of await db.players.filter((p) => p.avatarDirty === true).toArray()) {
+      const key = avatarKey(player.name)
+      const sent = player.avatar
+      await attempt(() =>
+        !sent || (sent.kind === 'photo' && !share)
+          ? api.deleteAvatar(club.token, key)
+          : api.putAvatar(club.token, key, avatarRequest(sent)),
+      )
+      // Only forget the change if it was not changed again while it was being sent.
+      const now = await db.players.get(player.id!)
+      if (JSON.stringify(now?.avatar) === JSON.stringify(sent)) await db.players.update(player.id!, { avatarDirty: false })
+    }
+    return true
+  } catch (error) {
+    handleAuthError(error)
+    return false
+  }
+}
+
+/**
+ * Turn sharing of player photos on the public live page on or off. Off takes every photo down from the
+ * club (now, or as soon as it is reachable); on sends the photos on this device.
+ */
+export async function setPhotoSharing(on: boolean, api: CloudApi | null = cloud): Promise<void> {
+  await setSharePhotos(on)
+  if (on) {
+    await setPhotoPurgePending(false)
+    await markPhotosDirty()
+  } else {
+    await setPhotoPurgePending(true)
+  }
+  await syncMedia(api)
+}
+
 /**
  * Publishes the running session to the club's live viewer page while staff are
  * signed in to a club. Returns a function that stops syncing.
@@ -146,6 +227,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
       pushIfRunning()
       void flushPendingLifetime(api)
       void syncHistory(api)
+      void syncMedia(api)
     } else if (!state.club && prev.club) {
       setStatus('off')
     }
@@ -155,6 +237,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     publisher.onOnline()
     void flushPendingLifetime(api)
     void syncHistory(api)
+    void syncMedia(api)
   }
   const handleOffline = () => {
     if (signedIn()) setStatus('offline')
@@ -166,6 +249,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     pushIfRunning()
     void flushPendingLifetime(api)
     void syncHistory(api)
+    void syncMedia(api)
   }
 
   return () => {

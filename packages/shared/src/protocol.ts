@@ -120,3 +120,56 @@ export interface PutHistoryRequest {
   /** The whole session, as a FullBackupEnvelope. */
   full: unknown
 }
+
+// ---- club logo and player avatars ---------------------------------------------
+
+/** Caps on what a club may store, in bytes of the decoded image. */
+export const MEDIA_LIMITS = {
+  avatarPhotoBytes: 48 * 1024,
+  logoBytes: 128 * 1024,
+  /** Avatars a club can keep on the server. */
+  avatars: 500,
+  emojiChars: 8,
+} as const
+
+export type AvatarKind = 'photo' | 'emoji' | 'initials'
+
+/** A player's avatar as the club's server stores it. The photo itself is fetched from its own URL. */
+export interface AvatarInfo {
+  kind: AvatarKind
+  /** For "emoji": the emoji. */
+  emoji?: string
+  /** "#rrggbb": the badge colour for "emoji" and "initials". */
+  color?: string
+  /** Changes whenever the avatar does; used in the photo URL so browsers can cache it. */
+  v: number
+}
+
+/** `GET /clubs/:slug/avatars`: every avatar the club has, by lower-case player name, and its logo's version. */
+export interface AvatarIndex {
+  avatars: Record<string, AvatarInfo>
+  /** The logo's version for its URL, or null when the club has none. */
+  logo: { v: number } | null
+}
+
+/** An image sent to the server as base64 text. The server decides its type from the bytes. */
+export interface ImageUpload {
+  data: string
+}
+
+/** `PUT /avatars/:key` */
+export interface PutAvatarRequest {
+  kind: AvatarKind
+  emoji?: string
+  color?: string
+  /** Required for kind "photo". */
+  photo?: ImageUpload
+}
+
+/** `PUT /logo` */
+export interface PutLogoRequest {
+  logo: ImageUpload
+}
+
+/** How a player's name is turned into an avatar key: trimmed and lower case, like the club leaderboard. */
+export const avatarKey = (name: string) => name.trim().toLowerCase()

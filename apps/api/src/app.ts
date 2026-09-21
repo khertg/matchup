@@ -8,6 +8,7 @@ import { AppError, defaultMessage } from './errors'
 import { LiveHub } from './realtime'
 import { registerClubRoutes } from './routes/clubs'
 import { registerLiveRoutes } from './routes/live'
+import { registerMediaRoutes } from './routes/media'
 import { registerSessionRoutes } from './routes/session'
 import { LoginGuard } from './services/loginGuard'
 
@@ -113,6 +114,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       registerClubRoutes(api, routeDeps)
       registerSessionRoutes(api, routeDeps)
       registerLiveRoutes(api, routeDeps)
+      registerMediaRoutes(api, routeDeps)
     },
     { prefix: '/api' },
   )

@@ -1,5 +1,19 @@
+import type { PlayerAvatar } from '@/lib/avatar'
 import type { RosterPlayer } from '@/rotation/types'
 import { db, type Gender, type SkillLevel } from './db'
+
+/**
+ * Set or remove (null) a saved player's avatar. It is marked as not yet sent to the club, whether
+ * it changed or was removed, so the cloud copy follows.
+ */
+export async function setRosterAvatar(playerId: number, avatar: PlayerAvatar | null): Promise<void> {
+  await db.players.update(playerId, { avatar: avatar ?? undefined, avatarDirty: true })
+}
+
+/** Mark every player with a photo as not sent, so sharing photos being switched on uploads them all. */
+export async function markPhotosDirty(): Promise<void> {
+  await db.players.filter((p) => p.avatar?.kind === 'photo').modify({ avatarDirty: true })
+}
 
 /** Change a saved player's skill level, so they start future sessions at it. */
 export async function setRosterSkill(playerId: number, skill: SkillLevel): Promise<void> {
