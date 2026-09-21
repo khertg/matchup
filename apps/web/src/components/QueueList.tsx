@@ -2,7 +2,8 @@ import { Lock } from 'lucide-react'
 import { partnerOf } from '@/matchmaking/grouping'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { skillLabel } from '@/lib/skill'
+import { SkillBadge } from '@/components/SkillBadge'
+import type { SkillLevel } from '@/db/db'
 import { estimateWaitMinutes } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 
@@ -10,9 +11,11 @@ interface Props {
   session: SessionState
   /** Ids of the group that will play next; they get a "Next up" badge instead of a wait estimate. */
   nextUp?: number[]
+  /** Staff only: change a player's skill level from their badge. */
+  onSkillChange?: (playerId: number, skill: SkillLevel) => void
 }
 
-export function QueueList({ session, nextUp = [] }: Props) {
+export function QueueList({ session, nextUp = [], onSkillChange }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -39,9 +42,10 @@ export function QueueList({ session, nextUp = [] }: Props) {
                       />
                     )}
                   </span>
-                  <Badge variant="secondary" title={skillLabel(player.skill)}>
-                    Lv {player.skill}
-                  </Badge>
+                  <SkillBadge
+                    player={player}
+                    onChange={onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
+                  />
                   <span className="w-20 text-right text-sm text-muted-foreground">
                     {nextUp.includes(id) ? (
                       <Badge>Next up</Badge>

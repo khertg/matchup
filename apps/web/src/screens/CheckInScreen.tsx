@@ -2,7 +2,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Lock } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -26,7 +25,9 @@ import {
 import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
 import { db, type Gender, type SkillLevel } from '@/db/db'
 import { addOrGetPlayer } from '@/db/roster'
-import { DEFAULT_SKILL, SKILL_LEVELS, skillLabel, skillOptionLabel } from '@/lib/skill'
+import { SkillBadge } from '@/components/SkillBadge'
+import { DEFAULT_SKILL, SKILL_LEVELS, skillOptionLabel } from '@/lib/skill'
+import { useSkillEditor } from '@/lib/useSkillEditor'
 import { lockStatus, playingIds, type AwayPartner } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
@@ -181,6 +182,7 @@ function PartnersCard({ session }: { session: SessionState }) {
 export function CheckInScreen({ session }: { session: SessionState }) {
   const checkInPlayer = useSessionStore((s) => s.checkInPlayer)
   const checkOutPlayer = useSessionStore((s) => s.checkOutPlayer)
+  const changeSkill = useSkillEditor()
   const roster = useLiveQuery(() => db.players.orderBy('name').toArray(), [])
 
   const [name, setName] = useState('')
@@ -292,7 +294,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
               {session.queue.map((id) => (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="flex-1">{session.players[id].name}</span>
-                  <Badge variant="secondary">{skillLabel(session.players[id].skill)}</Badge>
+                  <SkillBadge player={session.players[id]} display="name" onChange={(skill) => changeSkill(id, skill)} />
                   <Button variant="outline" size="sm" onClick={() => checkOutPlayer(id)}>
                     Take a break
                   </Button>
@@ -315,6 +317,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
               {session.onBreak.map((id) => (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="flex-1">{session.players[id].name}</span>
+                  <SkillBadge player={session.players[id]} display="name" onChange={(skill) => changeSkill(id, skill)} />
                   <Button variant="outline" size="sm" onClick={() => checkInPlayer(session.players[id])}>
                     Back to queue
                   </Button>

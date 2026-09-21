@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Player } from '@/db/db'
+import { SkillBadge } from '@/components/SkillBadge'
+import { setRosterSkill } from '@/db/roster'
 import { skillLabel } from '@/lib/skill'
 import type { RosterPlayer, SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
@@ -127,9 +128,13 @@ export function RosterCheckIn({ session, roster }: Props) {
                       />
                       <span className="flex-1">{p.name}</span>
                       {blocked && <span className="text-xs text-muted-foreground">Set gender first</span>}
-                      <Badge variant="secondary" title={skillLabel(p.skill)}>
-                        Lv {p.skill}
-                      </Badge>
+                      <SkillBadge
+                        player={p}
+                        onChange={(skill) => {
+                          void setRosterSkill(id, skill)
+                          toast(`${p.name} is now ${skillLabel(skill)}`)
+                        }}
+                      />
                     </label>
                   </li>
                 )

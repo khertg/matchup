@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CancelGameDialog } from '@/components/CancelGameDialog'
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
 import { ScoreDialog } from '@/components/ScoreDialog'
-import { skillLabel } from '@/lib/skill'
+import { SkillBadge } from '@/components/SkillBadge'
+import type { SkillLevel } from '@/db/db'
 import { formatDuration, useNow } from '@/lib/time'
 import type { Court, RosterPlayer } from '@/rotation/types'
 
@@ -20,6 +21,8 @@ interface Props {
   /** Waiting player ids in queue order, offered as substitutes. */
   queue?: number[]
   onReplace?: (outId: number, inId: number, options: { sendOnBreak: boolean }) => void
+  /** Staff only: change a player's skill level from their badge. */
+  onSkillChange?: (playerId: number, skill: SkillLevel) => void
   /**
    * What an open court can do. "ready": a next group exists, so Start game is offered.
    * "override": no group fits the matchmaking mode (mixed doubles), but staff may start
@@ -49,6 +52,7 @@ export function CourtCard({
   readOnly = false,
   queue = [],
   onReplace,
+  onSkillChange,
   startState = 'none',
   waitingMessage = 'Waiting for players to check in',
   onStart,
@@ -89,9 +93,12 @@ export function CourtCard({
                   {team.map((id) => (
                     <li key={id} className="flex items-center gap-2 py-0.5">
                       <span className="flex-1">{players[id]?.name}</span>
-                      <Badge variant="secondary" title={skillLabel(players[id]?.skill)}>
-                        Lv {players[id]?.skill}
-                      </Badge>
+                      {players[id] && (
+                        <SkillBadge
+                          player={players[id]}
+                          onChange={!readOnly && onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
+                        />
+                      )}
                       {!readOnly && onReplace && (
                         <ReplacePlayerDialog
                           player={players[id]}

@@ -1,0 +1,185 @@
+import { expect, test, type Page } from '@playwright/test'
+import { checkIn, recordWin, startGame, startSession } from './helpers'
+
+const EXPERT = '6 · Expert (5.0+)'
+const BEGINNER = '1 · Beginner (1.0)'
+
+const court = (page: Page, name = 'Court 1') => page.getByRole('region', { name, exact: true })
+const nextUp = (page: Page) => page.getByRole('group', { name: 'Next up' })
+/** A row of the Board's queue (an ordered list), not the Next up card's list. */
+const queueRow = (page: Page, name: string) => page.locator('ol > li').filter({ hasText: name })
+const levelButton = (scope: ReturnType<Page['locator']> | Page, name: string) =>
+  scope.getByRole('button', { name: new RegExp(`^Change ${name}'s level`) })
+
+/** Pick a level in the "Change <name>'s level" pop-up. */
+async function pickLevel(page: Page, name: string, option: string | RegExp) {
+  const dialog = page.getByRole('dialog', { name: `Change ${name}'s level` })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: option }).click()
+  await expect(dialog).toHaveCount(0)
+}
+
+test.describe('editing a level in a session', () => {
+  test('a waiting player, from the Check-in tab, and it shows on the Board', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob'])
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+
+    const row = page.getByRole('listitem').filter({ hasText: 'Ann' })
+    await expect(levelButton(row, 'Ann')).toHaveText('Intermediate')
+    await levelButton(row, 'Ann').click()
+    const dialog = page.getByRole('dialog', { name: "Change Ann's level" })
+    // The current level is marked, and every level shows its rating.
+    await expect(dialog.getByRole('button', { name: '3 · Intermediate (3.0)' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(dialog.getByRole('button', { name: /^[1-6] · / })).toHaveCount(6)
+    await dialog.getByRole('button', { name: '5 · Advanced (4.0-4.5)' }).click()
+
+    await expect(page.getByText('Ann is now Advanced')).toBeVisible()
+    await expect(levelButton(row, 'Ann')).toHaveText('Advanced')
+    await page.getByRole('tab', { name: 'Board' }).click()
+    await expect(levelButton(queueRow(page, 'Ann'), 'Ann')).toHaveText('Lv 5')
+    await expect(levelButton(queueRow(page, 'Bob'), 'Bob')).toHaveText('Lv 3')
+  })
+
+  test('choosing the level they already have changes nothing', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann'])
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    const row = page.getByRole('listitem').filter({ hasText: 'Ann' })
+    await levelButton(row, 'Ann').click()
+    await pickLevel(page, 'Ann', '3 · Intermediate (3.0)')
+    await expect(page.getByText('Ann is now')).toHaveCount(0)
+  })
+
+  test('a player on a court, and in Next up', async ({ page }) => {
+    await startSession(page, { courts: 2 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal'])
+    await startGame(page, 'Court 1')
+
+    await levelButton(court(page), 'Ann').click()
+    await pickLevel(page, 'Ann', EXPERT)
+    await expect(levelButton(court(page), 'Ann')).toHaveText('Lv 6')
+
+    await levelButton(nextUp(page), 'Eve').click()
+    await pickLevel(page, 'Eve', BEGINNER)
+    await expect(levelButton(nextUp(page), 'Eve')).toHaveText('Lv 1')
+    // The same person in the queue shows the same level.
+    await expect(levelButton(queueRow(page, 'Eve'), 'Eve')).toHaveText('Lv 1')
+  })
+
+  test('a player on a break', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob'])
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await page.getByRole('listitem').filter({ hasText: 'Ann' }).getByRole('button', { name: 'Take a break' }).click()
+    const row = page.getByRole('listitem').filter({ hasText: 'Ann' })
+    await expect(page.getByText('On a break (1)')).toBeVisible()
+    await levelButton(row, 'Ann').click()
+    await pickLevel(page, 'Ann', '2 · Novice (2.0-2.5)')
+    await expect(levelButton(row, 'Ann')).toHaveText('Novice')
+    // Back in the queue with the new level.
+    await row.getByRole('button', { name: 'Back to queue' }).click()
+    await page.getByRole('tab', { name: 'Board' }).click()
+    await expect(levelButton(queueRow(page, 'Ann'), 'Ann')).toHaveText('Lv 2')
+  })
+
+  test('Next up re-balances at once with the new level', async ({ page }) => {
+    await startSession(page, { matchmaking: 'Skill-separated' })
+    await checkIn(page, [
+      { name: 'Ann', skill: BEGINNER },
+      { name: 'Bob', skill: EXPERT },
+      { name: 'Cy', skill: BEGINNER },
+      { name: 'Dee', skill: EXPERT },
+      { name: 'Eve', skill: BEGINNER },
+      { name: 'Fay', skill: EXPERT },
+      { name: 'Gus', skill: BEGINNER },
+    ])
+    // The four beginners are grouped together, skipping the experts in between.
+    for (const name of ['Ann', 'Cy', 'Eve', 'Gus']) await expect(nextUp(page).getByText(name)).toBeVisible()
+    await expect(nextUp(page).getByText('Bob')).toHaveCount(0)
+
+    await levelButton(nextUp(page), 'Gus').click()
+    await pickLevel(page, 'Gus', EXPERT)
+    // Only three beginners are left, so the group changes straight away: Gus drops out and the
+    // experts who queued first are drawn in.
+    await expect(nextUp(page).getByText('Gus')).toHaveCount(0)
+    await expect(nextUp(page).getByText('Bob')).toBeVisible()
+  })
+
+  test('the change survives a reload and does not touch a game already on the court', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page)
+    // Who is on which team, without the level badges (which will change).
+    const teamOf = async () =>
+      court(page)
+        .getByRole('group')
+        .evaluateAll((teams) => teams.map((team) => [...team.querySelectorAll('li > span:first-child')].map((n) => n.textContent)))
+    const before = await teamOf()
+    await levelButton(court(page), 'Ann').click()
+    await pickLevel(page, 'Ann', EXPERT)
+    expect(await teamOf()).toEqual(before)
+
+    await page.reload()
+    await expect(levelButton(court(page), 'Ann')).toHaveText('Lv 6')
+  })
+
+  test('a pending Undo still works and keeps the new level', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page)
+    await recordWin(page)
+    await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+
+    await levelButton(queueRow(page, 'Ann'), 'Ann').click()
+    await pickLevel(page, 'Ann', EXPERT)
+    await page.getByRole('button', { name: 'Undo' }).click()
+    await expect(court(page).getByText('In play')).toBeVisible()
+    await expect(levelButton(court(page), 'Ann')).toHaveText('Lv 6')
+  })
+})
+
+test.describe('editing a level on the saved roster', () => {
+  /** Save Zed at Novice, end that session and start another, so Zed is a returning player. */
+  async function withSavedZed(page: Page) {
+    await startSession(page)
+    await checkIn(page, [{ name: 'Zed', skill: '2 · Novice (2.0-2.5)' }])
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
+    await expect(page.getByText('Set up an open play session')).toBeVisible()
+    await startSession(page)
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+  }
+
+  test('changes a returning player before they are checked in, without ticking them', async ({ page }) => {
+    await withSavedZed(page)
+    const roster = page.getByRole('group', { name: 'Check in from the roster' })
+    await expect(levelButton(roster, 'Zed')).toHaveText('Lv 2')
+    await levelButton(roster, 'Zed').click()
+    await pickLevel(page, 'Zed', '4 · Upper Intermediate (3.5)')
+
+    await expect(page.getByText('Zed is now Upper Intermediate')).toBeVisible()
+    await expect(levelButton(roster, 'Zed')).toHaveText('Lv 4')
+    // Tapping the level is not ticking the player.
+    await expect(roster.getByRole('checkbox', { name: /^Zed/ })).not.toBeChecked()
+
+    await roster.getByRole('checkbox', { name: /^Zed/ }).check()
+    await roster.getByRole('button', { name: 'Check in 1 player' }).click()
+    await expect(levelButton(page.getByRole('listitem').filter({ hasText: 'Zed' }), 'Zed')).toHaveText('Upper Intermediate')
+  })
+
+  test('an edit made during a session is what the player starts the next session with', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, [{ name: 'Zed', skill: '2 · Novice (2.0-2.5)' }])
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await levelButton(page.getByRole('listitem').filter({ hasText: 'Zed' }), 'Zed').click()
+    await pickLevel(page, 'Zed', '5 · Advanced (4.0-4.5)')
+
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
+    await expect(page.getByText('Set up an open play session')).toBeVisible()
+    await startSession(page)
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await expect(levelButton(page.getByRole('group', { name: 'Check in from the roster' }), 'Zed')).toHaveText('Lv 5')
+  })
+})

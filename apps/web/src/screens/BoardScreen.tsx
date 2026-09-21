@@ -8,6 +8,7 @@ import { QueueList } from '@/components/QueueList'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { waitingMessage } from '@/lib/nextUp'
+import { useSkillEditor } from '@/lib/useSkillEditor'
 import {
   isValidGameMinutes,
   MAX_AVG_GAME_MINUTES,
@@ -58,6 +59,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const replaceNextUp = useSessionStore((s) => s.replaceNextUp)
   const resetNextUp = useSessionStore((s) => s.resetNextUp)
   const startGame = useSessionStore((s) => s.startGame)
+  const changeSkill = useSkillEditor()
 
   // Games never start by themselves. This is the group staff would start next, and what each
   // open court offers: start it, start with whoever is waiting (mixed doubles), or wait.
@@ -144,6 +146,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
             waitingMessage={waitingMessage(session)}
             onStart={(options) => handleStart(court.id, options)}
             onReplace={(outId, inId, options) => handleReplace(court.id, outId, inId, options.sendOnBreak)}
+            onSkillChange={changeSkill}
             onScore={(a, b) => handleScore(court.id, a, b)}
             onCancel={() => handleCancel(court.id)}
           />
@@ -157,8 +160,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
         onReplace={handleReplaceNextUp}
         picked={isNextUpPicked(session)}
         onReset={resetNextUp}
+        onSkillChange={changeSkill}
       />
-      <QueueList session={session} nextUp={group?.players} />
+      <QueueList session={session} nextUp={group?.players} onSkillChange={changeSkill} />
       <MatchLog matches={session.matches ?? []} players={session.players} />
     </div>
   )

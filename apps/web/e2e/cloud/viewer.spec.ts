@@ -30,6 +30,7 @@ test.describe('live viewer', () => {
     // Players can look but not touch.
     await expect(page.getByRole('button', { name: /won$/ })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /^Replace/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Change .*level/ })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Cancel game' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'End session' })).toHaveCount(0)
     await expect(page.getByRole('tab', { name: 'Check-in' })).toHaveCount(0)

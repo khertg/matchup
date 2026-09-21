@@ -1,6 +1,11 @@
 import type { RosterPlayer } from '@/rotation/types'
 import { db, type Gender, type SkillLevel } from './db'
 
+/** Change a saved player's skill level, so they start future sessions at it. */
+export async function setRosterSkill(playerId: number, skill: SkillLevel): Promise<void> {
+  await db.players.update(playerId, { skill })
+}
+
 /**
  * Find a roster player by name (case-insensitive) or create one. An existing
  * player is updated when the skill level, or a newly supplied gender, differs.

@@ -66,6 +66,36 @@ describe('session store', () => {
     expect(store().undo()).toBe(false)
   })
 
+  describe('changing a skill level', () => {
+    it('changes the level for the rest of the session and survives a reload', async () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().setPlayerSkill(2, 6)
+      expect(store().session!.players[2].skill).toBe(6)
+      await useSessionStore.persist.rehydrate()
+      expect(store().session!.players[2].skill).toBe(6)
+    })
+
+    it('keeps the pending result undo, and undoing never reverts the level', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().recordScore(1, 11, 5)
+      store().setPlayerSkill(3, 5)
+      expect(store().undo()).toBe(true)
+      expect(store().session!.players[3].skill).toBe(5)
+      expect(store().session!.courts[0].teams).not.toBeNull()
+    })
+
+    it('refuses a player who is not in the session and changes nothing', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(2)
+      const before = store().session
+      expect(() => store().setPlayerSkill(9, 4)).toThrow()
+      expect(store().session).toBe(before)
+    })
+  })
+
   describe('session identity', () => {
     it('gives each new session its own id and start time, with nothing counted yet', () => {
       store().startSession('One', 'doubles', 1)

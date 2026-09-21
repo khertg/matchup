@@ -384,6 +384,29 @@ test.describe('two browsers', () => {
   })
 })
 
+test.describe('editing a skill level', () => {
+  test('a player’s phone shows the new level, with no way to change it', async ({ page, browser, request }) => {
+    const club = uniqueClub('Levels')
+    await apiCreateClub(request, club)
+    const viewerContext = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      serviceWorkers: 'block',
+    })
+    const viewer = await viewerContext.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+    await signInAndStart(page, club, 'Level Night')
+    await checkIn(page, ['Ann', 'Bob'])
+    const viewerRow = viewer.locator('ol > li').filter({ hasText: 'Ann' })
+    await expect(viewerRow).toContainText('Lv 3', { timeout: 8000 })
+
+    await page.locator('ol > li').filter({ hasText: 'Ann' }).getByRole('button', { name: /^Change Ann's level/ }).click()
+    await page.getByRole('dialog', { name: "Change Ann's level" }).getByRole('button', { name: /^5 · Advanced/ }).click()
+    await expect(viewerRow).toContainText('Lv 5', { timeout: 8000 })
+    await expect(viewer.getByRole('button', { name: /^Change .*level/ })).toHaveCount(0)
+    await viewerContext.close()
+  })
+})
+
 test.describe('changing who is next up', () => {
   test('a player’s phone shows the group staff chose, and follows a reset', async ({ page, browser, request }) => {
     const club = uniqueClub('Chosen')

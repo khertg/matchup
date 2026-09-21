@@ -25,6 +25,7 @@ import {
   scoreProblem,
   winnerScoreProblem,
   setAvgGameMinutes,
+  setPlayerSkill,
   startGame,
   unlockPartners,
 } from './engine'
@@ -1196,5 +1197,83 @@ describe('partner locks that do not take effect at once', () => {
   it('has no effect on the players’ live-board locks until it is in force', () => {
     const s = lockPartners(suzyAndTong(), SUZY, TONG)
     expect(s.partners).toEqual([])
+  })
+})
+
+describe('setPlayerSkill', () => {
+  const skilled = (skills: RosterPlayer['skill'][], matchmaking: 'balanced' | 'skill' = 'balanced') => {
+    let s = createSession('doubles', 1, { matchmaking })
+    skills.forEach((skill, i) => {
+      s = checkIn(s, player(i + 1, skill))
+    })
+    return s
+  }
+
+  it('changes that player and nobody else', () => {
+    const s = skilled([3, 3, 3, 3, 3])
+    const changed = setPlayerSkill(s, 2, 5)
+    expect(changed.players[2].skill).toBe(5)
+    for (const id of [1, 3, 4, 5]) expect(changed.players[id]).toBe(s.players[id])
+    expect(changed.players[2].name).toBe('P2')
+    expect(changed.queue).toEqual(s.queue)
+  })
+
+  it('works for a player who is waiting, playing or on a break', () => {
+    let s = fillCourts(skilled([3, 3, 3, 3, 3, 3]))
+    s = checkOut(s, 5)
+    for (const id of [1, 5, 6]) expect(setPlayerSkill(s, id, 6).players[id].skill).toBe(6)
+  })
+
+  it('returns the same state when the level does not change', () => {
+    const s = skilled([3, 3])
+    expect(setPlayerSkill(s, 1, 3)).toBe(s)
+  })
+
+  it('refuses a player who is not in the session and a level outside 1 to 6', () => {
+    const s = skilled([3, 3])
+    expect(() => setPlayerSkill(s, 9, 4)).toThrow('not in this session')
+    expect(() => setPlayerSkill(s, 1, 0 as RosterPlayer['skill'])).toThrow(RangeError)
+    expect(() => setPlayerSkill(s, 1, 7 as RosterPlayer['skill'])).toThrow(RangeError)
+    expect(() => setPlayerSkill(s, 1, 2.5 as RosterPlayer['skill'])).toThrow(RangeError)
+  })
+
+  it('never changes the state it was given', () => {
+    const s = skilled([3, 3, 3, 3])
+    const snapshot = structuredClone(s)
+    setPlayerSkill(s, 1, 6)
+    expect(s).toEqual(snapshot)
+  })
+
+  it('re-balances the next group from the new level (skill-separated)', () => {
+    const s = skilled([1, 6, 1, 6, 1, 6, 1], 'skill')
+    expect(nextGroup(s)!.players.slice().sort()).toEqual([1, 3, 5, 7])
+    // Player 3 turns out to be much better: the group no longer pairs them with the level-1s.
+    const changed = setPlayerSkill(s, 3, 6)
+    expect(nextGroup(changed)!.players.slice().sort()).not.toEqual([1, 3, 5, 7])
+  })
+
+  it('re-splits the next group into teams from the new level', () => {
+    const s = skilled([6, 5, 2, 1])
+    const key = (t: number[]) => t.slice().sort().join()
+    expect(nextGroup(s)!.teams.map(key).sort()).toEqual(['1,4', '2,3'])
+    const changed = setPlayerSkill(s, 4, 6) // levels now 6, 5, 2, 6
+    expect(nextGroup(changed)!.teams.map(key).sort()).not.toEqual(['1,4', '2,3'])
+  })
+
+  it('keeps a hand-picked group as chosen, re-split with the new level', () => {
+    const s = replaceNextUp(withPlayers(createSession('doubles', 2), 8), 1, 8)
+    const before = nextGroup(s)!.players.slice().sort()
+    const changed = setPlayerSkill(s, 8, 6)
+    expect(isNextUpPicked(changed)).toBe(true)
+    expect(nextGroup(changed)!.players.slice().sort()).toEqual(before)
+  })
+
+  it('leaves a game already on a court, and results already recorded, as they were', () => {
+    const played = recordResult(fillCourts(skilled([3, 3, 3, 3, 3, 3, 3, 3])), 1, 0).state
+    const s = fillCourts(played)
+    const teams = structuredClone(s.courts[0].teams)
+    const changed = setPlayerSkill(s, s.courts[0].teams!.flat()[0], 6)
+    expect(changed.courts[0].teams).toEqual(teams)
+    expect(changed.stats).toEqual(s.stats)
   })
 })

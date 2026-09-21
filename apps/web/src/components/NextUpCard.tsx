@@ -1,8 +1,8 @@
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { skillLabel } from '@/lib/skill'
+import { SkillBadge } from '@/components/SkillBadge'
+import type { SkillLevel } from '@/db/db'
 import type { RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -20,6 +20,8 @@ interface Props {
   /** The group was chosen by staff, so it can be reset to the automatic one. */
   picked?: boolean
   onReset?: () => void
+  /** Staff only: change a player's skill level from their badge. */
+  onSkillChange?: (playerId: number, skill: SkillLevel) => void
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
@@ -28,7 +30,7 @@ const TEAM_NAMES = ['Team A', 'Team B'] as const
  * The group that will play next, already split into teams. Staff read it to call
  * people up before starting a game; the live board shows the same card to players.
  */
-export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset }: Props) {
+export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset, onSkillChange }: Props) {
   const half = nextUp.length / 2
   const teams = [nextUp.slice(0, half), nextUp.slice(half)]
 
@@ -60,9 +62,10 @@ export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onRepl
                     <li key={id} className="flex items-center justify-between gap-2 py-0.5">
                       <span>{players[id]?.name ?? 'Player'}</span>
                       {players[id] && (
-                        <Badge variant="secondary" title={skillLabel(players[id].skill)}>
-                          Lv {players[id].skill}
-                        </Badge>
+                        <SkillBadge
+                          player={players[id]}
+                          onChange={onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
+                        />
                       )}
                       {onReplace && players[id] && (
                         <ReplacePlayerDialog

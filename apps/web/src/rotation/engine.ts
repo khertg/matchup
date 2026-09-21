@@ -1,4 +1,5 @@
 import { MAX_COURT_NAME_LENGTH } from '@matchup/shared'
+import type { SkillLevel } from '../db/db'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
 import type {
   Court,
@@ -162,7 +163,19 @@ export function closeCourt(state: SessionState, courtId: number): SessionState {
   }
 }
 
-/** Change the assumed game length used for wait estimates. */
+/**
+ * Change a checked-in player's skill level (queued, playing or on a break). Only what happens
+ * from now on follows it: the next group and its team split are worked out from the new level,
+ * while a game already on a court keeps its teams and recorded results stay as they were.
+ */
+export function setPlayerSkill(state: SessionState, playerId: number, skill: SkillLevel): SessionState {
+  const player = state.players[playerId]
+  if (!player) throw new Error(`Player ${playerId} is not in this session`)
+  if (!Number.isInteger(skill) || skill < 1 || skill > 6) throw new RangeError('Skill level must be 1 to 6')
+  if (player.skill === skill) return state
+  return { ...state, players: { ...state.players, [playerId]: { ...player, skill } } }
+}
+
 export function setAvgGameMinutes(state: SessionState, minutes: number): SessionState {
   if (!isValidGameMinutes(minutes)) {
     throw new RangeError('avgGameMinutes must be an integer from 5 to 60')
@@ -623,3 +636,4 @@ export function estimateWaitMinutes(
   const courtsToFree = Math.max(0, matchesAhead - freeCourts + 1)
   return Math.round((courtsToFree * avgGameMinutes) / state.courts.length)
 }
+/** Change the assumed game length used for wait estimates. */

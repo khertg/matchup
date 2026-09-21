@@ -6,7 +6,7 @@ import { fillCourts } from '@/rotation/testing'
 import type { SessionState } from '@/rotation/types'
 import { db } from './db'
 import { saveLifetimeStats } from './lifetime'
-import { addOrGetPlayer } from './roster'
+import { addOrGetPlayer, setRosterSkill } from './roster'
 
 beforeEach(async () => {
   await db.players.clear()
@@ -84,5 +84,24 @@ describe('saveLifetimeStats', () => {
     }
     await saveLifetimeStats(withGhost)
     expect(await db.players.count()).toBe(4)
+  })
+})
+
+describe('setRosterSkill', () => {
+  it('changes the saved level, and a returning player keeps it', async () => {
+    const ann = await addOrGetPlayer('Ann', 3, 'F')
+    await setRosterSkill(ann.id, 5)
+    expect(await db.players.get(ann.id)).toMatchObject({ skill: 5, gender: 'F' })
+    // Checking in again without picking a level keeps what was edited (the picker starts from it).
+    expect((await db.players.where('name').equals('Ann').first())?.skill).toBe(5)
+  })
+
+  it('changes nobody else, and keeps all-time totals', async () => {
+    const ann = await addOrGetPlayer('Ann', 3)
+    const bob = await addOrGetPlayer('Bob', 3)
+    await db.players.update(ann.id, { games: 4, wins: 3, losses: 1 })
+    await setRosterSkill(ann.id, 6)
+    expect(await db.players.get(bob.id)).toMatchObject({ skill: 3 })
+    expect(await db.players.get(ann.id)).toMatchObject({ skill: 6, games: 4, wins: 3, losses: 1 })
   })
 })

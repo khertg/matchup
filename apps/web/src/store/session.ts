@@ -17,12 +17,14 @@ import {
   replacePlayer as replacePlayerEngine,
   resetNextUp as resetNextUpEngine,
   setAvgGameMinutes as setAvgGameMinutesEngine,
+  setPlayerSkill as setPlayerSkillEngine,
   type NextGroupOptions,
   type ReplacePlayerOptions,
   type SessionOptions,
   startGame as startGameEngine,
   unlockPartners as unlockPartnersEngine,
 } from '@/rotation/engine'
+import type { SkillLevel } from '@/db/db'
 import type { GameMode, RosterPlayer, SessionState } from '@/rotation/types'
 import { newBatchId } from '@/cloud/id'
 import type { LifetimeCounts } from '@/rotation/lifetime'
@@ -47,6 +49,8 @@ interface SessionStore {
     options?: SessionOptions,
   ) => void
   setAvgGameMinutes: (minutes: number) => void
+  /** Change a checked-in player's skill level. Future matching follows it; a pending result undo stays. */
+  setPlayerSkill: (playerId: number, skill: SkillLevel) => void
   /** Returns false if the player was already queued or playing. */
   checkInPlayer: (player: RosterPlayer) => boolean
   /** Check several players in at once, in the order given. Returns how many were newly checked in. */
@@ -133,6 +137,17 @@ export const useSessionStore = create<SessionStore>()(
         set({
           session: setAvgGameMinutesEngine(session, minutes),
           previous: previous && setAvgGameMinutesEngine(previous, minutes),
+        })
+      },
+
+      setPlayerSkill: (playerId, skill) => {
+        const session = requireSession(get().session)
+        const { previous } = get()
+        // Like the game length, a correction rather than a game event: keep the pending result undo,
+        // and carry the new level into its snapshot so undoing a result never reverts it.
+        set({
+          session: setPlayerSkillEngine(session, playerId, skill),
+          previous: previous?.players[playerId] ? setPlayerSkillEngine(previous, playerId, skill) : previous,
         })
       },
 
