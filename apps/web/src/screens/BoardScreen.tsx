@@ -99,8 +99,12 @@ export function BoardScreen({ session }: { session: SessionState }) {
     toast(`${courtName(courtId)} started`)
   }
 
+  /** Whether the player is in a partner lock, in force or waiting. */
+  const hasLock = (id: number) =>
+    [...session.partners, ...(session.pendingPartners ?? []).map(({ pair }) => pair)].some((pair) => pair.includes(id))
+
   function handleReplace(courtId: number, outId: number, inId: number, sendOnBreak: boolean) {
-    const wasLocked = session.partners.some((pair) => pair.includes(outId))
+    const wasLocked = hasLock(outId)
     replacePlayer(courtId, outId, inId, { sendOnBreak })
     const out = session.players[outId].name
     toast(
@@ -110,7 +114,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
   }
 
   function handleReplaceNextUp(outId: number, inId: number) {
-    const wasLocked = session.partners.some((pair) => pair.includes(outId) || pair.includes(inId))
+    const wasLocked = hasLock(outId) || hasLock(inId)
     replaceNextUp(outId, inId)
     toast(
       `${session.players[inId].name} is next up instead of ${session.players[outId].name}.` +

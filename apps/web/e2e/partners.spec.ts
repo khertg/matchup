@@ -1,0 +1,144 @@
+import { expect, test, type Page } from '@playwright/test'
+import { checkIn, choose, recordWin, startGame, startSession } from './helpers'
+
+const NAMES = ['Suzy', 'Ann', 'Bob', 'Cy', 'Tong', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo']
+
+const nextUp = (page: Page) => page.getByRole('group', { name: 'Next up' })
+const court = (page: Page, name = 'Court 1') => page.getByRole('region', { name, exact: true })
+
+/** Names in queue order, read from the Board's queue card. */
+async function queueNames(page: Page) {
+  const rows = await page.locator('ol > li').filter({ hasText: /Lv \d/ }).allInnerTexts()
+  return rows.map((row) => row.replace(/^\d+\s+/, '').split(/\s/)[0])
+}
+
+async function openLockForm(page: Page, first: string, second: string) {
+  await page.getByRole('tab', { name: 'Check-in' }).click()
+  await choose(page, 'First partner', first)
+  await choose(page, 'Second partner', second)
+  await page.getByRole('button', { name: 'Lock partners' }).click()
+}
+
+/** Suzy is playing on Court 1 with Ann, Bob and Cy; Tong is next up with Dee, Eve and Fay. */
+async function suzyPlayingTongNextUp(page: Page) {
+  await startSession(page, { courts: 2 })
+  await checkIn(page, NAMES)
+  await startGame(page, 'Court 1')
+  for (const name of ['Suzy', 'Ann', 'Bob', 'Cy']) await expect(court(page).getByText(name)).toBeVisible()
+  for (const name of ['Tong', 'Dee', 'Eve', 'Fay']) await expect(nextUp(page).getByText(name)).toBeVisible()
+}
+
+test.describe('locking a partner who is on a court', () => {
+  test('asks first, names who is away, and does not change the line', async ({ page }) => {
+    await suzyPlayingTongNextUp(page)
+    await openLockForm(page, 'Suzy', 'Tong')
+
+    const dialog = page.getByRole('dialog', { name: 'Lock Suzy and Tong?' })
+    await expect(dialog).toContainText('Suzy is playing on Court 1')
+    await expect(dialog).toContainText('Tong keeps their place in line')
+    await expect(dialog).toContainText('The lock starts once both of them have finished a game')
+    await dialog.getByRole('button', { name: 'Lock anyway' }).click()
+
+    await expect(page.getByText('Suzy and Tong will be partners once both have finished a game')).toBeVisible()
+    await expect(page.getByText('Starts after both have played')).toBeVisible()
+    // Nothing moved: Tong is still next up.
+    await page.getByRole('tab', { name: 'Board' }).click()
+    for (const name of ['Tong', 'Dee', 'Eve', 'Fay']) await expect(nextUp(page).getByText(name)).toBeVisible()
+    await expect(nextUp(page).getByText('Suzy')).toHaveCount(0)
+  })
+
+  test('the reported case: Suzy does not jump the line when her game ends, and Tong keeps his turn', async ({ page }) => {
+    await suzyPlayingTongNextUp(page)
+    await openLockForm(page, 'Suzy', 'Tong')
+    await page.getByRole('dialog').getByRole('button', { name: 'Lock anyway' }).click()
+    await page.getByRole('tab', { name: 'Board' }).click()
+
+    await recordWin(page, 'Court 1')
+    // Suzy is at the back like anyone who has just played; Tong's group is still next.
+    const queue = await queueNames(page)
+    expect(queue.slice(0, 8)).toEqual(['Tong', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo'])
+    expect(queue.slice(8).sort()).toEqual(['Ann', 'Bob', 'Cy', 'Suzy'])
+    for (const name of ['Tong', 'Dee', 'Eve', 'Fay']) await expect(nextUp(page).getByText(name)).toBeVisible()
+    await expect(nextUp(page).getByText('Suzy')).toHaveCount(0)
+
+    // Tong plays his game as normal, without a partner from the lock.
+    await startGame(page, 'Court 2')
+    await expect(court(page, 'Court 2').getByText('Tong')).toBeVisible()
+    await expect(court(page, 'Court 2').getByText('Suzy')).toHaveCount(0)
+    // Still waiting: Suzy has finished a game, Tong has not.
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await expect(page.getByText('Starts after both have played')).toBeVisible()
+
+    // Once Tong finishes too, the lock is in force.
+    await page.getByRole('tab', { name: 'Board' }).click()
+    await recordWin(page, 'Court 2')
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await expect(page.getByText('Starts after both have played')).toHaveCount(0)
+    await expect(page.getByText('Suzy & Tong')).toBeVisible()
+    await page.getByRole('tab', { name: 'Board' }).click()
+    await expect(page.getByLabel('Locked with Tong')).toBeVisible()
+    await expect(page.getByLabel('Locked with Suzy')).toBeVisible()
+  })
+
+  test('Cancel in the question locks nothing', async ({ page }) => {
+    await suzyPlayingTongNextUp(page)
+    await openLockForm(page, 'Suzy', 'Tong')
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByText('Starts after both have played')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Lock partners' })).toBeEnabled()
+  })
+
+  test('a waiting lock can be unlocked before it starts', async ({ page }) => {
+    await suzyPlayingTongNextUp(page)
+    await openLockForm(page, 'Suzy', 'Tong')
+    await page.getByRole('dialog').getByRole('button', { name: 'Lock anyway' }).click()
+    await page.getByRole('button', { name: 'Unlock Suzy and Tong' }).click()
+    await expect(page.getByText('Suzy & Tong')).toHaveCount(0)
+    await expect(page.getByText('Starts after both have played')).toHaveCount(0)
+  })
+
+  test('a partner returning from a break does not jump the line either', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal'])
+    await page.getByRole('tab', { name: 'Check-in' }).click()
+    await page.getByRole('listitem').filter({ hasText: 'Ann' }).getByRole('button', { name: 'Take a break' }).click()
+    await choose(page, 'First partner', 'Ann')
+    await choose(page, 'Second partner', 'Eve')
+    await page.getByRole('button', { name: 'Lock partners' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Lock Ann and Eve?' })
+    await expect(dialog).toContainText('Ann is on a break')
+    await dialog.getByRole('button', { name: 'Lock anyway' }).click()
+
+    await page.getByRole('button', { name: 'Back to queue' }).click()
+    await page.getByRole('tab', { name: 'Board' }).click()
+    // Ann is at the back; Bob, Cy, Dee and Eve are still the next four.
+    expect((await queueNames(page)).slice(-1)).toEqual(['Ann'])
+    for (const name of ['Bob', 'Cy', 'Dee', 'Eve']) await expect(nextUp(page).getByText(name)).toBeVisible()
+  })
+})
+
+test.describe('locking two players who are both waiting', () => {
+  test('takes effect at once, with no question, as before', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    await openLockForm(page, 'Ann', 'Cy')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByText('Ann and Cy are now partners')).toBeVisible()
+    await expect(page.getByText('Starts after both have played')).toHaveCount(0)
+
+    await page.getByRole('tab', { name: 'Board' }).click()
+    // Cy moved up beside Ann: they are in the next group together.
+    for (const name of ['Ann', 'Cy']) await expect(nextUp(page).getByText(name)).toBeVisible()
+    await expect(page.getByLabel('Locked with Cy')).toBeVisible()
+  })
+
+  test('two players in the same game are locked at once', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    await startGame(page)
+    await openLockForm(page, 'Ann', 'Bob')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByText('Ann and Bob are now partners')).toBeVisible()
+  })
+})

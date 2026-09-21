@@ -9,6 +9,7 @@ import {
   defaultCourtName,
   estimateWaitMinutes,
   lockPartners,
+  lockStatus,
   MAX_COURTS,
   MAX_GAME_SECONDS,
   MAX_SCORE,
@@ -679,6 +680,14 @@ describe('court management', () => {
       expect(places.length).toBe(new Set(places).size)
       expect(new Set(places)).toEqual(new Set(Object.keys(s.players).map(Number)))
 
+      // A player is in at most one lock, and a lock waiting is never also in force.
+      const inLocks = [...s.partners, ...(s.pendingPartners ?? []).map((p) => p.pair)].flat()
+      expect(inLocks.length).toBe(new Set(inLocks).size)
+      for (const { pair, done } of s.pendingPartners ?? []) {
+        expect(done.every((id) => pair.includes(id))).toBe(true)
+        expect(pair.every((id) => done.includes(id))).toBe(false)
+      }
+
       // Scores and time never go backwards or out of step with the games played.
       for (const stats of Object.values(s.stats)) {
         expect(stats.wins + stats.losses).toBe(stats.games)
@@ -703,7 +712,7 @@ describe('court management', () => {
           clock += Math.floor(next() * 20 * 60_000)
           const busy = s.courts.filter((c) => c.teams)
           try {
-            switch (Math.floor(next() * 12)) {
+            switch (Math.floor(next() * 14)) {
               case 0:
                 s = checkIn(checkIn(s, player(nextPlayer++)), player(nextPlayer++))
                 break
@@ -739,6 +748,18 @@ describe('court management', () => {
                   const court = pick(busy)
                   s = replacePlayer(s, court.id, pick(court.teams!.flat()), pick(s.queue), { sendOnBreak: next() < 0.5 })
                 }
+                break
+              case 11: {
+                const locked = new Set([...s.partners.flat(), ...(s.pendingPartners ?? []).flatMap((p) => p.pair)])
+                const free = Object.keys(s.players).map(Number).filter((id) => !locked.has(id))
+                if (free.length >= 2) {
+                  const first = pick(free)
+                  s = lockPartners(s, first, pick(free.filter((id) => id !== first)))
+                }
+                break
+              }
+              case 12:
+                if (Object.keys(s.players).length) s = unlockPartners(s, pick(Object.keys(s.players).map(Number)))
                 break
               case 10: {
                 const group = nextGroup(s)
@@ -976,5 +997,152 @@ describe('changing who is next up', () => {
     expect(isNextUpPicked(s)).toBe(false)
     expect(nextGroup(s)!.players.slice().sort()).toEqual([1, 2, 3, 4])
     expect(resetNextUp(eight())).toEqual(eight())
+  })
+})
+
+describe('partner locks that do not take effect at once', () => {
+  const SUZY = 1
+  const TONG = 5
+
+  /** Suzy playing on Court 1, Tong waiting first in the queue, five more waiting behind. */
+  function suzyAndTong() {
+    let s = createSession('doubles', 2)
+    for (let id = 1; id <= 12; id++) s = checkIn(s, player(id))
+    s = startGame(s, 1) // 1-4 play; 5.. wait
+    return s
+  }
+
+  it('waits when a partner is on a court, and changes nothing in the queue or the groups', () => {
+    const s = suzyAndTong()
+    const locked = lockPartners(s, SUZY, TONG)
+    expect(locked.partners).toEqual([])
+    expect(locked.pendingPartners).toEqual([{ pair: [SUZY, TONG], done: [] }])
+    expect(locked.queue).toEqual(s.queue)
+    expect(nextGroup(locked)!.players.slice().sort()).toEqual(nextGroup(s)!.players.slice().sort())
+    expect(nextGroup(locked)!.players).toContain(TONG)
+  })
+
+  it('does not pull Suzy ahead of the line when her game ends: she joins the back, Tong keeps his turn', () => {
+    const locked = lockPartners(suzyAndTong(), SUZY, TONG)
+    const after = recordResult(locked, 1, 0).state
+    expect(after.queue.slice(0, 8)).toEqual([5, 6, 7, 8, 9, 10, 11, 12])
+    expect(after.queue.slice(8).sort()).toEqual([1, 2, 3, 4])
+    expect(nextGroup(after)!.players.slice().sort()).toEqual([5, 6, 7, 8]) // Tong is still next up
+    expect(after.partners).toEqual([]) // not in force yet
+    expect(after.pendingPartners).toEqual([{ pair: [SUZY, TONG], done: [SUZY] }])
+  })
+
+  it('comes into force once both have finished a game, and the pair stands at the later partner spot', () => {
+    let s = lockPartners(suzyAndTong(), SUZY, TONG)
+    s = recordResult(s, 1, 0).state // Suzy finished; queue 5..12, then 1-4
+    s = startGame(s, 1) // Tong plays with 6, 7, 8
+    expect(s.courts[0].teams!.flat()).toContain(TONG)
+    s = recordResult(s, 1, 0).state // Tong finished: the lock is now in force
+    expect(s.pendingPartners).toBeUndefined()
+    expect(s.partners).toEqual([[SUZY, TONG]])
+    // Suzy's game ended first, Tong's second: both queued behind 9-12, Suzy ahead of Tong.
+    expect(s.queue).toEqual([9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8])
+    expect(nextGroup(s)!.players.slice().sort((a, b) => a - b)).toEqual([9, 10, 11, 12])
+    // Once they play, the pair stands at Tong's (the later) spot: Suzy does not move up ahead of
+    // 2, 3 and 4, and neither of them is pulled in before the players who queued between them.
+    const later = startGame(s, 1)
+    expect(later.queue).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(nextGroup(later)!.players.slice().sort((a, b) => a - b)).toEqual([2, 3, 4, 6])
+  })
+
+  it('a partner returning from a break does not jump the line', () => {
+    // Tong (5) waits at the front, Suzy (1) is on a break and comes back at the back.
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 8; id++) s = checkIn(s, player(id))
+    s = checkOut(s, 1)
+    s = lockPartners(s, 1, 5) // one is on a break: waiting lock
+    expect(s.pendingPartners).toHaveLength(1)
+    s = checkIn(s, player(1))
+    expect(s.queue).toEqual([2, 3, 4, 5, 6, 7, 8, 1])
+    expect(nextGroup(s)!.players.slice().sort()).toEqual([2, 3, 4, 5])
+  })
+
+  it('an in-force pair never lets the later partner skip people who were waiting', () => {
+    // Locked while both waited, then one goes on a break and returns at the back.
+    let s = withPlayers(createSession('doubles', 1), 8)
+    s = lockPartners(s, 1, 2)
+    s = checkOut(s, 2)
+    s = checkIn(s, player(2)) // queue: 1, 3..8, 2
+    expect(s.queue).toEqual([1, 3, 4, 5, 6, 7, 8, 2])
+    // The pair stands at 2's spot (the later one), behind everyone who was waiting.
+    expect(nextGroup(s)!.players.slice().sort()).toEqual([3, 4, 5, 6])
+  })
+
+  it('is in force at once when both are waiting, with the later partner moved up behind the earlier one', () => {
+    const s = lockPartners(withPlayers(createSession('doubles', 1), 6), 2, 5)
+    expect(s.partners).toEqual([[2, 5]])
+    expect(s.pendingPartners).toBeUndefined()
+    expect(s.queue).toEqual([1, 2, 5, 3, 4, 6])
+    expect(nextGroup(s)!.players.slice().sort()).toEqual([1, 2, 3, 5])
+  })
+
+  it('is in force at once when both are in the same game', () => {
+    const s = fillCourts(withPlayers(createSession('doubles', 1), 5))
+    const locked = lockPartners(s, 1, 2)
+    expect(locked.partners).toEqual([[1, 2]])
+    expect(locked.pendingPartners).toBeUndefined()
+    expect(locked.queue).toEqual(s.queue)
+  })
+
+  it('waits when the two are on different courts, or when one is on a break', () => {
+    const s = fillCourts(withPlayers(createSession('doubles', 2), 8))
+    expect(lockPartners(s, 1, 5).pendingPartners).toHaveLength(1)
+    const onBreak = checkOut(withPlayers(createSession('doubles', 1), 3), 3)
+    expect(lockPartners(onBreak, 1, 3).pendingPartners).toHaveLength(1)
+  })
+
+  it('says who is away and where', () => {
+    const s = suzyAndTong()
+    expect(lockStatus(s, SUZY, TONG)).toEqual({ inForce: false, away: [{ id: SUZY, courtName: 'Court 1' }] })
+    expect(lockStatus(s, TONG, 6)).toEqual({ inForce: true })
+    const brk = checkOut(s, TONG)
+    expect(lockStatus(brk, SUZY, TONG)).toEqual({
+      inForce: false,
+      away: [{ id: SUZY, courtName: 'Court 1' }, { id: TONG, courtName: undefined }],
+    })
+    expect(lockStatus(fillCourts(withPlayers(createSession('doubles', 1), 5)), 1, 2)).toEqual({ inForce: true })
+  })
+
+  it('a game that is cancelled does not count as finished', () => {
+    let s = lockPartners(suzyAndTong(), SUZY, TONG)
+    s = cancelMatch(s, 1)
+    expect(s.pendingPartners).toEqual([{ pair: [SUZY, TONG], done: [] }])
+  })
+
+  it('is refused for a player who already has a lock, in force or waiting', () => {
+    const s = lockPartners(suzyAndTong(), SUZY, TONG)
+    expect(() => lockPartners(s, SUZY, 6)).toThrow('already locked')
+    expect(() => lockPartners(s, 6, TONG)).toThrow('already locked')
+  })
+
+  it('can be unlocked before it starts, by either partner', () => {
+    const s = lockPartners(suzyAndTong(), SUZY, TONG)
+    expect(unlockPartners(s, TONG).pendingPartners).toBeUndefined()
+    expect(unlockPartners(s, SUZY).pendingPartners).toBeUndefined()
+    expect(unlockPartners(s, 9)).toEqual(s)
+  })
+
+  it('is removed when one partner is swapped off the court or out of Next up', () => {
+    const s = lockPartners(suzyAndTong(), SUZY, TONG)
+    expect(replacePlayer(s, 1, SUZY, 6).pendingPartners).toBeUndefined()
+    expect(replaceNextUp(s, TONG, 9).pendingPartners).toBeUndefined()
+  })
+
+  it('never changes the state it was given', () => {
+    const s = suzyAndTong()
+    const snapshot = structuredClone(s)
+    const locked = lockPartners(s, SUZY, TONG)
+    recordResult(locked, 1, 0)
+    expect(s).toEqual(snapshot)
+  })
+
+  it('has no effect on the players’ live-board locks until it is in force', () => {
+    const s = lockPartners(suzyAndTong(), SUZY, TONG)
+    expect(s.partners).toEqual([])
   })
 })
