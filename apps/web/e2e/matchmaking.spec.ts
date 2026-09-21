@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test'
-import { checkIn, choose, startSession, startGame } from './helpers'
+import { expect, test, type Page } from '@playwright/test'
+import { checkIn, choose, recordWin, startSession, startGame } from './helpers'
 
 const MODES = ['Auto-balanced', 'Skill-separated', 'Winners vs. Losers', 'Mixed doubles']
 
@@ -121,5 +121,61 @@ test.describe('partner locking', () => {
     await page.getByRole('tab', { name: 'Board' }).click()
     await expect(page.getByLabel('Locked with Bob')).toBeVisible()
     await expect(page.getByLabel('Locked with Ann')).toBeVisible()
+  })
+})
+
+test.describe('partners and opponents rotate', () => {
+  const NAMES = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal']
+
+  /** The two teams in the Next up card, as sorted name lists. */
+  async function nextUpTeams(page: Page) {
+    const lists = page.getByRole('group', { name: 'Next up' }).locator('ul')
+    await expect(lists).toHaveCount(2)
+    const teams: string[][] = []
+    for (let i = 0; i < 2; i++) {
+      const rows = await lists.nth(i).locator('li').allTextContents()
+      teams.push(rows.map((row) => NAMES.find((name) => row.startsWith(name))!).sort())
+    }
+    return teams
+  }
+
+  test('Winners vs. Losers keeps the ladder but does not lock the winning pairs together', async ({ page }) => {
+    await startSession(page, { courts: 2, matchmaking: 'Winners vs. Losers' })
+    await checkIn(page, NAMES)
+    await startGame(page, 'Court 1') // Ann + Bob against Cy + Dee
+    await startGame(page, 'Court 2') // Eve + Fay against Gus + Hal
+    await recordWin(page, 'Court 1', 'A')
+    await recordWin(page, 'Court 2', 'A')
+
+    // The four winners meet, but with new partners: neither winning pair plays together again.
+    const winners = await nextUpTeams(page)
+    expect(winners.flat().sort()).toEqual(['Ann', 'Bob', 'Eve', 'Fay'])
+    for (const team of winners) {
+      expect(team).not.toEqual(['Ann', 'Bob'])
+      expect(team).not.toEqual(['Eve', 'Fay'])
+    }
+    await startGame(page, 'Court 1')
+    await recordWin(page, 'Court 1', 'A')
+
+    // The four losers are next, also with new partners.
+    const losers = await nextUpTeams(page)
+    expect(losers.flat().sort()).toEqual(['Cy', 'Dee', 'Gus', 'Hal'])
+    for (const team of losers) {
+      expect(team).not.toEqual(['Cy', 'Dee'])
+      expect(team).not.toEqual(['Gus', 'Hal'])
+    }
+  })
+
+  test('Auto-balanced pairs everyone with everyone before repeating a partner', async ({ page }) => {
+    await startSession(page, { matchmaking: 'Auto-balanced' })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    const partnerships = new Set<string>()
+    for (let game = 0; game < 3; game++) {
+      for (const team of await nextUpTeams(page)) partnerships.add(team.join('+'))
+      await startGame(page)
+      await recordWin(page)
+    }
+    // Four players make six pairs, and three games use each of them once.
+    expect(partnerships.size).toBe(6)
   })
 })
