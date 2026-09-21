@@ -1,4 +1,4 @@
-import { MEDIA_LIMITS } from '@matchup/shared'
+import { MEDIA_LIMITS } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Db } from '../src/db'

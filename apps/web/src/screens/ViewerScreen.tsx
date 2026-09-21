@@ -60,7 +60,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
       setView(
         snapshot
           ? { kind: 'live', snapshot, updatedAt: row.updatedAt }
-          : { kind: 'error', message: 'This board needs a newer version of Matchup. Refresh the page.' },
+          : { kind: 'error', message: 'This board needs a newer version of Q2Dink. Refresh the page.' },
       )
     }
 

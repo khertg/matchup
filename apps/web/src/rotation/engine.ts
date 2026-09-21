@@ -1,4 +1,4 @@
-import { MAX_COURT_NAME_LENGTH, MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
+import { MAX_COURT_NAME_LENGTH, MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
 import type { SkillLevel } from '../db/db'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
 import type {

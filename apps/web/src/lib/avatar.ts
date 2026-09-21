@@ -1,4 +1,4 @@
-import { MEDIA_LIMITS, avatarKey } from '@matchup/shared'
+import { MEDIA_LIMITS, avatarKey } from '@q2dink/shared'
 import type { Crop } from './crop'
 
 /** How a player appears. Photos are small data URLs; the rest need no image at all. */

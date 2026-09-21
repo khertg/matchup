@@ -17,7 +17,7 @@ ENV VITE_API_URL=/api
 #   docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) ...  (without it the app shows "dev")
 ARG GIT_SHA=
 ENV GIT_SHA=$GIT_SHA
-RUN npm run build -w @matchup/web
+RUN npm run build -w @q2dink/web
 
 FROM caddy:2-alpine
 COPY deploy/Caddyfile /etc/caddy/Caddyfile

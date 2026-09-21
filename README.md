@@ -1,4 +1,4 @@
-# Matchup
+# Q2Dink
 
 Free, offline-first pickleball open play manager (see [docs/pickleq-specs.md](docs/pickleq-specs.md)).
 
@@ -26,7 +26,7 @@ Run everything from the repository root: `npm install` once, then the scripts be
 - `npm run typecheck`: type-check every workspace
 - `npm run lint`: lint every workspace with oxlint
 - `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Tests and config live in `apps/web/e2e` and `apps/web/playwright.config.ts`. Cloud features run against a second build (`npm run build:cloudtest`) that talks to a **real API** (embedded Postgres, started automatically for each run), so the whole stack is tested end to end.
-- `npm test -w @matchup/api`: the API suite on embedded Postgres; set `TEST_DATABASE_URL` to run it on a real Postgres instead (CI does both).
+- `npm test -w @q2dink/api`: the API suite on embedded Postgres; set `TEST_DATABASE_URL` to run it on a real Postgres instead (CI does both).
 
 Requires Node 24 (what CI and the Docker images use; built with Node 26).
 
@@ -56,7 +56,7 @@ Every player has a round **avatar** and the club can have a **logo**, both chang
 
 ## Cloud sync and live board
 
-With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the app opens on a **login screen**: staff create a club (a password of at least 8 characters, and a one-time **recovery code**) or log in to their club before they can use it. The login is kept on the device, so the app then opens and works with no signal; it is asked for again only after **Log out** (the roster, sessions and history stay on the device) or when the login expires (30 days). You need a connection the first time you log in on a device. The public live page never asks for a login. Logging in gives you:
+With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @q2dink/api` needs no database) the app opens on a **login screen**: staff create a club (a password of at least 8 characters, and a one-time **recovery code**) or log in to their club before they can use it. The login is kept on the device, so the app then opens and works with no signal; it is asked for again only after **Log out** (the roster, sessions and history stay on the device) or when the login expires (30 days). You need a connection the first time you log in on a device. The public live page never asks for a login. Logging in gives you:
 
 - a **live board** at `/club/<your-club>` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
 - **resume** of a running session on a second staff device;
@@ -84,7 +84,7 @@ docker compose down -v       # after changing dependencies, so the containers ge
 ```
 
 The web app proxies `/api` to the API, so the cloud features work with no extra setup. You can also run each
-piece without Docker: `npm run dev` (web) and `npm run dev -w @matchup/api` (API, with an embedded database).
+piece without Docker: `npm run dev` (web) and `npm run dev -w @q2dink/api` (API, with an embedded database).
 
 **Production** is one small server running Caddy, the API and Postgres. See [deploy/README.md](deploy/README.md)
 for the step-by-step guide, backups and updates.

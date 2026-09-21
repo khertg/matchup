@@ -1,4 +1,4 @@
-import { MAX_PLAYER_NAME_LENGTH, type LifetimePlayer } from '@matchup/shared'
+import { MAX_PLAYER_NAME_LENGTH, type LifetimePlayer } from '@q2dink/shared'
 import type { Db, Queryable } from '../db'
 import { AppError } from '../errors'
 

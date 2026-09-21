@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@matchup/shared'
+import type { ErrorCode } from '@q2dink/shared'
 
 const STATUS: Record<ErrorCode, number> = {
   weak_password: 400,

@@ -4,7 +4,7 @@ import {
   MIN_PASSWORD_LENGTH,
   isValidSlug,
   slugify,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toCloudError } from '@/cloud/api'
 import { useClubAuth } from '@/cloud/auth'

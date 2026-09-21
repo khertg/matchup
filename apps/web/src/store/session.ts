@@ -285,7 +285,7 @@ export const useSessionStore = create<SessionStore>()(
         set({ location: '', session: null, previous: null, sessionId: '', startedAt: 0, lifetimeCounted: {} }),
     }),
     {
-      name: 'matchup-session',
+      name: 'q2dink-session',
       version: SESSION_STORE_VERSION,
       migrate: (persisted, version) => {
         const saved = persisted as {

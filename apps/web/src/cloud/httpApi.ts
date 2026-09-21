@@ -7,7 +7,7 @@ import {
   type LiveRow,
   type LoginResponse,
   type ResetPasswordResponse,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import { CloudError, type CloudApi } from './api'
 
 interface Options {
@@ -34,7 +34,7 @@ function errorFrom(status: number, body: unknown): CloudError {
 }
 
 /**
- * The Matchup API over HTTP. `baseUrl` is where /api lives, for example `/api`
+ * The Q2Dink API over HTTP. `baseUrl` is where /api lives, for example `/api`
  * (same origin, the normal setup) or `https://example.com/api`.
  */
 export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi {

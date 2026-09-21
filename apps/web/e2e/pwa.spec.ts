@@ -4,7 +4,7 @@ test('serves a web app manifest', async ({ request }) => {
   const res = await request.get('/manifest.webmanifest')
   expect(res.ok()).toBe(true)
   const manifest = await res.json()
-  expect(manifest.name).toBe('Matchup')
+  expect(manifest.name).toBe('Q2Dink')
   expect(manifest.display).toBe('standalone')
   expect(manifest.theme_color).toBe('#16a34a')
 })

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { avatarKey } from '@matchup/shared'
+import { avatarKey } from '@q2dink/shared'
 import type { LifetimePlayer } from './api'
 
 export interface Club {
@@ -48,7 +48,7 @@ export const useClubAuth = create<ClubAuthStore>()(
         })),
     }),
     {
-      name: 'matchup-club',
+      name: 'q2dink-club',
       version: 1,
       storage: createJSONStorage(() => localStorage),
     },

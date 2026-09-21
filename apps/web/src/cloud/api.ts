@@ -10,14 +10,14 @@ import type {
   PutAvatarRequest,
   PutHistoryRequest,
   ResetPasswordResponse,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import type { FullBackup } from './snapshot'
 
 export type { AvatarIndex, HistorySummary, LifetimePlayer, LiveRow, PutAvatarRequest, PutHistoryRequest }
 
 /**
  * Everything the app needs from a cloud backend. The web app talks only to
- * this interface; `httpApi.ts` implements it against the Matchup API, and a
+ * this interface; `httpApi.ts` implements it against the Q2Dink API, and a
  * different backend could be dropped in by writing another implementation.
  */
 export interface CloudApi {

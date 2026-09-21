@@ -1,4 +1,4 @@
-import type { LiveEvent } from '@matchup/shared'
+import type { LiveEvent } from '@q2dink/shared'
 
 export interface Subscriber {
   send: (event: LiveEvent) => void

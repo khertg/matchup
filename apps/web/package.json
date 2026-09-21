@@ -1,5 +1,5 @@
 {
-  "name": "@matchup/web",
+  "name": "@q2dink/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
-    "@matchup/shared": "*",
+    "@q2dink/shared": "*",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.3.0",
     "dexie": "^4.4.6",

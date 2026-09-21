@@ -145,7 +145,7 @@ test.describe('live viewer', () => {
       }),
     )
     await page.goto(`/club/${club.slug}`)
-    await expect(page.getByText('This board needs a newer version of Matchup')).toBeVisible()
+    await expect(page.getByText('This board needs a newer version of Q2Dink')).toBeVisible()
     await expect(page.getByText('Ann')).toHaveCount(0)
   })
 

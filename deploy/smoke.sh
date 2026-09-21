@@ -42,7 +42,7 @@ club="$(curl -fsS "$BASE/club/some-club" 2>/dev/null || true)"
 if [[ "$club" == *'<div id="root">'* ]]; then pass "/club/<name> serves the app (client route)"; else fail "/club/<name> does not serve the app"; fi
 
 manifest="$(curl -fsS "$BASE/manifest.webmanifest" 2>/dev/null || true)"
-if [[ "$manifest" == *'"Matchup"'* ]]; then pass "the web app manifest is served"; else fail "the web app manifest is missing"; fi
+if [[ "$manifest" == *'"Q2Dink"'* ]]; then pass "the web app manifest is served"; else fail "the web app manifest is missing"; fi
 
 worker="$(curl -fsS "$BASE/sw.js" 2>/dev/null || true)"
 if [[ "$worker" == *'denylist'* && "$worker" == *'api'* ]]; then

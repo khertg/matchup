@@ -3,7 +3,7 @@ import {
   type FullBackupEnvelope,
   type HistorySummary,
   type PutHistoryRequest,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import type { Db, Queryable } from '../db'
 
 export const isHistoryId = (id: string) =>

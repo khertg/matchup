@@ -1,4 +1,4 @@
-import { MEDIA_LIMITS, avatarKey, type AvatarInfo, type PutAvatarRequest } from '@matchup/shared'
+import { MEDIA_LIMITS, avatarKey, type AvatarInfo, type PutAvatarRequest } from '@q2dink/shared'
 import { createHash } from 'node:crypto'
 import type { Db, Queryable } from '../db'
 import { AppError } from '../errors'

@@ -1,4 +1,4 @@
-import type { LiveEvent } from '@matchup/shared'
+import type { LiveEvent } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError } from '../errors'

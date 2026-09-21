@@ -11,9 +11,9 @@ export function LoginGate() {
     <div className="mx-auto max-w-md pt-6 sm:pt-16">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Matchup</CardTitle>
+          <CardTitle className="text-2xl">Q2Dink</CardTitle>
           <CardDescription>
-            Log in to your club to use Matchup. You need a connection the first time you log in on a
+            Log in to your club to use Q2Dink. You need a connection the first time you log in on a
             device; after that it keeps working offline.
           </CardDescription>
         </CardHeader>

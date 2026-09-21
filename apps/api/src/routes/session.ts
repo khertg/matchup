@@ -6,7 +6,7 @@ import {
   type PutHistoryRequest,
   type RecordLifetimeRequest,
   type RenamePlayerRequest,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError } from '../errors'

@@ -46,8 +46,8 @@ export default defineConfig({
       },
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Matchup',
-        short_name: 'Matchup',
+        name: 'Q2Dink',
+        short_name: 'Q2Dink',
         description: 'Pickleball open play manager and court rotation tool',
         theme_color: '#16a34a',
         background_color: '#ffffff',

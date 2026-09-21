@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Matchup is a free, offline-first pickleball open-play manager (product spec: `docs/pickleq-specs.md`, user-facing overview: `README.md`). npm-workspaces monorepo: `apps/web` (React 19, Vite, Tailwind v4, shadcn/ui, Zustand, Dexie), `apps/api` (Fastify + Postgres), `packages/shared` (wire contract used by both), `deploy/` (Caddy + API + Postgres).
+Q2Dink is a free, offline-first pickleball open-play manager (product spec: `docs/pickleq-specs.md`, user-facing overview: `README.md`). npm-workspaces monorepo: `apps/web` (React 19, Vite, Tailwind v4, shadcn/ui, Zustand, Dexie), `apps/api` (Fastify + Postgres), `packages/shared` (wire contract used by both), `deploy/` (Caddy + API + Postgres).
 
 ## Commands
 
 Run from the repo root unless noted. Each script runs in every workspace that defines it.
 
-- `npm run dev` (web), `npm run dev -w @matchup/api` (API on 8787, embedded PGlite, no database needed), or `docker compose up` (web 5173 + API + Postgres + Adminer on 8080, hot reload)
+- `npm run dev` (web), `npm run dev -w @q2dink/api` (API on 8787, embedded PGlite, no database needed), or `docker compose up` (web 5173 + API + Postgres + Adminer on 8080, hot reload)
 - `npm test`, `npm run typecheck`, `npm run build`
 - `npm run lint` (root only, oxlint over `apps packages`; workspaces have no lint script)
 - One unit test: `cd apps/web && npx vitest run src/rotation/engine.test.ts -t "part of the name"` (same in `apps/api`, `packages/shared`)
@@ -52,6 +52,9 @@ The roster, past sessions, logo and totals live on the device, but what is *sent
 
 ### Security headers
 The Content-Security-Policy is defined once in `apps/web/csp.ts`, copied into `deploy/Caddyfile` (`csp.test.ts` fails if they differ), and served by `vite preview`, so the whole Playwright suite runs under the production policy. `e2e/cspWatch.ts` (`failOnCspViolations(test)`) fails any test whose page logs a violation; the cloud specs use it. A new kind of resource (an external font, an inline script, a remote image) needs a deliberate policy change in both places. The service worker's navigation fallback must never catch `/api` (`navigateFallbackDenylist` in `vite.config.ts`).
+
+### Renamed from Matchup
+The product used to be called Matchup (repo `matchup`, npm scope `@matchup`, IndexedDB `matchup`, localStorage `matchup-session` / `matchup-club`). It is **Q2Dink** now (repo `q-2-dink`, scope `@q2dink`, `q2dink`, `q2dink-session` / `q2dink-club`). Browsers cannot rename storage, so `lib/legacyStorage.ts` (called first from `main.tsx` via `legacy.ts`) and `db/legacyMigration.ts` (Dexie's `ready` hook in `db/db.ts`) move an old device's data across on first launch, and they are the only source files that may still contain the old names (plus `docs/pickleq-specs.md`, which documents another product, and the "Upgrading from Matchup" section of `deploy/README.md`: servers set up before the rename keep `POSTGRES_USER=matchup` / `POSTGRES_DB=matchup`). `topMatchup` in `rotation/repeats.ts` is the ordinary word (a pairing of opponents), not the product name.
 
 ### Light and dark theme
 The theme is `next-themes` (`ThemeProvider` in `main.tsx`, class `dark` on `<html>`, choice stored under the key `theme`, default System) with the `.dark` colour tokens in `index.css`; `ThemeSwitch` (one per screen, rendered in `App.tsx`) chooses Light/Dark/System and keeps `<meta name="theme-color">` in step. **`public/theme-init.js` must stay an external file**: it sets the class before first paint, and the Content-Security-Policy (`script-src 'self'`) blocks the inline script `next-themes` would otherwise use, which would flash white for dark-mode users. `lib/theme.test.ts` runs that script against the same cases as `isDark`, so change both together. Colours must come from the tokens (`bg-background`, `text-muted-foreground`, ...), not fixed ones, so both themes work.

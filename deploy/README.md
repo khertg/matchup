@@ -1,4 +1,4 @@
-# Deploying Matchup to a server
+# Deploying Q2Dink to a server
 
 One small Linux server (a $5/month VPS is plenty) runs everything with Docker Compose:
 
@@ -13,13 +13,13 @@ published ports and no route out. Caddy gets and renews the HTTPS certificate by
 ## Before you start
 
 - A server with **Docker** and the **Compose plugin** (`docker compose version` works). Any recent Ubuntu or Debian is fine.
-- A **domain** whose DNS **A record** points at the server's IP address (for example `matchup.example.com`).
+- A **domain** whose DNS **A record** points at the server's IP address (for example `q2dink.example.com`).
 - Ports **80 and 443** open to the internet (Caddy needs 80 to prove you own the domain).
 
 ## First deployment
 
 ```bash
-git clone <your repository> matchup && cd matchup/deploy
+git clone <your repository> q-2-dink && cd q-2-dink/deploy
 cp .env.example .env
 nano .env        # set DOMAIN and a long random POSTGRES_PASSWORD (openssl rand -base64 24)
 GIT_SHA=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml up -d --build
@@ -44,25 +44,43 @@ The database schema is created automatically the first time the API starts.
 ## Updating
 
 ```bash
-cd matchup && git pull
+cd q-2-dink && git pull
 cd deploy && GIT_SHA=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Only what changed is rebuilt. Migrations run automatically on start. **Never run `docker compose down -v`**: the
 `-v` deletes the database volume.
 
+## Upgrading from Matchup (the app was renamed to Q2Dink)
+
+The database user and database used to default to `matchup`; they now default to `q2dink`. Postgres does not
+rename an existing database, so a server that was set up before the rename **must keep the old names**. Before you
+pull and rebuild, add these two lines to `deploy/.env`:
+
+```
+POSTGRES_USER=matchup
+POSTGRES_DB=matchup
+```
+
+Then update as usual. (Without them the API cannot sign in to the existing database and the stack will not become
+healthy.) A brand-new server needs nothing. To move an existing server to the new names, restore a backup into a fresh
+`q2dink` database instead (see Backups) and remove the two lines.
+
+Old backup files named `matchup-<date>.sql.gz` still restore with the command below, and `backup.sh` rotates them
+together with the new `q2dink-<date>.sql.gz` files. Nothing else on the server depends on the folder name.
+
 ## Backups
 
 Run a backup by hand, or schedule it:
 
 ```bash
-cd matchup/deploy && ./backup.sh              # writes ./backups/matchup-<date>.sql.gz, keeps the newest 14
+cd q-2-dink/deploy && ./backup.sh              # writes ./backups/q2dink-<date>.sql.gz, keeps the newest 14
 ```
 
 Daily at 03:00 with cron (`crontab -e`):
 
 ```
-0 3 * * * cd /home/you/matchup/deploy && ./backup.sh /home/you/matchup-backups >> /home/you/backup.log 2>&1
+0 3 * * * cd /home/you/q-2-dink/deploy && ./backup.sh /home/you/q2dink-backups >> /home/you/backup.log 2>&1
 ```
 
 **Copy the backups off the server** (another machine, or object storage). A backup on the same disk does not
@@ -71,8 +89,8 @@ protect you from losing the disk.
 To restore into an empty database:
 
 ```bash
-cd matchup/deploy
-gunzip -c backups/matchup-<date>.sql.gz | docker compose -f docker-compose.prod.yml exec -T db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
+cd q-2-dink/deploy
+gunzip -c backups/q2dink-<date>.sql.gz | docker compose -f docker-compose.prod.yml exec -T db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 ```
 
 Try a restore once, on a scratch database, before you need it.

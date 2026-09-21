@@ -14,7 +14,7 @@ RUN npm ci
 FROM deps AS dev
 EXPOSE 8787
 # Polling watcher: file-change events do not cross Windows/macOS bind mounts.
-CMD ["npm", "run", "dev:docker", "-w", "@matchup/api"]
+CMD ["npm", "run", "dev:docker", "-w", "@q2dink/api"]
 
 # ---- build: bundle the server (the shared package is inlined) ----
 FROM deps AS build
@@ -23,7 +23,7 @@ COPY apps/api apps/api
 # The short commit /api/health reports. .dockerignore leaves .git out, so it is passed in.
 ARG GIT_SHA=
 ENV GIT_SHA=$GIT_SHA
-RUN npm run build -w @matchup/api
+RUN npm run build -w @q2dink/api
 
 # ---- prod-deps: only what the running server needs ----
 FROM node:24-alpine AS prod-deps
@@ -32,7 +32,7 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
-RUN npm ci --omit=dev -w @matchup/api
+RUN npm ci --omit=dev -w @q2dink/api
 
 # ---- prod: small runtime image, runs as a non-root user ----
 FROM node:24-alpine AS prod

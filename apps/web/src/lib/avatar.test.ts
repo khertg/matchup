@@ -1,4 +1,4 @@
-import { MEDIA_LIMITS } from '@matchup/shared'
+import { MEDIA_LIMITS } from '@q2dink/shared'
 import { describe, expect, it } from 'vitest'
 import {
   AVATAR_COLORS,

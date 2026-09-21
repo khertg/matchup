@@ -1,4 +1,4 @@
-import { ERROR_CODES } from '@matchup/shared'
+import { ERROR_CODES } from '@q2dink/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { CloudError, toCloudError } from './api'
 import { createHttpApi } from './httpApi'

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test('renders the setup screen', async ({ page }) => {
   await page.goto('/')
-  await expect(page).toHaveTitle('Matchup')
+  await expect(page).toHaveTitle('Q2Dink')
   await expect(page.getByText('Set up an open play session')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Doubles' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Singles' })).toHaveAttribute('aria-pressed', 'false')

@@ -1,4 +1,4 @@
-import { isValidSlug } from '@matchup/shared'
+import { isValidSlug } from '@q2dink/shared'
 import type { FastifyRequest } from 'fastify'
 import type { Queryable } from '../db'
 import { AppError } from '../errors'
