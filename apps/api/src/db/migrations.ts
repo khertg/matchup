@@ -64,4 +64,23 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '002_session_history',
+    sql: `
+      -- Ended sessions, so a club can look back at them and resume one from any staff device.
+      -- Only reachable with a staff token.
+      create table session_history (
+        club_slug text not null references clubs (slug) on delete cascade,
+        id        uuid not null,
+        location  text not null,
+        mode      text not null check (mode in ('doubles', 'singles')),
+        players   integer not null check (players >= 0),
+        games     integer not null check (games >= 0),
+        ended_at  timestamptz not null,
+        state     jsonb not null,
+        primary key (club_slug, id)
+      );
+      create index session_history_recent_idx on session_history (club_slug, ended_at desc);
+    `,
+  },
 ]

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame, startSession } from './helpers'
+import { checkIn, startGame, startSession, recordWin } from './helpers'
 
 const EIGHT = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal']
 
@@ -102,7 +102,7 @@ test.describe('renaming a court', () => {
     // The game in progress is untouched, and results use the new name.
     const court = page.getByRole('region', { name: 'Center Court' })
     await expect(court.getByText('Ann')).toBeVisible()
-    await court.getByRole('button', { name: 'Team A won' }).click()
+    await recordWin(page, 'Center Court')
     await expect(page.getByText('Center Court: Team A won')).toBeVisible()
   })
 

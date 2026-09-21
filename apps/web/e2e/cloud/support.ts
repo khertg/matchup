@@ -43,10 +43,11 @@ export function liveSnapshot(location = 'Sunset Courts') {
     onBreak: [],
     partners: [[5, 6]],
     stats: {
-      1: { games: 2, wins: 2, losses: 0, opponentSkill: 6 },
-      2: { games: 2, wins: 2, losses: 0, opponentSkill: 6 },
-      3: { games: 2, wins: 0, losses: 2, opponentSkill: 6 },
-      4: { games: 2, wins: 0, losses: 2, opponentSkill: 6 },
+      // Two scored games and 21 minutes on court each: the winners are +8, the losers -8.
+      1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 14, scoredGames: 2, secondsPlayed: 1260 },
+      2: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 14, scoredGames: 2, secondsPlayed: 1260 },
+      3: { games: 2, wins: 0, losses: 2, opponentSkill: 6, pointsFor: 14, pointsAgainst: 22, scoredGames: 2, secondsPlayed: 1260 },
+      4: { games: 2, wins: 0, losses: 2, opponentSkill: 6, pointsFor: 14, pointsAgainst: 22, scoredGames: 2, secondsPlayed: 1260 },
     },
     players: {
       1: { id: 1, name: 'Ann', skill: 3 },

@@ -1,6 +1,7 @@
 import {
   isErrorCode,
   type AuthGrant,
+  type HistorySummary,
   type LifetimePlayer,
   type LiveRow,
   type LoginResponse,
@@ -94,6 +95,22 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
 
     async recordLifetime(token, batchId, players) {
       await request('POST', '/lifetime', { token, body: { batchId, players } })
+    },
+
+    async putHistory(token, id, entry, backup) {
+      await request('PUT', `/history/${encodeURIComponent(id)}`, { token, body: { ...entry, full: backup } })
+    },
+
+    async listHistory(token) {
+      const result = await request<{ sessions: HistorySummary[] }>('GET', '/history', { token })
+      return result.sessions
+    },
+
+    fetchHistory: (token, id) =>
+      request<unknown>('GET', `/history/${encodeURIComponent(id)}`, { token, nullOn404: true }),
+
+    async deleteHistory(token, id) {
+      await request('DELETE', `/history/${encodeURIComponent(id)}`, { token })
     },
 
     fetchLive: (slug) => request<LiveRow>('GET', `/clubs/${slugPath(slug)}/live`, { nullOn404: true }),

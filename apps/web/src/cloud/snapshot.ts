@@ -5,6 +5,7 @@ import {
   type PublicSnapshot,
 } from '@matchup/shared'
 import { nextGroup } from '@/rotation/engine'
+import type { LifetimeCounts } from '@/rotation/lifetime'
 import type { SessionState } from '@/rotation/types'
 import { migrateSession, SESSION_STORE_VERSION } from '@/store/migrate'
 
@@ -25,6 +26,8 @@ export interface FullBackup {
   storeVersion: number
   location: string
   session: SessionState
+  /** History only: what the session had already added to the all-time totals. */
+  lifetimeCounted?: LifetimeCounts
 }
 
 export function toPublicSnapshot(location: string, session: SessionState): PublicSnapshot {
@@ -34,7 +37,8 @@ export function toPublicSnapshot(location: string, session: SessionState): Publi
     mode: session.mode,
     matchmaking: session.matchmaking,
     avgGameMinutes: session.avgGameMinutes,
-    courts: session.courts,
+    // Only what viewers show; a game's start time stays on the staff device.
+    courts: session.courts.map(({ id, name, teams }) => ({ id, name, teams })),
     queue: session.queue,
     // Computed here, on the staff device, so the live board shows exactly what staff see
     // (including mixed doubles and locked partners, which viewers cannot work out themselves).
@@ -68,15 +72,45 @@ export function toViewerState(snapshot: PublicSnapshot): SessionState {
   }
 }
 
+/** An ended session for the club's history: the session as saved, in the shape it was saved in. */
+export function toHistoryBackup(
+  location: string,
+  session: SessionState,
+  storeVersion: number,
+  lifetimeCounted: LifetimeCounts,
+): FullBackup {
+  return { schemaVersion: SNAPSHOT_VERSION, storeVersion, location, session, lifetimeCounted }
+}
+
+/** Only well-formed counts are trusted; anything else means "nothing counted yet". */
+function parseCounted(raw: unknown): LifetimeCounts {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  const counted: LifetimeCounts = {}
+  for (const [id, value] of Object.entries(raw)) {
+    const v = value as Record<string, unknown> | null
+    const ok = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0
+    if (v && ok(v.games) && ok(v.wins) && ok(v.losses) && Number.isInteger(Number(id))) {
+      counted[Number(id)] = { games: v.games as number, wins: v.wins as number, losses: v.losses as number }
+    }
+  }
+  return counted
+}
+
 /** Returns the location and a session upgraded to the current shape, or null if unusable. */
-export function parseFullBackup(raw: unknown): { location: string; session: SessionState } | null {
+export function parseFullBackup(
+  raw: unknown,
+): { location: string; session: SessionState; lifetimeCounted: LifetimeCounts } | null {
   const envelope = parseFullBackupEnvelope(raw)
   if (!envelope) return null
   try {
     const session = migrateSession(envelope.session as unknown as SessionState, envelope.storeVersion)
     // A session that cannot be published as a valid board is not sound enough to resume.
     if (!session || !parsePublicSnapshot(toPublicSnapshot(envelope.location, session))) return null
-    return { location: envelope.location, session }
+    return {
+      location: envelope.location,
+      session,
+      lifetimeCounted: parseCounted((raw as { lifetimeCounted?: unknown }).lifetimeCounted),
+    }
   } catch {
     return null
   }

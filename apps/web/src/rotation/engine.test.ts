@@ -10,11 +10,16 @@ import {
   estimateWaitMinutes,
   lockPartners,
   MAX_COURTS,
+  MAX_GAME_SECONDS,
+  MAX_SCORE,
   moveCourt,
   nextGroup,
   recordResult,
+  recordScore,
   renameCourt,
   replacePlayer,
+  scoreProblem,
+  winnerScoreProblem,
   setAvgGameMinutes,
   startGame,
   unlockPartners,
@@ -227,6 +232,226 @@ describe('recordResult', () => {
   })
 })
 
+describe('recordScore', () => {
+  /** Four players on court 1 (waiting: 5), started at T0. */
+  const T0 = 1_000_000
+  const started = () => startGame(withPlayers(createSession('doubles', 1), 5), 1, { now: T0 })
+
+  it('lets the higher score win, whichever side it is', () => {
+    const s = started()
+    const [a, b] = s.courts[0].teams!
+    const aWins = recordScore(s, 1, 11, 7)
+    expect(aWins.winners).toEqual(a)
+    expect(aWins.losers).toEqual(b)
+    const bWins = recordScore(s, 1, 4, 11)
+    expect(bWins.winners).toEqual(b)
+    expect(bWins.losers).toEqual(a)
+  })
+
+  it('frees the court and requeues players exactly like recordResult', () => {
+    const s = started()
+    const scored = recordScore(s, 1, 11, 7, { now: T0 + 60_000 })
+    const plain = recordResult(s, 1, 0, { now: T0 + 60_000 })
+    expect(scored.state.courts).toEqual(plain.state.courts)
+    expect(scored.state.queue).toEqual(plain.state.queue)
+    expect(scored.state.lastResult).toEqual(plain.state.lastResult)
+    expect(scored.state.courts[0].teams).toBeNull()
+  })
+
+  it('adds points for and against to every member of each team, and counts a scored game', () => {
+    const s = started()
+    const [a, b] = s.courts[0].teams!
+    const { state } = recordScore(s, 1, 11, 7)
+    for (const id of a) {
+      expect(state.stats[id]).toMatchObject({ games: 1, wins: 1, pointsFor: 11, pointsAgainst: 7, scoredGames: 1 })
+    }
+    for (const id of b) {
+      expect(state.stats[id]).toMatchObject({ games: 1, losses: 1, pointsFor: 7, pointsAgainst: 11, scoredGames: 1 })
+    }
+  })
+
+  it('adds points from a team B win to team B', () => {
+    const s = started()
+    const [a, b] = s.courts[0].teams!
+    const { state } = recordScore(s, 1, 4, 11)
+    for (const id of b) expect(state.stats[id]).toMatchObject({ wins: 1, pointsFor: 11, pointsAgainst: 4 })
+    for (const id of a) expect(state.stats[id]).toMatchObject({ losses: 1, pointsFor: 4, pointsAgainst: 11 })
+  })
+
+  it('accumulates over games, and a winner-only game in between adds no points', () => {
+    let s = startGame(withPlayers(createSession('singles', 1), 2), 1, { now: T0 })
+    s = recordScore(s, 1, 11, 7).state // player 1 wins 11-7
+    s = startGame(s, 1, { now: T0 })
+    s = recordResult(s, 1, 0).state // winner only
+    s = startGame(s, 1, { now: T0 })
+    s = recordScore(s, 1, 3, 11).state // the second team wins 11-3
+    expect(s.stats[1].games).toBe(3)
+    expect(s.stats[2].games).toBe(3)
+    expect(s.stats[1].scoredGames).toBe(2)
+    expect(s.stats[2].scoredGames).toBe(2)
+    expect(s.stats[1].pointsFor + s.stats[2].pointsFor).toBe(11 + 7 + 3 + 11)
+    expect(s.stats[1].pointsFor).toBe(s.stats[2].pointsAgainst)
+  })
+
+  it('a winner-only result adds no points and does not count as a scored game', () => {
+    const { state } = recordResult(started(), 1, 1)
+    expect(Object.keys(state.stats)).toHaveLength(4)
+    for (const stats of Object.values(state.stats)) {
+      expect(stats).toMatchObject({ games: 1, pointsFor: 0, pointsAgainst: 0, scoredGames: 0 })
+    }
+  })
+
+  it('accepts 0 and the highest score', () => {
+    expect(recordScore(started(), 1, 0, 1).winners).toEqual(started().courts[0].teams![1])
+    expect(recordScore(started(), 1, MAX_SCORE, MAX_SCORE - 1).state.stats[1].pointsFor).toBeGreaterThan(0)
+    expect(recordScore(started(), 1, 0, MAX_SCORE).state.courts[0].teams).toBeNull()
+  })
+
+  it('refuses level scores, out-of-range scores and non-integers, changing nothing', () => {
+    const s = started()
+    const snapshot = structuredClone(s)
+    for (const [a, b] of [
+      [5, 5],
+      [0, 0],
+      [-1, 3],
+      [3, -1],
+      [MAX_SCORE + 1, 3],
+      [3, 100],
+      [2.5, 1],
+      [1, 0.5],
+      [NaN, 3],
+      [3, Infinity],
+    ]) {
+      expect(() => recordScore(s, 1, a, b), `${a}-${b}`).toThrow(RangeError)
+    }
+    expect(s).toEqual(snapshot)
+  })
+
+  it('explains why a score is refused', () => {
+    expect(scoreProblem(11, 7)).toBeNull()
+    expect(scoreProblem(7, 7)).toMatch(/level/)
+    expect(scoreProblem(100, 7)).toMatch(/0 to 99/)
+    expect(scoreProblem(1.5, 7)).toMatch(/whole numbers/)
+    expect(scoreProblem(NaN, 7)).toMatch(/whole numbers/)
+  })
+
+  it('checks a score against the team that won', () => {
+    expect(winnerScoreProblem(0, 11, 7)).toBeNull()
+    expect(winnerScoreProblem(1, 7, 11)).toBeNull()
+    expect(winnerScoreProblem(0, 7, 11)).toBe('Team A won, so their score must be higher.')
+    expect(winnerScoreProblem(1, 11, 7)).toBe('Team B won, so their score must be higher.')
+    // Level and invalid scores keep the plain reasons.
+    expect(winnerScoreProblem(0, 7, 7)).toMatch(/level/)
+    expect(winnerScoreProblem(1, 100, 7)).toMatch(/0 to 99/)
+    expect(winnerScoreProblem(0, NaN, 7)).toMatch(/whole numbers/)
+  })
+
+  it('throws for an empty court and does not mutate the state it was given', () => {
+    expect(() => recordScore(createSession('doubles', 1), 1, 11, 7)).toThrow('no game in progress')
+    const s = started()
+    const snapshot = structuredClone(s)
+    recordScore(s, 1, 11, 7, { now: T0 + 600_000 })
+    expect(s).toEqual(snapshot)
+  })
+})
+
+describe('time played', () => {
+  const T0 = 1_000_000
+  const started = (mode: 'doubles' | 'singles' = 'doubles') =>
+    startGame(withPlayers(createSession(mode, 1), mode === 'doubles' ? 5 : 3), 1, { now: T0 })
+
+  it('startGame records when the game started, only when it is told the time', () => {
+    expect(started().courts[0].startedAt).toBe(T0)
+    expect(startGame(withPlayers(createSession('doubles', 1), 4), 1).courts[0]).not.toHaveProperty('startedAt')
+  })
+
+  it('does not record a start time on other courts', () => {
+    const s = startGame(withPlayers(createSession('doubles', 2), 4), 1, { now: T0 })
+    expect(s.courts[1]).toEqual({ id: 2, name: 'Court 2', teams: null })
+  })
+
+  it('credits the game in whole seconds to all four players, for a result and for a score', () => {
+    const s = started()
+    const ended = [recordResult(s, 1, 0, { now: T0 + 425_900 }), recordScore(s, 1, 3, 11, { now: T0 + 425_900 })]
+    for (const { state } of ended) {
+      for (const id of [1, 2, 3, 4]) expect(state.stats[id].secondsPlayed).toBe(425)
+      expect(state.stats[5]).toBeUndefined()
+    }
+  })
+
+  it('credits two players in singles', () => {
+    const { state } = recordResult(started('singles'), 1, 0, { now: T0 + 90_000 })
+    expect(state.stats[1].secondsPlayed).toBe(90)
+    expect(state.stats[2].secondsPlayed).toBe(90)
+    expect(state.stats[3]).toBeUndefined()
+  })
+
+  it('adds up over games', () => {
+    let s = started('singles') // players 1 and 2 on court, 3 waiting
+    s = recordResult(s, 1, 0, { now: T0 + 60_000 }).state
+    s = startGame(s, 1, { now: T0 + 100_000 }) // 3 and 1 play next
+    s = recordResult(s, 1, 1, { now: T0 + 400_000 }).state
+    expect(s.stats[1].secondsPlayed).toBe(60 + 300)
+    expect(s.stats[2].secondsPlayed).toBe(60)
+    expect(s.stats[3].secondsPlayed).toBe(300)
+  })
+
+  it('caps a game left open for hours', () => {
+    const { state } = recordResult(started(), 1, 0, { now: T0 + 14 * 3_600_000 })
+    expect(state.stats[1].secondsPlayed).toBe(MAX_GAME_SECONDS)
+    const exact = recordResult(started(), 1, 0, { now: T0 + (MAX_GAME_SECONDS - 1) * 1000 })
+    expect(exact.state.stats[1].secondsPlayed).toBe(MAX_GAME_SECONDS - 1)
+  })
+
+  it('never records a negative time, for example when the clock was set back', () => {
+    const { state } = recordResult(started(), 1, 0, { now: T0 - 5 * 60_000 })
+    expect(state.stats[1].secondsPlayed).toBe(0)
+  })
+
+  it('records no time for a game without a start time (running before times were tracked)', () => {
+    const legacy = startGame(withPlayers(createSession('doubles', 1), 4), 1)
+    const { state } = recordResult(legacy, 1, 0, { now: T0 + 600_000 })
+    for (const id of [1, 2, 3, 4]) expect(state.stats[id]).toMatchObject({ games: 1, secondsPlayed: 0 })
+  })
+
+  it('records no time when it is not told when the game ended', () => {
+    const { state } = recordResult(started(), 1, 0)
+    expect(state.stats[1].secondsPlayed).toBe(0)
+  })
+
+  it('gives a mid-game substitute the whole game and the player who left nothing', () => {
+    const s = replacePlayer(started(), 1, 1)
+    expect(s.courts[0].startedAt).toBe(T0)
+    const { state } = recordResult(s, 1, 0, { now: T0 + 600_000 })
+    expect(state.stats[5]).toMatchObject({ games: 1, secondsPlayed: 600 })
+    expect(state.stats[1]).toBeUndefined()
+  })
+
+  it('clears the start time when the game ends, so the next game starts fresh', () => {
+    const s = recordResult(started('singles'), 1, 0, { now: T0 + 60_000 }).state
+    expect(s.courts[0]).toEqual({ id: 1, name: 'Court 1', teams: null })
+    const next = startGame(s, 1, { now: T0 + 500_000 })
+    expect(next.courts[0].startedAt).toBe(T0 + 500_000)
+  })
+
+  it('records no time when a game is cancelled or its court is closed', () => {
+    const cancelled = cancelMatch(started(), 1)
+    expect(cancelled.stats).toEqual({})
+    expect(cancelled.courts[0]).toEqual({ id: 1, name: 'Court 1', teams: null })
+    const two = startGame(withPlayers(createSession('doubles', 2), 4), 1, { now: T0 })
+    const closed = closeCourt(two, 1)
+    expect(closed.stats).toEqual({})
+    expect(closed.courts.map((c) => c.id)).toEqual([2])
+  })
+
+  it('does not mutate the state it was given', () => {
+    const s = started()
+    const snapshot = structuredClone(s)
+    recordResult(s, 1, 0, { now: T0 + 60_000 })
+    expect(s).toEqual(snapshot)
+  })
+})
+
 describe('cancelMatch', () => {
   it('returns players to the front of the queue', () => {
     const s = fillCourts(withPlayers(createSession('doubles', 1), 5))
@@ -429,6 +654,17 @@ describe('court management', () => {
       const places = [...s.courts.flatMap((c) => (c.teams ? c.teams.flat() : [])), ...s.queue, ...s.onBreak]
       expect(places.length).toBe(new Set(places).size)
       expect(new Set(places)).toEqual(new Set(Object.keys(s.players).map(Number)))
+
+      // Scores and time never go backwards or out of step with the games played.
+      for (const stats of Object.values(s.stats)) {
+        expect(stats.wins + stats.losses).toBe(stats.games)
+        expect(stats.scoredGames).toBeLessThanOrEqual(stats.games)
+        expect(stats.pointsFor).toBeGreaterThanOrEqual(0)
+        expect(stats.pointsAgainst).toBeGreaterThanOrEqual(0)
+        expect(stats.secondsPlayed).toBeGreaterThanOrEqual(0)
+        expect(stats.secondsPlayed).toBeLessThanOrEqual(stats.games * MAX_GAME_SECONDS)
+      }
+      for (const court of s.courts) if (!court.teams) expect(court).not.toHaveProperty('startedAt')
     }
 
     it('never loses a player, duplicates one, or reuses a court id or name', () => {
@@ -437,11 +673,13 @@ describe('court management', () => {
         const pick = <T,>(items: T[]) => items[Math.floor(next() * items.length)]
         let s = createSession('doubles', 3)
         let nextPlayer = 1
+        let clock = 1_000_000
 
         for (let step = 0; step < 250; step++) {
+          clock += Math.floor(next() * 20 * 60_000)
           const busy = s.courts.filter((c) => c.teams)
           try {
-            switch (Math.floor(next() * 9)) {
+            switch (Math.floor(next() * 10)) {
               case 0:
                 s = checkIn(checkIn(s, player(nextPlayer++)), player(nextPlayer++))
                 break
@@ -458,7 +696,7 @@ describe('court management', () => {
                 s = moveCourt(s, pick(s.courts).id, next() < 0.5 ? -1 : 1)
                 break
               case 5:
-                if (busy.length) s = recordResult(s, pick(busy).id, next() < 0.5 ? 0 : 1).state
+                if (busy.length) s = recordResult(s, pick(busy).id, next() < 0.5 ? 0 : 1, { now: clock }).state
                 break
               case 6:
                 if (busy.length) s = cancelMatch(s, pick(busy).id)
@@ -466,9 +704,15 @@ describe('court management', () => {
               case 7:
                 if (s.queue.length) s = checkOut(s, pick(s.queue))
                 break
+              case 8:
+                if (busy.length) {
+                  // Level scores are refused with a RangeError, like any invalid change.
+                  s = recordScore(s, pick(busy).id, Math.floor(next() * 12), Math.floor(next() * 12), { now: clock }).state
+                }
+                break
               default: {
                 const open = s.courts.filter((c) => !c.teams)
-                if (open.length && nextGroup(s)) s = startGame(s, pick(open).id)
+                if (open.length && nextGroup(s)) s = startGame(s, pick(open).id, { now: clock })
               }
             }
           } catch (error) {

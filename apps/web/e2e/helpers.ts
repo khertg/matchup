@@ -62,3 +62,25 @@ export async function startGame(page: Page, courtName = 'Court 1') {
   await court.getByRole('button', { name: 'Start game' }).click()
   await expect(court.getByText('In play')).toBeVisible()
 }
+
+/**
+ * Finish the game on a court: press the winner's button, then give the score the pop-up asks for.
+ * Games are always finished with a score. The winner scores 11 and the other team 5 unless told.
+ */
+export async function recordWin(
+  page: Page,
+  courtName = 'Court 1',
+  winner: 'A' | 'B' = 'A',
+  score?: [teamA: number, teamB: number],
+) {
+  const [a, b] = score ?? (winner === 'A' ? [11, 5] : [5, 11])
+  await page
+    .getByRole('region', { name: courtName, exact: true })
+    .getByRole('button', { name: `Team ${winner} won` })
+    .click()
+  const dialog = page.getByRole('dialog', { name: `Team ${winner} won` })
+  await dialog.getByLabel('Team A score').fill(String(a))
+  await dialog.getByLabel('Team B score').fill(String(b))
+  await dialog.getByRole('button', { name: 'Record score' }).click()
+  await expect(dialog).toHaveCount(0)
+}

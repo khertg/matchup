@@ -51,6 +51,10 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `PUT /session` `{public, full}` | staff | Publish the running session. `public` is validated and stripped to known fields; `full` is a private backup. |
 | `GET /session` | staff | The private backup, for resuming on another device (`404` if none). |
 | `DELETE /session` | staff | The session ended. |
+| `PUT /history/:id` `{endedAt, mode, players, games, full}` | staff | Keep an ended session in the club's history (`id` is a UUID made by the device). Sending the same id again replaces it; the newest 100 per club are kept. `full` is a private backup, like `PUT /session`. |
+| `GET /history` | staff | The club's ended sessions, newest first, without their contents. |
+| `GET /history/:id` | staff | One ended session in full (`404` if unknown or another club's). |
+| `DELETE /history/:id` | staff | Remove an ended session. |
 | `POST /lifetime` `{batchId, players[]}` | staff | Add a session's totals to the club leaderboard. A `batchId` is applied once, so retries are safe. |
 | `GET /clubs/:slug/live` | none | The public live board, with `ETag` (`304` when unchanged). `404` for an unknown club and for a club with no session, identically. |
 | `GET /clubs/:slug/live/stream` | none | Server-Sent Events: `update` (carries the board) and `cleared`, plus a heartbeat. |

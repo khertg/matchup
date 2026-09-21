@@ -16,8 +16,10 @@ import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { newBatchId } from '@/cloud/id'
 import { toLifetimePlayers } from '@/cloud/lifetime'
-import { flushPendingLifetime } from '@/cloud/sync'
+import { flushPendingLifetime, syncHistory } from '@/cloud/sync'
+import { archiveSession } from '@/db/history'
 import { saveLifetimeStats } from '@/db/lifetime'
+import { lifetimeTotals } from '@/rotation/lifetime'
 import { rankPlayers } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
@@ -27,34 +29,61 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
   const [saving, setSaving] = useState(false)
   const podium = rankPlayers(session).filter((row) => row.medal)
 
-  async function handleSaveAndEnd() {
+  /**
+   * End the session. The session is always kept under Past sessions; `saveResults` also adds its
+   * games to the all-time totals. A resumed session only adds what it has played since.
+   */
+  async function finish(saveResults: boolean) {
     setSaving(true)
-    try {
-      await saveLifetimeStats(session)
+    const store = useSessionStore.getState()
+    const { sessionId, startedAt, location } = store
+    let clubUpdated = true
 
-      // Also add to the club leaderboard when signed in. It is queued first, so a
-      // dropped connection never loses it; it is sent again when back online.
-      const club = useClubAuth.getState().club
-      let clubUpdated = true
-      if (cloud && club) {
-        useClubAuth.getState().enqueueLifetime({
-          batchId: newBatchId(),
-          slug: club.slug,
-          players: toLifetimePlayers(session),
-        })
-        clubUpdated = await flushPendingLifetime()
+    if (saveResults) {
+      try {
+        await saveLifetimeStats(session, store.lifetimeCounted)
+
+        // Also add to the club leaderboard when signed in. It is queued first, so a
+        // dropped connection never loses it; it is sent again when back online.
+        const club = useClubAuth.getState().club
+        const players = toLifetimePlayers(session, store.lifetimeCounted)
+        if (cloud && club && players.length > 0) {
+          useClubAuth.getState().enqueueLifetime({ batchId: newBatchId(), slug: club.slug, players })
+          clubUpdated = await flushPendingLifetime()
+        }
+        // Remember it now, so trying again after a later failure can never count these games twice.
+        store.markLifetimeCounted(lifetimeTotals(session))
+      } catch {
+        toast.error('Could not save the results. The session is still open.')
+        setSaving(false)
+        return
       }
-
-      endSession()
-      toast(
-        clubUpdated
-          ? 'Session saved to the all-time leaderboard'
-          : 'Saved on this device. The club leaderboard will update when you are back online.',
-      )
-    } catch {
-      toast.error('Could not save the results. The session is still open.')
-      setSaving(false)
     }
+
+    const lifetimeCounted = useSessionStore.getState().lifetimeCounted
+    try {
+      await archiveSession({ id: sessionId, location, startedAt, session, lifetimeCounted })
+    } catch {
+      toast.error('Could not keep a copy of the session, so it is still open. Try again.')
+      setSaving(false)
+      return
+    }
+
+    endSession()
+    void syncHistory()
+    const message = !saveResults
+      ? 'Session ended'
+      : clubUpdated
+        ? 'Session saved to the all-time leaderboard'
+        : 'Saved on this device. The club leaderboard will update when you are back online.'
+    toast(message, {
+      duration: 30_000,
+      action: {
+        label: 'Resume',
+        onClick: () =>
+          useSessionStore.getState().loadSession(location, session, { sessionId, startedAt, lifetimeCounted }),
+      },
+    })
   }
 
   return (
@@ -67,8 +96,8 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
           <DialogTitle>End this session?</DialogTitle>
           <DialogDescription>
             {podium.length > 0
-              ? 'Final top players. Save the results to add them to everyone’s all-time totals.'
-              : 'The queue and court assignments will be cleared. Your saved player list is kept.'}
+              ? 'Final top players. Save the results to add them to everyone’s all-time totals. Either way you can resume this session later from Past sessions.'
+              : 'Nothing is lost: you can look at it or resume it later from Past sessions. Your saved player list is kept.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -95,15 +124,15 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
           </DialogClose>
           {podium.length > 0 ? (
             <>
-              <Button variant="destructive" onClick={endSession} disabled={saving}>
+              <Button variant="destructive" onClick={() => finish(false)} disabled={saving}>
                 End without saving
               </Button>
-              <Button onClick={handleSaveAndEnd} disabled={saving}>
+              <Button onClick={() => finish(true)} disabled={saving}>
                 {saving ? 'Saving…' : 'Save and end session'}
               </Button>
             </>
           ) : (
-            <Button variant="destructive" onClick={endSession}>
+            <Button variant="destructive" onClick={() => finish(false)} disabled={saving}>
               End session
             </Button>
           )}

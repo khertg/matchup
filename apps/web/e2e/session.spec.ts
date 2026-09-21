@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test'
-import { checkIn, startGame, startSession } from './helpers'
+import { expect, test, type Page } from '@playwright/test'
+import { checkIn, startGame, startSession, recordWin } from './helpers'
 
 const FIVE = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve']
 
@@ -29,6 +29,24 @@ test('does not start a game by itself, and shows who is next up', async ({ page 
   await expect(page.getByText('Next up', { exact: true })).toHaveCount(5) // card title + four queue badges
 })
 
+test('lists Next up right above the Queue, below the courts', async ({ page }) => {
+  await startSession(page, { courts: 2 })
+  await checkIn(page, FIVE)
+
+  const top = async (locator: ReturnType<Page['locator']>) => (await locator.boundingBox())!.y
+  const court2 = await top(page.getByRole('region', { name: 'Court 2' }))
+  const nextUp = await top(page.getByRole('group', { name: 'Next up' }))
+  const queue = await top(page.getByText(/^Queue \(/))
+  expect(court2).toBeLessThan(nextUp)
+  expect(nextUp).toBeLessThan(queue)
+
+  // Nothing sits between the two cards: Next up ends where the Queue begins (one gap apart).
+  const nextUpBox = (await page.getByRole('group', { name: 'Next up' }).boundingBox())!
+  const queueCard = page.getByText(/^Queue \(/).locator('xpath=ancestor::*[@data-slot="card"][1]')
+  const queueBox = (await queueCard.boundingBox())!
+  expect(queueBox.y - (nextUpBox.y + nextUpBox.height)).toBeLessThan(40)
+})
+
 test('starts the next four on the court and queues the extra player', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
@@ -52,7 +70,7 @@ test('records a result, leaves the court open and undoes it', async ({ page }) =
   await startGame(page)
   const court = page.getByRole('region', { name: 'Court 1' })
 
-  await court.getByRole('button', { name: 'Team A won' }).click()
+  await recordWin(page)
   await expect(page.getByText('Court 1: Team A won')).toBeVisible()
   // Nothing starts by itself: the court is open, and everyone is queued with Eve first.
   await expect(court.getByText('Open')).toBeVisible()
@@ -96,9 +114,8 @@ test('refuses to undo once the session has changed', async ({ page }) => {
   await startSession(page)
   await checkIn(page, FIVE)
   await startGame(page)
-  const court = page.getByRole('region', { name: 'Court 1' })
 
-  await court.getByRole('button', { name: 'Team B won' }).click()
+  await recordWin(page, 'Court 1', 'B')
   await expect(page.getByText('Court 1: Team B won')).toBeVisible()
   await checkIn(page, ['Flo'])
 
@@ -189,7 +206,7 @@ test('keeps working offline', async ({ page, context }) => {
   await startGame(page)
 
   await context.setOffline(true)
-  await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Team A won' }).click()
+  await recordWin(page)
   await expect(page.getByText('Court 1: Team A won')).toBeVisible()
 })
 

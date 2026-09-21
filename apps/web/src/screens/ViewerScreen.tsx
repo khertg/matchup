@@ -137,11 +137,6 @@ export function ViewerScreen({ slug }: { slug: string }) {
           <TabsTrigger value="standings">Standings</TabsTrigger>
         </TabsList>
         <TabsContent value="board" className="mt-4 space-y-4">
-          <NextUpCard
-            nextUp={snapshot.nextUp}
-            players={session.players}
-            emptyMessage="No group is ready yet. Waiting for more players."
-          />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {session.courts.map((court) => (
               <CourtCard
@@ -153,6 +148,11 @@ export function ViewerScreen({ slug }: { slug: string }) {
               />
             ))}
           </div>
+          <NextUpCard
+            nextUp={snapshot.nextUp}
+            players={session.players}
+            emptyMessage="No group is ready yet. Waiting for more players."
+          />
           <QueueList session={session} nextUp={snapshot.nextUp} />
         </TabsContent>
         <TabsContent value="standings" className="mt-4">

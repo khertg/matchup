@@ -1,15 +1,17 @@
 import type {
   AuthGrant,
   ErrorCode,
+  HistorySummary,
   LifetimePlayer,
   LiveRow,
   LoginResponse,
   PublicSnapshot,
+  PutHistoryRequest,
   ResetPasswordResponse,
 } from '@matchup/shared'
 import type { FullBackup } from './snapshot'
 
-export type { LifetimePlayer, LiveRow }
+export type { HistorySummary, LifetimePlayer, LiveRow, PutHistoryRequest }
 
 /**
  * Everything the app needs from a cloud backend. The web app talks only to
@@ -30,6 +32,14 @@ export interface CloudApi {
   clear(token: string): Promise<void>
   /** Add a session's totals to the club leaderboard. Applied once per batch id. */
   recordLifetime(token: string, batchId: string, players: LifetimePlayer[]): Promise<void>
+
+  /** Keep an ended session in the club's history. Sending the same id again replaces it. */
+  putHistory(token: string, id: string, entry: Omit<PutHistoryRequest, 'full'>, backup: FullBackup): Promise<void>
+  /** The club's ended sessions, newest first, without their contents. */
+  listHistory(token: string): Promise<HistorySummary[]>
+  /** One ended session in full (a FullBackup), or null if it is gone. */
+  fetchHistory(token: string, id: string): Promise<unknown | null>
+  deleteHistory(token: string, id: string): Promise<void>
 
   /** The public live board for a club, or null when no session is running. */
   fetchLive(slug: string): Promise<LiveRow | null>

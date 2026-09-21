@@ -16,6 +16,14 @@ export interface PlayerStats {
   losses: number
   /** Sum over this player's games of the opposing team's average skill level. */
   opponentSkill: number
+  /** Points this player's team scored, over the games that had a score entered. */
+  pointsFor: number
+  /** Points the opposing teams scored against this player, over the same games. */
+  pointsAgainst: number
+  /** Games that had a score entered. Winner-only results count as a game but not here. */
+  scoredGames: number
+  /** Total time on court, in whole seconds. */
+  secondsPlayed: number
 }
 
 /** Two sides of player ids. Doubles: 2 per side. Singles: 1 per side. */
@@ -28,6 +36,11 @@ export interface Court {
   name: string
   /** null while the court is empty. */
   teams: Teams | null
+  /**
+   * When the game in progress started (ms since the epoch), so its duration can be recorded.
+   * Missing for a game started before this was tracked; such a game records no time.
+   */
+  startedAt?: number
 }
 
 export interface SessionState {

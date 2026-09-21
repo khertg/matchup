@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { checkIn, createSession, recordResult } from '@/rotation/engine'
+import { checkIn, createSession, EMPTY_STATS, recordResult } from '@/rotation/engine'
+import { lifetimeTotals } from '@/rotation/lifetime'
 import { fillCourts } from '@/rotation/testing'
 import type { SessionState } from '@/rotation/types'
 import { db } from './db'
@@ -45,6 +46,23 @@ describe('addOrGetPlayer', () => {
   })
 })
 
+describe('saveLifetimeStats with an earlier save', () => {
+  it('adds only the games played since, so a resumed session never counts twice', async () => {
+    const first = await playOneGame(['A', 'B', 'C', 'D'])
+    await saveLifetimeStats(first)
+    const counted = lifetimeTotals(first)
+
+    // The same session carries on: a second game, then it is saved again.
+    const second = recordResult(fillCourts(first), 1, 0).state
+    await saveLifetimeStats(second, counted)
+    for (const p of await db.players.toArray()) expect(p.games).toBe(2)
+
+    // Saving once more with nothing new adds nothing.
+    await saveLifetimeStats(second, lifetimeTotals(second))
+    for (const p of await db.players.toArray()) expect(p.games).toBe(2)
+  })
+})
+
 describe('saveLifetimeStats', () => {
   it('adds a session to the roster totals and accumulates across sessions', async () => {
     const session = await playOneGame(['A', 'B', 'C', 'D'])
@@ -62,7 +80,7 @@ describe('saveLifetimeStats', () => {
     const session = await playOneGame(['A', 'B', 'C', 'D'])
     const withGhost: SessionState = {
       ...session,
-      stats: { ...session.stats, 999: { games: 3, wins: 3, losses: 0, opponentSkill: 9 } },
+      stats: { ...session.stats, 999: { ...EMPTY_STATS, games: 3, wins: 3, opponentSkill: 9 } },
     }
     await saveLifetimeStats(withGhost)
     expect(await db.players.count()).toBe(4)

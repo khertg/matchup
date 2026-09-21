@@ -9,8 +9,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { rankPlayers } from '@/rotation/standings'
+import { formatDuration } from '@/lib/time'
+import { rankPlayers, type Standing } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
+
+/** "+5", "-3" or "0"; "-" when no game had a score, so there is no differential to show. */
+function formatDiff({ diff, scoredGames }: Standing): string {
+  if (scoredGames === 0) return '-'
+  return diff > 0 ? `+${diff}` : String(diff)
+}
 
 interface Props {
   session: SessionState
@@ -44,8 +51,14 @@ export function StandingsScreen({ session, location, readOnly = false }: Props) 
                   <TableHead className="text-right">W</TableHead>
                   <TableHead className="text-right">L</TableHead>
                   <TableHead className="text-right">Win %</TableHead>
+                  <TableHead className="text-right" title="Points for minus points against, in games with a score">
+                    +/-
+                  </TableHead>
                   <TableHead className="text-right" title="Average skill level of opponents faced">
                     Opp.
+                  </TableHead>
+                  <TableHead className="text-right" title="Total time on court">
+                    Time
                   </TableHead>
                   {!readOnly && (
                     <TableHead className="w-12">
@@ -68,7 +81,11 @@ export function StandingsScreen({ session, location, readOnly = false }: Props) 
                     <TableCell className="text-right">{row.wins}</TableCell>
                     <TableCell className="text-right">{row.losses}</TableCell>
                     <TableCell className="text-right">{Math.round(row.winRate * 100)}%</TableCell>
+                    <TableCell className="text-right">{formatDiff(row)}</TableCell>
                     <TableCell className="text-right">{row.avgOpponentSkill.toFixed(1)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {row.secondsPlayed > 0 ? formatDuration(row.secondsPlayed) : '-'}
+                    </TableCell>
                     {!readOnly && (
                       <TableCell>
                         <StatsCardDialog standing={row} location={location} date={date} />
@@ -79,7 +96,7 @@ export function StandingsScreen({ session, location, readOnly = false }: Props) 
               </TableBody>
             </Table>
             <p className="mt-3 text-xs text-muted-foreground">
-              Ranked by wins, then opponent strength, then win rate.
+              Ranked by wins, then point differential, then opponent strength, then win rate.
             </p>
           </>
         )}

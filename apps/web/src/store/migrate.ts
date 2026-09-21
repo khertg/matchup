@@ -1,8 +1,13 @@
-import { DEFAULT_AVG_GAME_MINUTES } from '@/rotation/engine'
+import { DEFAULT_AVG_GAME_MINUTES, EMPTY_STATS } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 
-/** Bump whenever the persisted session shape changes, and extend migrateSession. */
-export const SESSION_STORE_VERSION = 5
+/**
+ * Bump whenever the persisted session shape changes, and extend migrateSession. Version 6 added the
+ * session's identity (id, start time, all-time totals already counted) beside the session; that lives
+ * in the store's own migrate, not in SessionState. Version 7 added scores and time played to each
+ * player's stats.
+ */
+export const SESSION_STORE_VERSION = 7
 
 /** Upgrade a session saved by an older build to the current shape. */
 export function migrateSession(
@@ -19,6 +24,15 @@ export function migrateSession(
     next = {
       ...next,
       courts: next.courts.map((court) => ({ ...court, name: court.name ?? `Court ${court.id}` })),
+    }
+  }
+  // Stats gained points and time played. Games already played had neither: zeros, and no scored games.
+  if (fromVersion < 7) {
+    next = {
+      ...next,
+      stats: Object.fromEntries(
+        Object.entries(next.stats).map(([id, stats]) => [id, { ...EMPTY_STATS, ...stats }]),
+      ),
     }
   }
   return next

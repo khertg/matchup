@@ -91,3 +91,32 @@ export interface LiveRow {
 
 /** Server-Sent Events on /clubs/:slug/live/stream. */
 export type LiveEvent = { type: 'update'; row: LiveRow } | { type: 'cleared' }
+
+// ---- session history ---------------------------------------------------------
+
+/** How many ended sessions a club keeps in the cloud. The oldest go first. */
+export const MAX_HISTORY_PER_CLUB = 100
+
+/** An ended session in the club's history list, without its contents. */
+export interface HistorySummary {
+  /** The session's id (a UUID made on the device that ran it). */
+  id: string
+  location: string
+  /** ISO time the session ended. */
+  endedAt: string
+  mode: 'doubles' | 'singles'
+  /** Players who took part. */
+  players: number
+  /** Games finished. */
+  games: number
+}
+
+/** Saves an ended session. Sending the same id again replaces the earlier version. */
+export interface PutHistoryRequest {
+  endedAt: string
+  mode: 'doubles' | 'singles'
+  players: number
+  games: number
+  /** The whole session, as a FullBackupEnvelope. */
+  full: unknown
+}

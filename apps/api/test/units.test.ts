@@ -220,6 +220,7 @@ describe('migrations', () => {
       'live_sessions',
       'schema_migrations',
       'session_backups',
+      'session_history',
     ])
     await db.close()
   })

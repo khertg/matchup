@@ -37,6 +37,13 @@ export interface WireStats {
   wins: number
   losses: number
   opponentSkill: number
+  /** Points for and against, over the games that had a score entered. */
+  pointsFor: number
+  pointsAgainst: number
+  /** Games that had a score entered. */
+  scoredGames: number
+  /** Total time on court, in whole seconds. */
+  secondsPlayed: number
 }
 
 export interface WirePlayer {
@@ -120,6 +127,9 @@ function validPlayers(v: unknown): v is Record<number, WirePlayer> {
   )
 }
 
+/** The stats added after the first release: optional on input, and 0 in the copy when missing. */
+const OPTIONAL_STAT_FIELDS = ['pointsFor', 'pointsAgainst', 'scoredGames', 'secondsPlayed'] as const
+
 function validStats(v: unknown): v is Record<number, WireStats> {
   if (!isObject(v)) return false
   const entries = Object.entries(v)
@@ -132,7 +142,9 @@ function validStats(v: unknown): v is Record<number, WireStats> {
         isCount(s.games) &&
         isCount(s.wins) &&
         isCount(s.losses) &&
-        isCount(s.opponentSkill),
+        isCount(s.opponentSkill) &&
+        // Boards published before scores and time played existed have none of these; that is accepted.
+        OPTIONAL_STAT_FIELDS.every((field) => s[field] === undefined || isCount(s[field])),
     )
   )
 }
@@ -184,7 +196,16 @@ function copyPublicSnapshot(s: PublicSnapshot): PublicSnapshot {
     onBreak: [...s.onBreak],
     partners: s.partners.map(([a, b]) => [a, b] as [number, number]),
     stats: Object.fromEntries(
-      Object.entries(s.stats).map(([id, st]) => [id, pick(st, ['games', 'wins', 'losses', 'opponentSkill'])]),
+      Object.entries(s.stats).map(([id, st]) => [
+        id,
+        {
+          ...pick(st, ['games', 'wins', 'losses', 'opponentSkill']),
+          pointsFor: st.pointsFor ?? 0,
+          pointsAgainst: st.pointsAgainst ?? 0,
+          scoredGames: st.scoredGames ?? 0,
+          secondsPlayed: st.secondsPlayed ?? 0,
+        },
+      ]),
     ),
     players: Object.fromEntries(
       Object.entries(s.players).map(([id, p]) => [id, pick(p, ['id', 'name', 'skill'])]),

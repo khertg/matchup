@@ -49,7 +49,7 @@ function GameLengthControl({ minutes }: { minutes: number }) {
 }
 
 export function BoardScreen({ session }: { session: SessionState }) {
-  const recordResult = useSessionStore((s) => s.recordResult)
+  const recordScore = useSessionStore((s) => s.recordScore)
   const undo = useSessionStore((s) => s.undo)
   const cancelMatch = useSessionStore((s) => s.cancelMatch)
   const replacePlayer = useSessionStore((s) => s.replacePlayer)
@@ -67,9 +67,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const courtName = (courtId: number) =>
     session.courts.find((c) => c.id === courtId)?.name ?? `Court ${courtId}`
 
-  function handleResult(courtId: number, winner: 0 | 1) {
-    recordResult(courtId, winner)
-    toast(`${courtName(courtId)}: ${TEAM_NAMES[winner]} won`, {
+  /** The toast that follows a result or a score, with the 10-second undo. */
+  function announce(message: string) {
+    toast(message, {
       duration: 10_000,
       action: {
         label: 'Undo',
@@ -78,6 +78,12 @@ export function BoardScreen({ session }: { session: SessionState }) {
         },
       },
     })
+  }
+
+  function handleScore(courtId: number, scoreA: number, scoreB: number) {
+    recordScore(courtId, scoreA, scoreB)
+    const winner = scoreA > scoreB ? 0 : 1
+    announce(`${courtName(courtId)}: ${TEAM_NAMES[winner]} won ${Math.max(scoreA, scoreB)}–${Math.min(scoreA, scoreB)}`)
   }
 
   function handleStart(courtId: number, options?: { ignoreMode?: boolean }) {
@@ -99,11 +105,6 @@ export function BoardScreen({ session }: { session: SessionState }) {
           <ManageCourtsDialog session={session} />
         </div>
       </div>
-      <NextUpCard
-        nextUp={group?.players ?? []}
-        players={session.players}
-        emptyMessage={waitingMessage(session)}
-      />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {session.courts.map((court) => (
           <CourtCard
@@ -116,11 +117,16 @@ export function BoardScreen({ session }: { session: SessionState }) {
             waitingMessage={waitingMessage(session)}
             onStart={(options) => handleStart(court.id, options)}
             onReplace={(outId, inId) => handleReplace(court.id, outId, inId)}
-            onResult={(winner) => handleResult(court.id, winner)}
+            onScore={(a, b) => handleScore(court.id, a, b)}
             onCancel={() => cancelMatch(court.id)}
           />
         ))}
       </div>
+      <NextUpCard
+        nextUp={group?.players ?? []}
+        players={session.players}
+        emptyMessage={waitingMessage(session)}
+      />
       <QueueList session={session} nextUp={group?.players} />
     </div>
   )

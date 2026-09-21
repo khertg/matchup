@@ -53,6 +53,61 @@ describe('migrateSession', () => {
     expect(migrated?.matchmaking).toBe('mixed')
   })
 
+  describe('v6 to v7: scores and time played', () => {
+    const v6Stats = { games: 3, wins: 2, losses: 1, opponentSkill: 9 }
+    const v6 = () => ({
+      ...createSession('doubles', 1),
+      stats: { 1: v6Stats, 2: { games: 1, wins: 0, losses: 1, opponentSkill: 4 } },
+    })
+
+    it('gives every existing stats entry zero points, scored games and time', () => {
+      const migrated = migrateSession(v6() as never, 6)
+      expect(migrated?.stats[1]).toEqual({ ...v6Stats, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0 })
+      expect(migrated?.stats[2]).toEqual({
+        games: 1,
+        wins: 0,
+        losses: 1,
+        opponentSkill: 4,
+        pointsFor: 0,
+        pointsAgainst: 0,
+        scoredGames: 0,
+        secondsPlayed: 0,
+      })
+    })
+
+    it('leaves a game already in progress without a start time, and everything else as it was', () => {
+      const session = { ...v6(), courts: [{ id: 1, name: 'Court 1', teams: [[1, 2], [3, 4]] as [number[], number[]] }] }
+      const migrated = migrateSession(session as never, 6)
+      expect(migrated?.courts).toEqual(session.courts)
+      expect(migrated?.courts[0]).not.toHaveProperty('startedAt')
+      expect(migrated?.matchmaking).toBe(session.matchmaking)
+    })
+
+    it('does not touch stats that already have the new fields', () => {
+      const current = { ...v6Stats, pointsFor: 30, pointsAgainst: 20, scoredGames: 3, secondsPlayed: 900 }
+      const session = { ...createSession('doubles', 1), stats: { 1: current } }
+      expect(migrateSession(session, SESSION_STORE_VERSION)?.stats[1]).toEqual(current)
+    })
+
+    it('does not mutate the session it was given', () => {
+      const session = v6()
+      const snapshot = structuredClone(session)
+      migrateSession(session as never, 6)
+      expect(session).toEqual(snapshot)
+    })
+
+    it('still chains through the earlier upgrades', () => {
+      // A v4 session had stats with the first four counters and courts without names.
+      const v4 = { ...v6(), courts: [{ id: 1, teams: null }] }
+      const migrated = migrateSession(v4 as never, 4)
+      expect(migrated?.courts[0].name).toBe('Court 1')
+      expect(migrated?.stats[1]).toMatchObject({ games: 3, pointsFor: 0, scoredGames: 0, secondsPlayed: 0 })
+      // Before v4 there were no stats at all.
+      const { stats: _s, ...v3 } = createSession('doubles', 1)
+      expect(migrateSession(v3 as never, 3)?.stats).toEqual({})
+    })
+  })
+
   it('leaves a current session untouched', () => {
     const session = createSession('singles', 3, { avgGameMinutes: 20 })
     expect(migrateSession(session, SESSION_STORE_VERSION)).toEqual(session)

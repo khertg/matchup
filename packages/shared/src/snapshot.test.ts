@@ -22,7 +22,9 @@ const good = (): PublicSnapshot => ({
   nextUp: [],
   onBreak: [],
   partners: [[5, 6]],
-  stats: { 1: { games: 2, wins: 2, losses: 0, opponentSkill: 6 } },
+  stats: {
+    1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 9, scoredGames: 2, secondsPlayed: 1260 },
+  },
   players: {
     1: { id: 1, name: 'Ann', skill: 3 },
     2: { id: 2, name: 'Bob', skill: 3 },
@@ -34,6 +36,43 @@ const good = (): PublicSnapshot => ({
 })
 
 describe('parsePublicSnapshot', () => {
+  describe('scores and time played', () => {
+    const withStats = (stats: Record<string, unknown>) => ({ ...good(), stats: { 1: stats } })
+    const base = { games: 2, wins: 2, losses: 0, opponentSkill: 6 }
+
+    it('keeps the points and time of a player', () => {
+      const parsed = parsePublicSnapshot(good())!
+      expect(parsed.stats[1]).toEqual({
+        games: 2,
+        wins: 2,
+        losses: 0,
+        opponentSkill: 6,
+        pointsFor: 22,
+        pointsAgainst: 9,
+        scoredGames: 2,
+        secondsPlayed: 1260,
+      })
+    })
+
+    it('accepts stats from before scores existed and reads the new fields as 0', () => {
+      const parsed = parsePublicSnapshot(withStats(base))!
+      expect(parsed.stats[1]).toEqual({ ...base, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0 })
+    })
+
+    it('fills only the fields that are missing', () => {
+      const parsed = parsePublicSnapshot(withStats({ ...base, secondsPlayed: 300 }))!
+      expect(parsed.stats[1]).toMatchObject({ pointsFor: 0, scoredGames: 0, secondsPlayed: 300 })
+    })
+
+    it('rejects negative, non-finite, non-numeric and huge values', () => {
+      for (const field of ['pointsFor', 'pointsAgainst', 'scoredGames', 'secondsPlayed']) {
+        for (const value of [-1, NaN, Infinity, '5', null, 1_000_001]) {
+          expect(parsePublicSnapshot(withStats({ ...base, [field]: value })), `${field}=${String(value)}`).toBeNull()
+        }
+      }
+    })
+  })
+
   it('accepts a well-formed snapshot, also after a JSON round trip', () => {
     expect(parsePublicSnapshot(good())).toEqual(good())
     expect(parsePublicSnapshot(JSON.parse(JSON.stringify(good())))).toEqual(good())
@@ -145,7 +184,7 @@ describe('parsePublicSnapshot', () => {
       players: Object.fromEntries(
         Object.entries(snapshot.players).map(([id, p]) => [id, { ...p, gender: 'F', email: 'a@b.c' }]),
       ),
-      stats: { 1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, secret: 'x' } },
+      stats: { 1: { ...snapshot.stats[1], secret: 'x' } },
     }
     const parsed = parsePublicSnapshot(sneaky)
     expect(parsed).toEqual(snapshot)

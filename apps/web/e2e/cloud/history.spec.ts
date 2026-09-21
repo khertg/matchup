@@ -1,0 +1,196 @@
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { checkIn, startGame, recordWin } from '../helpers'
+import {
+  apiCreateClub,
+  bearer,
+  expectSignedIn,
+  storedToken,
+  uiLogin,
+  uniqueClub,
+  type TestClub,
+} from './support'
+
+/** Sign in, then play one singles game to completion (Ann beats Bob). */
+async function signInAndPlay(page: Page, club: TestClub, location: string) {
+  await page.goto('/')
+  await uiLogin(page, club)
+  await expectSignedIn(page)
+  await page.getByLabel('Location').fill(location)
+  await page.getByRole('button', { name: 'Singles' }).click()
+  await page.getByRole('button', { name: 'Start session' }).click()
+  await expect(page.getByRole('heading', { name: location })).toBeVisible()
+  await checkIn(page, ['Ann', 'Bob'])
+  await startGame(page)
+  await recordWin(page)
+  await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+}
+
+async function end(page: Page, save: boolean) {
+  await page.getByRole('button', { name: 'End session' }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: save ? 'Save and end session' : 'End without saving' })
+    .click()
+  await expect(page.getByText('Set up an open play session')).toBeVisible()
+}
+
+interface Summary {
+  id: string
+  location: string
+  games: number
+  players: number
+}
+
+const history = (request: APIRequestContext, token: string) => async () => {
+  const response = await request.get('/api/history', { headers: bearer(token) })
+  return response.ok() ? ((await response.json()).sessions as Summary[]) : []
+}
+
+const clubPlayers = (request: APIRequestContext, slug: string) => async () => {
+  const response = await request.get(`/api/clubs/${slug}/players`)
+  return (await response.json()).players as { name: string; games: number; wins: number }[]
+}
+
+test.describe('history in the club cloud', () => {
+  test('uploads an ended session, without anyone doing anything', async ({ page, request }) => {
+    const club = uniqueClub('Archive')
+    await apiCreateClub(request, club)
+    await signInAndPlay(page, club, 'Cloud Night')
+    const token = await storedToken(page)
+    await end(page, false)
+
+    await expect.poll(async () => (await history(request, token)()).map((s) => s.location)).toEqual(['Cloud Night'])
+    const [entry] = await history(request, token)()
+    expect(entry).toMatchObject({ games: 1, players: 2 })
+  })
+
+  test('shows it on a second staff device, which can resume it', async ({ page, browser, request }) => {
+    const club = uniqueClub('Two')
+    await apiCreateClub(request, club)
+    await signInAndPlay(page, club, 'Shared Night')
+    const token = await storedToken(page)
+    await end(page, false)
+    await expect.poll(async () => (await history(request, token)()).length).toBe(1)
+
+    const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
+    const second = await other.newPage()
+    await second.goto('/')
+    await uiLogin(second, club)
+    await expectSignedIn(second)
+
+    await second.getByRole('button', { name: 'Past sessions' }).click()
+    const list = second.getByRole('dialog', { name: 'Past sessions' })
+    const row = list.getByRole('button', { name: /Shared Night/ })
+    await expect(row).toContainText('1 game')
+    await expect(row.getByText('Club')).toBeVisible() // this device has never seen it
+    await row.click()
+    await expect(second.getByRole('dialog', { name: 'Shared Night' }).getByRole('row').nth(1)).toContainText('Ann')
+    await second.getByRole('dialog', { name: 'Shared Night' }).getByRole('button', { name: 'Resume this session' }).click()
+
+    await expect(second.getByRole('heading', { name: 'Shared Night' })).toBeVisible()
+    await second.getByRole('tab', { name: 'Standings' }).click()
+    await expect(second.getByRole('row').nth(1)).toContainText('Gold medal')
+
+    // Ending it again on the second device updates the club's copy in place.
+    await second.getByRole('tab', { name: 'Board' }).click()
+    await startGame(second)
+    await recordWin(second)
+    await expect(second.getByText('Court 1: Team A won').last()).toBeVisible()
+    await end(second, false)
+    await expect.poll(async () => (await history(request, token)()).map((s) => s.games)).toEqual([2])
+
+    // The second device now keeps its own copy too.
+    await second.getByRole('button', { name: 'Past sessions' }).click()
+    await expect(second.getByRole('dialog', { name: 'Past sessions' }).getByRole('listitem')).toHaveCount(1)
+    await other.close()
+  })
+
+  test('sends a session that ended offline once the connection returns', async ({ page, context, request }) => {
+    const club = uniqueClub('Offline')
+    await apiCreateClub(request, club)
+    await signInAndPlay(page, club, 'Offline Night')
+    const token = await storedToken(page)
+
+    await context.setOffline(true)
+    await end(page, false)
+    await page.waitForTimeout(1500)
+    expect(await history(request, token)()).toEqual([])
+
+    // It is still there on this device meanwhile.
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    await expect(page.getByRole('dialog', { name: 'Past sessions' }).getByRole('button', { name: /Offline Night/ })).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    await context.setOffline(false)
+    await expect.poll(async () => (await history(request, token)()).length, { timeout: 15_000 }).toBe(1)
+  })
+
+  test('deleting removes the club’s copy as well', async ({ page, request }) => {
+    const club = uniqueClub('Delete')
+    await apiCreateClub(request, club)
+    await signInAndPlay(page, club, 'Doomed Night')
+    const token = await storedToken(page)
+    await end(page, false)
+    await expect.poll(async () => (await history(request, token)()).length).toBe(1)
+
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    await page.getByRole('dialog', { name: 'Past sessions' }).getByRole('button', { name: /Doomed Night/ }).click()
+    const view = page.getByRole('dialog', { name: 'Doomed Night' })
+    await view.getByRole('button', { name: 'Delete', exact: true }).click()
+    await view.getByRole('button', { name: 'Delete session' }).click()
+    await expect(page.getByText('Session deleted')).toBeVisible()
+    await expect.poll(async () => (await history(request, token)()).length).toBe(0)
+  })
+
+  test('a session resumed on another device does not count its old games again on the club leaderboard', async ({
+    page,
+    browser,
+    request,
+  }) => {
+    const club = uniqueClub('Leaderboard')
+    await apiCreateClub(request, club)
+    await signInAndPlay(page, club, 'Count Night')
+    const token = await storedToken(page)
+    await end(page, true)
+    await expect.poll(async () => (await clubPlayers(request, club.slug)()).find((p) => p.name === 'Ann')?.games).toBe(1)
+    await expect.poll(async () => (await history(request, token)()).length).toBe(1)
+
+    const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
+    const second = await other.newPage()
+    await second.goto('/')
+    await uiLogin(second, club)
+    await expectSignedIn(second)
+    await second.getByRole('button', { name: 'Past sessions' }).click()
+    await second.getByRole('dialog', { name: 'Past sessions' }).getByRole('button', { name: /Count Night/ }).click()
+    await second.getByRole('dialog', { name: 'Count Night' }).getByRole('button', { name: 'Resume this session' }).click()
+    await expect(second.getByRole('heading', { name: 'Count Night' })).toBeVisible()
+
+    await startGame(second)
+    await recordWin(second)
+    await expect(second.getByText('Court 1: Team A won').last()).toBeVisible()
+    await end(second, true)
+
+    await expect.poll(async () => (await clubPlayers(request, club.slug)()).find((p) => p.name === 'Ann')?.games).toBe(2)
+    const players = await clubPlayers(request, club.slug)()
+    expect(players.find((p) => p.name === 'Bob')?.games).toBe(2)
+    await other.close()
+  })
+
+  test('signed-out devices keep history on the device only', async ({ page, request }) => {
+    const club = uniqueClub('Signedout')
+    await apiCreateClub(request, club)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Singles' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
+    await checkIn(page, ['Ann', 'Bob'])
+    await startGame(page)
+    await recordWin(page)
+    await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+    await end(page, false)
+
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    const list = page.getByRole('dialog', { name: 'Past sessions' })
+    await expect(list.getByRole('listitem')).toHaveCount(1)
+    await expect(list.getByText('Club', { exact: true })).toHaveCount(0)
+  })
+})

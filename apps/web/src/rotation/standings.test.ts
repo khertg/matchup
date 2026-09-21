@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Player } from '@/db/db'
-import { checkIn, createSession, recordResult } from './engine'
+import { checkIn, createSession, EMPTY_STATS, recordResult, recordScore, startGame } from './engine'
 import { fillCourts } from './testing'
 import { rankLifetime, rankPlayers } from './standings'
 import type { PlayerStats, RosterPlayer, SessionState } from './types'
@@ -17,7 +17,7 @@ function withStats(rows: [id: number, name: string, stats: Partial<PlayerStats>]
   for (const [id, name] of rows) s = checkIn(s, player(id, name))
   const stats: SessionState['stats'] = {}
   for (const [id, , partial] of rows) {
-    stats[id] = { games: 0, wins: 0, losses: 0, opponentSkill: 0, ...partial }
+    stats[id] = { ...EMPTY_STATS, ...partial }
   }
   return { ...s, stats }
 }
@@ -116,6 +116,111 @@ describe('rankPlayers', () => {
   it('reports win rate and average opponent skill', () => {
     const s = withStats([[1, 'Ann', { games: 4, wins: 3, losses: 1, opponentSkill: 14 }]])
     expect(rankPlayers(s)[0]).toMatchObject({ winRate: 0.75, avgOpponentSkill: 3.5 })
+  })
+
+  describe('point differential', () => {
+    const scored = (pointsFor: number, pointsAgainst: number, extra: Partial<PlayerStats> = {}) => ({
+      games: 2,
+      wins: 2,
+      opponentSkill: 6,
+      pointsFor,
+      pointsAgainst,
+      scoredGames: 2,
+      ...extra,
+    })
+
+    it('breaks a tie on wins, ahead of opponent strength and win rate', () => {
+      const s = withStats([
+        // Ann has the stronger opponents and the better win rate, but Bob's margin decides.
+        [1, 'Ann', scored(22, 20, { games: 2, opponentSkill: 10 })],
+        [2, 'Bob', scored(22, 10, { games: 3, opponentSkill: 6 })],
+      ])
+      const ranked = rankPlayers(s)
+      expect(ranked.map((r) => r.name)).toEqual(['Bob', 'Ann'])
+      expect(ranked.map((r) => r.diff)).toEqual([12, 2])
+    })
+
+    it('never outranks more wins', () => {
+      const s = withStats([
+        [1, 'Ann', scored(30, 5, { wins: 2, games: 2 })],
+        [2, 'Bob', scored(22, 20, { wins: 3, games: 3, scoredGames: 3 })],
+      ])
+      expect(rankPlayers(s).map((r) => r.name)).toEqual(['Bob', 'Ann'])
+    })
+
+    it('reports points, differential and scored games, and a negative differential', () => {
+      const s = withStats([[1, 'Ann', { games: 2, wins: 1, losses: 1, pointsFor: 15, pointsAgainst: 22, scoredGames: 2 }]])
+      expect(rankPlayers(s)[0]).toMatchObject({ pointsFor: 15, pointsAgainst: 22, diff: -7, scoredGames: 2 })
+    })
+
+    it('only counts games that had a score, because winner-only games add no points', () => {
+      // Two players win the same two games on court; only the first game is scored.
+      let s = createSession('singles', 1)
+      s = checkIn(s, player(1, 'Ann'))
+      s = checkIn(s, player(2, 'Bob'))
+      s = startGame(s, 1)
+      s = recordScore(s, 1, 11, 4).state
+      s = startGame(s, 1)
+      s = recordResult(s, 1, 0).state
+      const ann = rankPlayers(s).find((r) => r.name === 'Ann')!
+      const bob = rankPlayers(s).find((r) => r.name === 'Bob')!
+      expect(ann).toMatchObject({ games: 2, scoredGames: 1 })
+      expect(Math.abs(ann.diff)).toBe(7)
+      expect(ann.diff).toBe(-bob.diff)
+      expect(ann.pointsFor).toBe(bob.pointsAgainst)
+    })
+
+    it('counts a player with no scored games as level, so they rank on the other criteria', () => {
+      const s = withStats([
+        [1, 'Ann', { games: 2, wins: 2, opponentSkill: 6 }],
+        [2, 'Bob', scored(22, 20, { opponentSkill: 12 })],
+      ])
+      // Bob's +2 beats Ann's unscored 0.
+      expect(rankPlayers(s).map((r) => r.name)).toEqual(['Bob', 'Ann'])
+      expect(rankPlayers(s)[1].scoredGames).toBe(0)
+    })
+
+    it('still shares a rank and medal when everything, including the differential, is level', () => {
+      const s = withStats([
+        [1, 'Ann', scored(22, 10)],
+        [2, 'Bob', scored(24, 12)],
+        [3, 'Cy', scored(22, 11)],
+      ])
+      expect(rankPlayers(s).map((r) => [r.name, r.rank, r.medal])).toEqual([
+        ['Ann', 1, 'gold'],
+        ['Bob', 1, 'gold'],
+        ['Cy', 3, 'bronze'],
+      ])
+    })
+
+    it('does not share a rank when only the differential differs', () => {
+      const s = withStats([
+        [1, 'Ann', scored(22, 10)],
+        [2, 'Bob', scored(22, 11)],
+      ])
+      expect(rankPlayers(s).map((r) => [r.name, r.rank, r.medal])).toEqual([
+        ['Ann', 1, 'gold'],
+        ['Bob', 2, 'silver'],
+      ])
+    })
+
+    it('orders players level on wins and differential by opponent strength, then win rate, then name', () => {
+      const s = withStats([
+        [1, 'Zed', scored(22, 10, { games: 2, opponentSkill: 6 })], // opp 3, win rate 1
+        [2, 'Ann', scored(22, 10, { games: 2, opponentSkill: 8 })], // opp 4
+        [3, 'Cy', scored(22, 10, { games: 4, losses: 2, opponentSkill: 12 })], // opp 3, win rate 0.5
+        [4, 'Abe', scored(22, 10, { games: 2, opponentSkill: 6 })], // same as Zed
+      ])
+      const ranked = rankPlayers(s)
+      expect(ranked.map((r) => r.name)).toEqual(['Ann', 'Abe', 'Zed', 'Cy'])
+      // Abe and Zed are level on everything but the name, so they share a rank.
+      expect(ranked.map((r) => r.rank)).toEqual([1, 2, 2, 4])
+    })
+  })
+
+  it('reports time played', () => {
+    const s = withStats([[1, 'Ann', { games: 2, wins: 2, secondsPlayed: 1260 }]])
+    expect(rankPlayers(s)[0].secondsPlayed).toBe(1260)
   })
 })
 

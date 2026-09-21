@@ -138,6 +138,50 @@ describe('publishing a session', () => {
     expect(names).toEqual(['Court 1', 'Court 2'])
   })
 
+  it('publishes scores and time played to the live board', async () => {
+    const { token, slug } = await createClub(app)
+    expect((await put(token, { public: sampleSnapshot(), full: sampleBackup() })).statusCode).toBe(200)
+    expect((await live(slug)).json().state.stats[1]).toEqual({
+      games: 2,
+      wins: 2,
+      losses: 0,
+      opponentSkill: 6,
+      pointsFor: 22,
+      pointsAgainst: 9,
+      scoredGames: 2,
+      secondsPlayed: 1260,
+    })
+  })
+
+  it('accepts a session from an older app whose stats have no scores, and reads them as 0', async () => {
+    const { token, slug } = await createClub(app)
+    const legacy = { ...sampleSnapshot(), stats: { 1: { games: 2, wins: 2, losses: 0, opponentSkill: 6 } } }
+    expect((await put(token, { public: legacy, full: sampleBackup() })).statusCode).toBe(200)
+    expect((await live(slug)).json().state.stats[1]).toEqual({
+      games: 2,
+      wins: 2,
+      losses: 0,
+      opponentSkill: 6,
+      pointsFor: 0,
+      pointsAgainst: 0,
+      scoredGames: 0,
+      secondsPlayed: 0,
+    })
+  })
+
+  it('rejects scores and times that are negative or not numbers', async () => {
+    const { token } = await createClub(app)
+    const stats = sampleSnapshot().stats[1]
+    for (const bad of [{ pointsFor: -1 }, { pointsAgainst: 'x' }, { scoredGames: null }, { secondsPlayed: 1e9 }]) {
+      const response = await put(token, {
+        public: { ...sampleSnapshot(), stats: { 1: { ...stats, ...bad } } },
+        full: sampleBackup(),
+      })
+      expect(response.statusCode, JSON.stringify(bad)).toBe(400)
+      expect(response.json().error).toBe('invalid_snapshot')
+    }
+  })
+
   it('publishes the next group to the live board', async () => {
     const { token, slug } = await createClub(app)
     const snapshot = { ...sampleSnapshot(), nextUp: [5, 6, 7, 8] }

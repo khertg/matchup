@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RosterPlayer } from '@/rotation/types'
 
 // The store persists to localStorage; give the node test environment a tiny in-memory one.
@@ -64,6 +64,70 @@ describe('session store', () => {
     store().recordResult(1, 0)
     store().startGame(1)
     expect(store().undo()).toBe(false)
+  })
+
+  describe('session identity', () => {
+    it('gives each new session its own id and start time, with nothing counted yet', () => {
+      store().startSession('One', 'doubles', 1)
+      const first = store()
+      expect(first.sessionId).toMatch(/^[0-9a-f-]{36}$/)
+      expect(first.startedAt).toBeGreaterThan(0)
+      expect(first.lifetimeCounted).toEqual({})
+      store().endSession()
+      store().startSession('Two', 'doubles', 1)
+      expect(store().sessionId).not.toBe(first.sessionId)
+    })
+
+    it('is cleared when the session ends', () => {
+      store().startSession('One', 'doubles', 1)
+      store().markLifetimeCounted({ 1: { games: 2, wins: 1, losses: 1 } })
+      store().endSession()
+      expect(store()).toMatchObject({ sessionId: '', startedAt: 0, lifetimeCounted: {}, session: null })
+    })
+
+    it('is kept when a session is resumed, so ending it again updates the same history entry', () => {
+      store().startSession('One', 'doubles', 1)
+      const session = store().session!
+      const meta = { sessionId: 'abc', startedAt: 123, lifetimeCounted: { 1: { games: 1, wins: 1, losses: 0 } } }
+      store().endSession()
+      store().loadSession('One', session, meta)
+      expect(store()).toMatchObject({ ...meta, location: 'One' })
+    })
+
+    it('gets a fresh identity when loaded without one (a session resumed from the club’s live backup)', () => {
+      store().startSession('One', 'doubles', 1)
+      const session = store().session!
+      store().endSession()
+      store().loadSession('One', session)
+      expect(store().sessionId).toMatch(/^[0-9a-f-]{36}$/)
+      expect(store().lifetimeCounted).toEqual({})
+    })
+
+    it('remembers what was counted, and survives a reload', async () => {
+      store().startSession('One', 'doubles', 1)
+      store().markLifetimeCounted({ 1: { games: 2, wins: 1, losses: 1 } })
+      const { sessionId } = store()
+      await useSessionStore.persist.rehydrate()
+      expect(store().sessionId).toBe(sessionId)
+      expect(store().lifetimeCounted).toEqual({ 1: { games: 2, wins: 1, losses: 1 } })
+    })
+
+    it('gives a session that was already running before history existed an identity on upgrade', async () => {
+      store().startSession('Old', 'doubles', 1)
+      const session = store().session!
+      localStorage.setItem('matchup-session', JSON.stringify({ state: { location: 'Old', session }, version: 5 }))
+      await useSessionStore.persist.rehydrate()
+      expect(store().location).toBe('Old')
+      expect(store().sessionId).toMatch(/^[0-9a-f-]{36}$/)
+      expect(store().startedAt).toBeGreaterThan(0)
+      expect(store().lifetimeCounted).toEqual({})
+    })
+
+    it('has no identity when an upgraded store had no session running', async () => {
+      localStorage.setItem('matchup-session', JSON.stringify({ state: { location: '', session: null }, version: 5 }))
+      await useSessionStore.persist.rehydrate()
+      expect(store()).toMatchObject({ session: null, sessionId: '', startedAt: 0 })
+    })
   })
 
   describe('checking in several players', () => {
@@ -205,6 +269,104 @@ describe('session store', () => {
     expect(Object.keys(store().session!.stats)).toHaveLength(4)
     expect(store().undo()).toBe(true)
     expect(store().session!.stats).toEqual({})
+  })
+
+  describe('scores and time played', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('records a score, deriving the winner', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      const [teamA, teamB] = store().session!.courts[0].teams!
+      store().recordScore(1, 7, 11)
+      expect(store().session!.courts[0].teams).toBeNull()
+      for (const id of teamB) {
+        expect(store().session!.stats[id]).toMatchObject({ wins: 1, pointsFor: 11, pointsAgainst: 7, scoredGames: 1 })
+      }
+      for (const id of teamA) {
+        expect(store().session!.stats[id]).toMatchObject({ losses: 1, pointsFor: 7, pointsAgainst: 11 })
+      }
+    })
+
+    it('requeues players after a score like after a result', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(8)
+      store().startGame(1)
+      store().recordScore(1, 11, 5)
+      expect(store().session!.queue.slice(0, 4).sort()).toEqual([5, 6, 7, 8])
+      expect(store().session!.queue.slice(4).sort()).toEqual([1, 2, 3, 4])
+    })
+
+    it('undoes a score, restoring the game in progress and its start time', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(8)
+      store().startGame(1)
+      const before = store().session
+      store().recordScore(1, 11, 5)
+      expect(store().previous).toEqual(before)
+      expect(store().undo()).toBe(true)
+      expect(store().session).toEqual(before)
+      expect(store().session!.stats).toEqual({})
+      expect(store().session!.courts[0].startedAt).toBeDefined()
+    })
+
+    it('refuses to undo a score after another change', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().recordScore(1, 11, 5)
+      store().checkInPlayer(player(9))
+      expect(store().undo()).toBe(false)
+    })
+
+    it('refuses level and out-of-range scores and changes nothing', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      const before = store().session
+      expect(() => store().recordScore(1, 7, 7)).toThrow(RangeError)
+      expect(() => store().recordScore(1, 100, 7)).toThrow(RangeError)
+      expect(store().session).toBe(before)
+      expect(store().previous).toBeNull()
+    })
+
+    it('startGame stamps the court with the time, and a result adds the time played', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'))
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      expect(store().session!.courts[0].startedAt).toBe(Date.parse('2026-01-01T10:00:00Z'))
+      vi.setSystemTime(new Date('2026-01-01T10:07:30Z'))
+      store().recordResult(1, 0)
+      for (const id of [1, 2, 3, 4]) expect(store().session!.stats[id].secondsPlayed).toBe(450)
+      expect(store().session!.courts[0]).not.toHaveProperty('startedAt')
+    })
+
+    it('a score adds the time played too, and undo takes it back', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'))
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      vi.setSystemTime(new Date('2026-01-01T10:12:00Z'))
+      store().recordScore(1, 11, 9)
+      expect(store().session!.stats[1]).toMatchObject({ secondsPlayed: 720, scoredGames: 1 })
+      store().undo()
+      expect(store().session!.stats).toEqual({})
+    })
+
+    it('cancelling a game records no time', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'))
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      vi.setSystemTime(new Date('2026-01-01T10:20:00Z'))
+      store().cancelMatch(1)
+      expect(store().session!.stats).toEqual({})
+    })
   })
 
   it('unlocks partners', () => {

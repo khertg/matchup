@@ -54,6 +54,10 @@ test.describe('live viewer', () => {
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(nextUp.getByText(name)).toBeVisible()
     await expect(nextUp.getByText('Eve')).toHaveCount(0)
     await expect(page.getByText('Next up', { exact: true })).toHaveCount(5) // card title + four queue badges
+    // The card sits above the queue, as on the staff board.
+    const nextUpTop = (await nextUp.boundingBox())!.y
+    const queueTop = (await page.getByText(/^Queue \(/).boundingBox())!.y
+    expect(nextUpTop).toBeLessThan(queueTop)
     // Players can look but not start anything.
     await expect(page.getByRole('button', { name: /Start/ })).toHaveCount(0)
   })
@@ -73,6 +77,31 @@ test.describe('live viewer', () => {
     await expect(rows.nth(1)).toContainText('Gold medal')
     await expect(rows.nth(1)).toContainText('100%')
     await expect(page.getByRole('button', { name: /^Share card/ })).toHaveCount(0)
+  })
+
+  test('shows the point differential and time played of each player', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
+    await page.getByRole('tab', { name: 'Standings' }).click()
+
+    await expect(page.getByRole('columnheader', { name: '+/-' })).toBeVisible()
+    const rows = page.getByRole('row')
+    // Columns: 0 rank, 1 player, 2 GP, 3 W, 4 L, 5 Win %, 6 +/-, 7 Opp., 8 Time.
+    await expect(rows.filter({ hasText: 'Ann' }).getByRole('cell').nth(6)).toHaveText('+8')
+    await expect(rows.filter({ hasText: 'Ann' }).getByRole('cell').nth(8)).toHaveText('21 min')
+    await expect(rows.filter({ hasText: 'Dee' }).getByRole('cell').nth(6)).toHaveText('-8')
+  })
+
+  test('shows a dash for a board from an older app that sends no scores or time', async ({ page, request }) => {
+    const stats = { games: 2, wins: 2, losses: 0, opponentSkill: 6 }
+    const { club } = await runningClub(request, { ...liveSnapshot(), stats: { 1: stats, 2: { ...stats, wins: 0, losses: 2 } } })
+    await page.goto(`/club/${club.slug}`)
+    await page.getByRole('tab', { name: 'Standings' }).click()
+
+    const ann = page.getByRole('row').filter({ hasText: 'Ann' }).getByRole('cell')
+    await expect(ann.nth(3)).toHaveText('2')
+    await expect(ann.nth(6)).toHaveText('-')
+    await expect(ann.nth(8)).toHaveText('-')
   })
 
   test('explains when no session is running, for any club', async ({ page, request }) => {
@@ -110,6 +139,14 @@ test.describe('live viewer', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow).toBeLessThanOrEqual(0)
+
+    // The standings, with their extra columns, scroll inside their card instead of the page.
+    await page.getByRole('tab', { name: 'Standings' }).click()
+    await expect(page.getByRole('columnheader', { name: 'Time' })).toBeAttached()
+    const standingsOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(standingsOverflow).toBeLessThanOrEqual(0)
   })
 })
 

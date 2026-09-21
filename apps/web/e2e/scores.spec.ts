@@ -1,0 +1,415 @@
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { checkIn, recordWin, startGame, startSession } from './helpers'
+
+// Standings columns: 0 rank, 1 player, 2 GP, 3 W, 4 L, 5 Win %, 6 +/-, 7 Opp., 8 Time, 9 share.
+const DIFF = 6
+const TIME = 8
+
+const court = (page: Page, name = 'Court 1') => page.getByRole('region', { name, exact: true })
+
+/** Finish the game on a court with this score. Whoever scored more won. */
+async function enterScore(page: Page, scoreA: number, scoreB: number, courtName = 'Court 1') {
+  await recordWin(page, courtName, scoreA > scoreB ? 'A' : 'B', [scoreA, scoreB])
+}
+
+/** Press a winner button and leave the score pop-up open. */
+async function openScorePopup(page: Page, winner: 'A' | 'B' = 'A', courtName = 'Court 1') {
+  await court(page, courtName).getByRole('button', { name: `Team ${winner} won` }).click()
+  const dialog = page.getByRole('dialog', { name: `Team ${winner} won` })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+/** Singles on one court: Ann is Team A, Bob is Team B. */
+async function startSingles(page: Page, options: { courts?: number; players?: string[] } = {}) {
+  await startSession(page, { mode: 'Singles', courts: options.courts ?? 1 })
+  await checkIn(page, options.players ?? ['Ann', 'Bob'])
+  await startGame(page)
+}
+
+const openStandings = (page: Page) => page.getByRole('tab', { name: 'Standings' }).click()
+const cell = (row: Locator, index: number) => row.getByRole('cell').nth(index)
+
+test.describe('entering a score', () => {
+  test('the higher score wins, the court opens and the toast says the score', async ({ page }) => {
+    await startSingles(page)
+    await enterScore(page, 11, 7)
+
+    await expect(page.getByText('Court 1: Team A won 11–7')).toBeVisible()
+    await expect(court(page).getByText('Open')).toBeVisible()
+    // Both players wait for the next game, the winner first.
+    await page.getByRole('tab', { name: 'Board' }).click()
+    await expect(page.getByText('Queue (2)')).toBeVisible()
+
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(rows.nth(1)).toContainText('Ann')
+    await expect(cell(rows.nth(1), 3)).toHaveText('1') // wins
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('+4')
+    await expect(rows.nth(2)).toContainText('Bob')
+    await expect(cell(rows.nth(2), DIFF)).toHaveText('-4')
+  })
+
+  test('a winner button asks for the score before anything is recorded', async ({ page }) => {
+    await startSingles(page)
+    const dialog = await openScorePopup(page, 'B')
+    await expect(dialog).toContainText('Court 1')
+    await expect(dialog).toContainText("Team B's score must be the higher one")
+    // Nothing is recorded yet: the game is still on the court.
+    await expect(page.getByText('Court 1: Team B won')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(court(page).getByText('In play')).toBeVisible()
+    // There is no other way to finish a game.
+    await expect(court(page).getByRole('button', { name: 'Enter score' })).toHaveCount(0)
+  })
+
+  test('closing the pop-up records nothing and leaves the game in play', async ({ page }) => {
+    await startSingles(page)
+    const dialog = await openScorePopup(page)
+    await dialog.getByLabel('Team A score').fill('11')
+    await dialog.getByLabel('Team B score').fill('4')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(court(page).getByText('In play')).toBeVisible()
+    await openStandings(page)
+    await expect(page.getByText('No games played yet.')).toBeVisible()
+  })
+
+  test('refuses a score that gives the win to the other team, and says why', async ({ page }) => {
+    await startSingles(page)
+    let dialog = await openScorePopup(page, 'A')
+    const submit = dialog.getByRole('button', { name: 'Record score' })
+    await dialog.getByLabel('Team A score').fill('4')
+    await dialog.getByLabel('Team B score').fill('11')
+    await expect(dialog.getByRole('alert')).toHaveText('Team A won, so their score must be higher.')
+    await expect(submit).toBeDisabled()
+    await dialog.getByLabel('Team A score').fill('12')
+    await expect(dialog.getByRole('alert')).toHaveCount(0)
+    await expect(submit).toBeEnabled()
+    await page.keyboard.press('Escape')
+
+    dialog = await openScorePopup(page, 'B')
+    await dialog.getByLabel('Team A score').fill('11')
+    await dialog.getByLabel('Team B score').fill('4')
+    await expect(dialog.getByRole('alert')).toHaveText('Team B won, so their score must be higher.')
+    await expect(dialog.getByRole('button', { name: 'Record score' })).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(court(page).getByText('In play')).toBeVisible()
+  })
+
+  test('the winner button decides who won, and the score records the points', async ({ page }) => {
+    await startSingles(page)
+    const dialog = await openScorePopup(page, 'B')
+    await dialog.getByLabel('Team A score').fill('6')
+    await dialog.getByLabel('Team B score').fill('11')
+    await dialog.getByRole('button', { name: 'Record score' }).click()
+    await expect(page.getByText('Court 1: Team B won 11–6')).toBeVisible()
+  })
+
+  test('derives the winner from the scores even when Team B scores more', async ({ page }) => {
+    await startSingles(page)
+    await enterScore(page, 6, 11)
+
+    await expect(page.getByText('Court 1: Team B won 11–6')).toBeVisible()
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(rows.nth(1)).toContainText('Bob')
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('+5')
+  })
+
+  test('undo takes a score back: the game is on the court again and nothing is counted', async ({ page }) => {
+    await startSingles(page)
+    await enterScore(page, 11, 7)
+    await expect(court(page).getByText('Open')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Undo' }).click()
+    await expect(court(page).getByText('In play')).toBeVisible()
+    await openStandings(page)
+    await expect(page.getByText('No games played yet.')).toBeVisible()
+  })
+
+  test('refuses level scores with a message, and does not record anything', async ({ page }) => {
+    await startSingles(page)
+    const dialog = await openScorePopup(page)
+    const submit = dialog.getByRole('button', { name: 'Record score' })
+    await expect(submit).toBeDisabled()
+
+    await dialog.getByLabel('Team A score').fill('9')
+    await expect(submit).toBeDisabled()
+    await expect(dialog.getByRole('alert')).toHaveCount(0) // still typing
+    await dialog.getByLabel('Team B score').fill('9')
+    await expect(dialog.getByRole('alert')).toContainText('The scores are level')
+    await expect(submit).toBeDisabled()
+
+    await dialog.getByLabel('Team B score').fill('8')
+    await expect(dialog.getByRole('alert')).toHaveCount(0)
+    await expect(submit).toBeEnabled()
+
+    await dialog.getByLabel('Team A score').fill('8')
+    await expect(submit).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(court(page).getByText('In play')).toBeVisible()
+  })
+
+  test('refuses scores that are not whole numbers from 0 to 99', async ({ page }) => {
+    await startSingles(page)
+    let dialog = await openScorePopup(page)
+    let submit = dialog.getByRole('button', { name: 'Record score' })
+
+    await dialog.getByLabel('Team B score').fill('5')
+    for (const bad of ['100', '-1', '2.5']) {
+      await dialog.getByLabel('Team A score').fill(bad)
+      await expect(dialog.getByRole('alert'), bad).toContainText('whole numbers from 0 to 99')
+      await expect(submit, bad).toBeDisabled()
+    }
+    // The limits themselves are fine, and 0 is a real score.
+    await dialog.getByLabel('Team A score').fill('99')
+    await expect(submit).toBeEnabled()
+    await page.keyboard.press('Escape')
+
+    dialog = await openScorePopup(page, 'B')
+    submit = dialog.getByRole('button', { name: 'Record score' })
+    await dialog.getByLabel('Team A score').fill('0')
+    await dialog.getByLabel('Team B score').fill('5')
+    await expect(submit).toBeEnabled()
+    await dialog.getByLabel('Team B score').fill('')
+    await expect(submit).toBeDisabled()
+  })
+
+  test('starts empty each time, and Enter records the score', async ({ page }) => {
+    await startSingles(page)
+    let dialog = await openScorePopup(page)
+    await dialog.getByLabel('Team A score').fill('3')
+    await page.keyboard.press('Escape')
+
+    dialog = await openScorePopup(page)
+    await expect(dialog.getByLabel('Team A score')).toHaveValue('')
+
+    await dialog.getByLabel('Team A score').fill('11')
+    await dialog.getByLabel('Team B score').fill('4')
+    await dialog.getByLabel('Team B score').press('Enter')
+    await expect(page.getByText('Court 1: Team A won 11–4')).toBeVisible()
+  })
+})
+
+test.describe('ranking', () => {
+  test('the point differential decides between players level on wins', async ({ page }) => {
+    // Two courts: Ann v Bob and Cy v Dee. Ann and Cy win once each with the same opponent
+    // strength and win rate, so before scores they ranked alphabetically (Ann first).
+    await startSession(page, { mode: 'Singles', courts: 2 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page, 'Court 1')
+    await startGame(page, 'Court 2')
+
+    await enterScore(page, 11, 9, 'Court 1') // Ann +2
+    await enterScore(page, 11, 2, 'Court 2') // Cy +9
+
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(rows).toHaveCount(5)
+    await expect(cell(rows.nth(1), 1)).toHaveText('Cy')
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('+9')
+    await expect(rows.nth(1)).toContainText('Gold medal')
+    await expect(cell(rows.nth(2), 1)).toHaveText('Ann')
+    await expect(cell(rows.nth(2), DIFF)).toHaveText('+2')
+    await expect(rows.nth(2)).toContainText('Silver medal')
+    // The losers follow, the smaller loss first.
+    await expect(cell(rows.nth(3), 1)).toHaveText('Bob')
+    await expect(cell(rows.nth(3), DIFF)).toHaveText('-2')
+    await expect(cell(rows.nth(4), 1)).toHaveText('Dee')
+    await expect(cell(rows.nth(4), DIFF)).toHaveText('-9')
+    await expect(page.getByText('Ranked by wins, then point differential')).toBeVisible()
+  })
+
+  test('equal differentials still share a rank', async ({ page }) => {
+    await startSession(page, { mode: 'Singles', courts: 2 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page, 'Court 1')
+    await startGame(page, 'Court 2')
+    await enterScore(page, 11, 5, 'Court 1')
+    await enterScore(page, 11, 5, 'Court 2')
+
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(rows.nth(1)).toContainText('Gold medal')
+    await expect(rows.nth(2)).toContainText('Gold medal')
+    await expect(rows.nth(3)).toContainText('Bronze medal')
+  })
+
+  test('undoing a score puts the ranking back', async ({ page }) => {
+    await startSession(page, { mode: 'Singles', courts: 2 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page, 'Court 1')
+    await startGame(page, 'Court 2')
+    await enterScore(page, 11, 9, 'Court 1')
+    await enterScore(page, 11, 2, 'Court 2')
+    // Two toasts are showing; only the latest can be undone, and it takes back Court 2 only.
+    await page
+      .getByRole('listitem')
+      .filter({ hasText: 'Court 2: Team A won 11–2' })
+      .getByRole('button', { name: 'Undo' })
+      .click()
+
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(rows).toHaveCount(3)
+    await expect(cell(rows.nth(1), 1)).toHaveText('Ann')
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('+2')
+  })
+})
+
+test.describe('time played', () => {
+  test('an in-play court shows how long the game has been going, and keeps counting', async ({ page }) => {
+    await page.clock.install()
+    await startSingles(page)
+    await expect(court(page).getByText(/^Playing (under 1|0) min/)).toBeVisible()
+
+    await page.clock.fastForward('07:10')
+    await expect(court(page).getByText('Playing 7 min')).toBeVisible()
+    await page.clock.fastForward('58:00')
+    await expect(court(page).getByText('Playing 1h 05m')).toBeVisible()
+  })
+
+  test('an open court shows no timer', async ({ page }) => {
+    await startSession(page, { mode: 'Singles' })
+    await expect(court(page).getByText(/Playing/)).toHaveCount(0)
+  })
+
+  test('the time a game took shows in the standings, for every game that finishes', async ({ page }) => {
+    await page.clock.install()
+    await startSession(page, { mode: 'Singles', courts: 2 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page, 'Court 1')
+    await startGame(page, 'Court 2')
+
+    await page.clock.fastForward('07:10')
+    await enterScore(page, 11, 6, 'Court 1')
+    await page.clock.fastForward('05:00')
+    await enterScore(page, 11, 4, 'Court 2')
+
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(rows.getByRole('columnheader', { name: 'Time' })).toBeVisible()
+    const timeOf = (name: string) => cell(rows.filter({ hasText: name }), TIME)
+    await expect(timeOf('Ann')).toHaveText('7 min')
+    await expect(timeOf('Bob')).toHaveText('7 min')
+    await expect(timeOf('Cy')).toHaveText('12 min')
+    await expect(timeOf('Dee')).toHaveText('12 min')
+  })
+
+  test('a long game adds up over the session, in hours and minutes', async ({ page }) => {
+    await page.clock.install()
+    await startSingles(page)
+    await page.clock.fastForward('01:05:00')
+    await enterScore(page, 11, 6)
+
+    await openStandings(page)
+    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText('1h 05m')
+  })
+
+  test('a cancelled game records no time', async ({ page }) => {
+    await page.clock.install()
+    await startSingles(page)
+    await page.clock.fastForward('20:00')
+    await court(page).getByRole('button', { name: 'Cancel game' }).click()
+    await startGame(page)
+    await enterScore(page, 11, 6)
+
+    await openStandings(page)
+    // Only the second game counts, which lasted a moment: nowhere near the 20 minutes.
+    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText(/^(-|under 1 min)$/)
+  })
+
+  test('a game already running before the upgrade shows no timer and records no time', async ({ page }) => {
+    await startSingles(page)
+    // Simulate a session saved by the previous version: the game on court 1 has no start time.
+    await page.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('matchup-session')!)
+      delete saved.state.session.courts[0].startedAt
+      localStorage.setItem('matchup-session', JSON.stringify(saved))
+    })
+    await page.reload()
+    await expect(court(page).getByText('In play')).toBeVisible()
+    await expect(court(page).getByText(/Playing/)).toHaveCount(0)
+
+    await enterScore(page, 11, 4)
+    await openStandings(page)
+    await expect(cell(page.getByRole('row').nth(1), DIFF)).toHaveText('+7')
+    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText('-')
+  })
+
+  test('a session saved before scores existed upgrades and keeps playing', async ({ page }) => {
+    await startSingles(page)
+    await enterScore(page, 11, 6)
+    // Rewrite the saved session as version 6: stats without points or time.
+    await page.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('matchup-session')!)
+      saved.version = 6
+      for (const stats of Object.values(saved.state.session.stats) as Record<string, unknown>[]) {
+        delete stats.pointsFor
+        delete stats.pointsAgainst
+        delete stats.scoredGames
+        delete stats.secondsPlayed
+      }
+      localStorage.setItem('matchup-session', JSON.stringify(saved))
+    })
+    await page.reload()
+
+    await openStandings(page)
+    const rows = page.getByRole('row')
+    await expect(cell(rows.nth(1), 1)).toHaveText('Ann')
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('-')
+    await expect(cell(rows.nth(1), TIME)).toHaveText('-')
+
+    await page.getByRole('tab', { name: 'Board' }).click()
+    await startGame(page)
+    await enterScore(page, 11, 3)
+    await openStandings(page)
+    await expect(cell(page.getByRole('row').nth(1), DIFF)).toHaveText('+8')
+  })
+})
+
+test.describe('past sessions', () => {
+  test('keep the scores and time played of an ended session', async ({ page }) => {
+    await page.clock.install()
+    await startSingles(page)
+    await page.clock.fastForward('12:30')
+    await enterScore(page, 11, 7)
+
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
+    await expect(page.getByText('Set up an open play session')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    await page.getByRole('dialog', { name: 'Past sessions' }).getByRole('button', { name: /Test Club/ }).click()
+    const view = page.getByRole('dialog', { name: 'Test Club' })
+    const rows = view.getByRole('row')
+    await expect(cell(rows.nth(1), 1)).toHaveText('Ann')
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('+4')
+    await expect(cell(rows.nth(1), TIME)).toHaveText('12 min')
+    await expect(cell(rows.nth(2), DIFF)).toHaveText('-4')
+  })
+})
+
+test.describe('on a phone', () => {
+  test('the standings fit the page, scrolling inside their card if needed', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 })
+    await page.clock.install()
+    await startSession(page, { mode: 'Doubles' })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await startGame(page)
+    await page.clock.fastForward('42:00')
+    await enterScore(page, 11, 7)
+
+    await openStandings(page)
+    await expect(page.getByRole('columnheader', { name: '+/-' })).toBeAttached()
+    await expect(page.getByRole('columnheader', { name: 'Time' })).toBeAttached()
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+    // Everything is still reachable inside the table.
+    await page.getByRole('columnheader', { name: 'Time' }).scrollIntoViewIfNeeded()
+    await expect(page.getByRole('columnheader', { name: 'Time' })).toBeInViewport()
+  })
+})

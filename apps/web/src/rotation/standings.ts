@@ -14,6 +14,15 @@ export interface Standing {
   winRate: number
   /** Average skill level of the opposing teams this player has faced. */
   avgOpponentSkill: number
+  /** Points scored for and against, over the games that had a score entered. */
+  pointsFor: number
+  pointsAgainst: number
+  /** pointsFor minus pointsAgainst. */
+  diff: number
+  /** Games that had a score entered; 0 means the +/- is not known and should not be shown as a real 0. */
+  scoredGames: number
+  /** Total time on court, in whole seconds. */
+  secondsPlayed: number
   /** Tied players share a rank (1, 1, 3, ...). */
   rank: number
   medal: Medal | null
@@ -24,9 +33,9 @@ const EPSILON = 1e-9
 const sameNumber = (a: number, b: number) => Math.abs(a - b) < EPSILON
 
 /**
- * Session standings for everyone who has finished a game. Ranked by wins, then
- * by the strength of opponents faced, then by win rate, then by name. Players
- * level on all three criteria share a rank (and a medal).
+ * Session standings for everyone who has finished a game. Ranked by wins, then by point
+ * differential (over the games that had a score), then by the strength of opponents faced, then
+ * by win rate, then by name. Players level on all four criteria share a rank (and a medal).
  */
 export function rankPlayers(state: SessionState): Standing[] {
   const rows = Object.entries(state.stats)
@@ -43,11 +52,17 @@ export function rankPlayers(state: SessionState): Standing[] {
         losses: s.losses,
         winRate: s.wins / s.games,
         avgOpponentSkill: s.opponentSkill / s.games,
+        pointsFor: s.pointsFor,
+        pointsAgainst: s.pointsAgainst,
+        diff: s.pointsFor - s.pointsAgainst,
+        scoredGames: s.scoredGames,
+        secondsPlayed: s.secondsPlayed,
       }
     })
     .sort(
       (a, b) =>
         b.wins - a.wins ||
+        b.diff - a.diff ||
         (sameNumber(a.avgOpponentSkill, b.avgOpponentSkill)
           ? 0
           : b.avgOpponentSkill - a.avgOpponentSkill) ||
@@ -61,6 +76,7 @@ export function rankPlayers(state: SessionState): Standing[] {
     const tied =
       prev !== undefined &&
       prev.wins === row.wins &&
+      prev.diff === row.diff &&
       sameNumber(prev.avgOpponentSkill, row.avgOpponentSkill) &&
       sameNumber(prev.winRate, row.winRate)
     // Ties share the rank of the first player in the tied group.

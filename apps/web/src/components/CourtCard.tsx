@@ -1,9 +1,12 @@
 import { Lock } from 'lucide-react'
+import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
+import { ScoreDialog } from '@/components/ScoreDialog'
 import { skillLabel } from '@/lib/skill'
+import { formatDuration, useNow } from '@/lib/time'
 import type { Court, RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -25,11 +28,18 @@ interface Props {
   /** Why no game can start yet, shown on an open court when startState is "none". */
   waitingMessage?: string
   onStart?: (options?: { ignoreMode?: boolean }) => void
-  onResult?: (winner: 0 | 1) => void
+  /** Record the game from its score (Team A, then Team B). Asked for after a win button is pressed. */
+  onScore?: (scoreA: number, scoreB: number) => void
   onCancel?: () => void
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
+
+/** How long the game has been going, refreshed every 30 seconds by its own timer. */
+function Elapsed({ startedAt }: { startedAt: number }) {
+  const now = useNow()
+  return <p className="text-xs text-muted-foreground">Playing {formatDuration((now - startedAt) / 1000)}</p>
+}
 
 export function CourtCard({
   court,
@@ -41,9 +51,12 @@ export function CourtCard({
   startState = 'none',
   waitingMessage = 'Waiting for players to check in',
   onStart,
-  onResult,
+  onScore,
   onCancel,
 }: Props) {
+  // The team whose win button was pressed; the score pop-up is open while this is set.
+  const [pendingWinner, setPendingWinner] = useState<0 | 1 | null>(null)
+
   return (
     <Card role="region" aria-label={court.name}>
       <CardHeader>
@@ -55,6 +68,8 @@ export function CourtCard({
       <CardContent className="space-y-3">
         {court.teams ? (
           <>
+            {/* A game from before start times were tracked has none, so no timer. */}
+            {court.startedAt !== undefined && <Elapsed startedAt={court.startedAt} />}
             {court.teams.map((team, i) => (
               <div
                 key={TEAM_NAMES[i]}
@@ -90,13 +105,19 @@ export function CourtCard({
             {!readOnly && (
               <>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button className="h-11" onClick={() => onResult?.(0)}>
+                  <Button className="h-11" onClick={() => setPendingWinner(0)}>
                     Team A won
                   </Button>
-                  <Button className="h-11" onClick={() => onResult?.(1)}>
+                  <Button className="h-11" onClick={() => setPendingWinner(1)}>
                     Team B won
                   </Button>
                 </div>
+                <ScoreDialog
+                  courtName={court.name}
+                  winner={pendingWinner}
+                  onClose={() => setPendingWinner(null)}
+                  onSubmit={(a, b) => onScore?.(a, b)}
+                />
                 <Button variant="ghost" className="w-full" onClick={onCancel}>
                   Cancel game
                 </Button>

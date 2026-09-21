@@ -1,6 +1,14 @@
 import { MAX_COURT_NAME_LENGTH } from '@matchup/shared'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
-import type { Court, GameMode, MatchmakingMode, RosterPlayer, SessionState, Teams } from './types'
+import type {
+  Court,
+  GameMode,
+  MatchmakingMode,
+  PlayerStats,
+  RosterPlayer,
+  SessionState,
+  Teams,
+} from './types'
 
 /**
  * Court rotation engine. Every function is pure: it returns a new state and
@@ -19,6 +27,27 @@ export const MAX_AVG_GAME_MINUTES = 60
 
 export const isValidGameMinutes = (minutes: number) =>
   Number.isInteger(minutes) && minutes >= MIN_AVG_GAME_MINUTES && minutes <= MAX_AVG_GAME_MINUTES
+
+/** The highest score a team can be given for one game. */
+export const MAX_SCORE = 99
+
+/**
+ * The longest game whose time is recorded. A game left open overnight would otherwise credit
+ * everyone on it with hours they never played.
+ */
+export const MAX_GAME_SECONDS = 3 * 60 * 60
+
+/** The stats of a player who has not finished a game. */
+export const EMPTY_STATS: Readonly<PlayerStats> = {
+  games: 0,
+  wins: 0,
+  losses: 0,
+  opponentSkill: 0,
+  pointsFor: 0,
+  pointsAgainst: 0,
+  scoredGames: 0,
+  secondsPlayed: 0,
+}
 
 export interface SessionOptions {
   avgGameMinutes?: number
@@ -127,6 +156,7 @@ export function closeCourt(state: SessionState, courtId: number): SessionState {
   return {
     ...state,
     courts: state.courts.filter((c) => c.id !== courtId),
+    // The cancelled game records no time.
     queue: court.teams ? [...court.teams.flat(), ...state.queue] : state.queue,
   }
 }
@@ -204,18 +234,30 @@ export function nextGroup(state: SessionState, options: NextGroupOptions = {}): 
   return { players: teams.flat(), teams }
 }
 
+export interface StartGameOptions extends NextGroupOptions {
+  /**
+   * When the game starts (ms since the epoch), so its duration can be recorded. The engine never
+   * reads the clock itself; the store passes Date.now(). Without it the game records no time.
+   */
+  now?: number
+}
+
 /**
  * Put the next group on an open court. Throws if the court is busy or unknown,
  * or if no group can be formed. The players leave the queue.
  */
-export function startGame(state: SessionState, courtId: number, options: NextGroupOptions = {}): SessionState {
+export function startGame(state: SessionState, courtId: number, options: StartGameOptions = {}): SessionState {
   const court = findCourt(state, courtId)
   if (court.teams) throw new Error(`${court.name} already has a game in progress`)
   const group = nextGroup(state, options)
   if (!group) throw new Error('Not enough players are waiting to start a game')
   return {
     ...state,
-    courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: group.teams } : c)),
+    courts: state.courts.map((c) =>
+      c.id === courtId
+        ? { ...c, teams: group.teams, ...(options.now === undefined ? {} : { startedAt: options.now }) }
+        : c,
+    ),
     queue: state.queue.filter((id) => !group.players.includes(id)),
   }
 }
@@ -226,28 +268,114 @@ export interface GameResult {
   losers: number[]
 }
 
+export interface ResultOptions {
+  /** When the game ended (ms since the epoch). Without it the game records no time. */
+  now?: number
+}
+
+export const isValidScore = (n: number) => Number.isInteger(n) && n >= 0 && n <= MAX_SCORE
+
+/** Why a score cannot be recorded, or null if it can. Scores are whole numbers from 0 to MAX_SCORE and never level. */
+export function scoreProblem(a: number, b: number): string | null {
+  if (!isValidScore(a) || !isValidScore(b)) return `Scores must be whole numbers from 0 to ${MAX_SCORE}`
+  if (a === b) return 'The scores are level. A game needs a winner.'
+  return null
+}
+
+const TEAM_LABELS = ['Team A', 'Team B'] as const
+
+/**
+ * Why a score cannot be recorded for a game that this team won, or null if it can: the same checks
+ * as scoreProblem, and the winner's score must be the higher one.
+ */
+export function winnerScoreProblem(winner: 0 | 1, scoreA: number, scoreB: number): string | null {
+  const problem = scoreProblem(scoreA, scoreB)
+  if (problem) return problem
+  const winnerScore = winner === 0 ? scoreA : scoreB
+  const otherScore = winner === 0 ? scoreB : scoreA
+  return winnerScore > otherScore ? null : `${TEAM_LABELS[winner]} won, so their score must be higher.`
+}
+
+/**
+ * Whole seconds the game on this court has lasted, from 0 to MAX_GAME_SECONDS. 0 when the
+ * game has no start time (it began before times were tracked) or no end time is given.
+ */
+function gameSeconds(court: Court, now: number | undefined): number {
+  if (court.startedAt === undefined || now === undefined) return 0
+  const seconds = Math.floor((now - court.startedAt) / 1000)
+  return Number.isFinite(seconds) ? Math.min(Math.max(seconds, 0), MAX_GAME_SECONDS) : 0
+}
+
+/** The court with no game on it. Also drops the start time. */
+const openCourt = (court: Court): Court => ({ id: court.id, name: court.name, teams: null })
+
 /**
  * Record a finished game. `winner` is the index (0 or 1) of the winning side.
  * The court is freed and both sides rejoin the back of the queue, winners
  * first. Nothing starts by itself: staff start the next game with startGame.
+ * No score is kept (see recordScore), but the game's time is recorded when `now` is given.
  */
-export function recordResult(state: SessionState, courtId: number, winner: 0 | 1): GameResult {
+export function recordResult(
+  state: SessionState,
+  courtId: number,
+  winner: 0 | 1,
+  { now }: ResultOptions = {},
+): GameResult {
+  return finishGame(state, courtId, winner, undefined, now)
+}
+
+/**
+ * Record a finished game from its score. The higher score wins; equal scores, or scores that are
+ * not whole numbers from 0 to MAX_SCORE, throw a RangeError. Otherwise exactly like recordResult,
+ * and it also adds the points to everyone's totals.
+ */
+export function recordScore(
+  state: SessionState,
+  courtId: number,
+  scoreA: number,
+  scoreB: number,
+  { now }: ResultOptions = {},
+): GameResult {
+  const problem = scoreProblem(scoreA, scoreB)
+  if (problem) throw new RangeError(problem)
+  return finishGame(state, courtId, scoreA > scoreB ? 0 : 1, [scoreA, scoreB], now)
+}
+
+/**
+ * Shared by recordResult and recordScore. The game's time is credited to whoever is on the court
+ * when it ends: a substitute made mid-game gets all of it and the player who left gets none.
+ */
+function finishGame(
+  state: SessionState,
+  courtId: number,
+  winner: 0 | 1,
+  score: [number, number] | undefined,
+  now: number | undefined,
+): GameResult {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams) throw new Error(`Court ${courtId} has no game in progress`)
+  const loser = winner === 0 ? 1 : 0
   const winners = court.teams[winner]
-  const losers = court.teams[winner === 0 ? 1 : 0]
+  const losers = court.teams[loser]
+  const seconds = gameSeconds(court, now)
   const stats = { ...state.stats }
   const averageSkill = (ids: number[]) =>
     ids.reduce((sum, id) => sum + state.players[id].skill, 0) / ids.length
   const tally = (ids: number[], opponents: number[], won: boolean) => {
     const opponentSkill = averageSkill(opponents)
+    const pointsFor = score?.[won ? winner : loser] ?? 0
+    const pointsAgainst = score?.[won ? loser : winner] ?? 0
     for (const id of ids) {
-      const prev = stats[id] ?? { games: 0, wins: 0, losses: 0, opponentSkill: 0 }
+      const prev = stats[id] ?? EMPTY_STATS
       stats[id] = {
         games: prev.games + 1,
         wins: prev.wins + (won ? 1 : 0),
         losses: prev.losses + (won ? 0 : 1),
         opponentSkill: prev.opponentSkill + opponentSkill,
+        pointsFor: prev.pointsFor + pointsFor,
+        pointsAgainst: prev.pointsAgainst + pointsAgainst,
+        scoredGames: prev.scoredGames + (score ? 1 : 0),
+        secondsPlayed: prev.secondsPlayed + seconds,
       }
     }
   }
@@ -258,7 +386,7 @@ export function recordResult(state: SessionState, courtId: number, winner: 0 | 1
     losers,
     state: {
       ...state,
-      courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: null } : c)),
+      courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
       queue: [...state.queue, ...winners, ...losers],
       lastResult: {
         ...state.lastResult,
@@ -270,13 +398,13 @@ export function recordResult(state: SessionState, courtId: number, winner: 0 | 1
   }
 }
 
-/** Abandon a game without a result. Its players return to the front of the queue. */
+/** Abandon a game without a result or a time. Its players return to the front of the queue. */
 export function cancelMatch(state: SessionState, courtId: number): SessionState {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams) throw new Error(`Court ${courtId} has no game in progress`)
   return {
     ...state,
-    courts: state.courts.map((c) => (c.id === courtId ? { ...c, teams: null } : c)),
+    courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
     queue: [...court.teams.flat(), ...state.queue],
   }
 }

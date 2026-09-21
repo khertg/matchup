@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame } from '../helpers'
+import { checkIn, startGame, recordWin } from '../helpers'
 import {
   apiCreateClub,
   apiLive,
@@ -372,7 +372,7 @@ test.describe('two browsers', () => {
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(court.getByText(name)).toBeVisible()
     await expect(viewer.getByText('Queue (1)')).toBeVisible()
 
-    await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Team A won' }).click()
+    await recordWin(page)
     await viewer.getByRole('tab', { name: 'Standings' }).click()
     await expect(viewer.getByRole('row').nth(1)).toContainText('Gold medal', { timeout: 8000 })
 
@@ -495,7 +495,7 @@ test.describe('club leaderboard', () => {
     await page.getByRole('button', { name: 'Start session' }).click()
     await checkIn(page, ['Ann', 'Bob'])
     await startGame(page)
-    await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Team A won' }).click()
+    await recordWin(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   }

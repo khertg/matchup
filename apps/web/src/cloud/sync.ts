@@ -1,11 +1,12 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
+import { markHistorySynced, unsyncedHistory } from '@/db/history'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi } from './api'
 import { useClubAuth } from './auth'
 import { cloud } from './client'
 import { createPublisher, type SyncStatus } from './publisher'
-import { toFullBackup, toPublicSnapshot } from './snapshot'
+import { toFullBackup, toHistoryBackup, toPublicSnapshot } from './snapshot'
 
 interface SyncStore {
   status: SyncStatus
@@ -50,6 +51,40 @@ export async function flushPendingLifetime(api: CloudApi | null = cloud): Promis
     }
   }
   return true
+}
+
+/**
+ * Send ended sessions that are not in the club's history yet. Safe to call repeatedly: a session
+ * is stored by its id, so sending it twice changes nothing. Returns true when nothing is left waiting.
+ */
+export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean> {
+  const club = useClubAuth.getState().club
+  if (!api || !club) return false
+  try {
+    for (const record of await unsyncedHistory()) {
+      try {
+        await api.putHistory(
+          club.token,
+          record.id,
+          {
+            endedAt: new Date(record.endedAt).toISOString(),
+            mode: record.mode,
+            players: record.players,
+            games: record.games,
+          },
+          toHistoryBackup(record.location, record.session, record.storeVersion, record.lifetimeCounted),
+        )
+      } catch (error) {
+        // A session the server will never accept stays on this device only; retrying cannot help.
+        if (!isPermanent(error) || isExpiredLogin(error)) throw error
+      }
+      await markHistorySynced(record.id)
+    }
+    return true
+  } catch (error) {
+    handleAuthError(error)
+    return false
+  }
 }
 
 /**
@@ -110,6 +145,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
       setStatus('idle')
       pushIfRunning()
       void flushPendingLifetime(api)
+      void syncHistory(api)
     } else if (!state.club && prev.club) {
       setStatus('off')
     }
@@ -118,6 +154,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   const handleOnline = () => {
     publisher.onOnline()
     void flushPendingLifetime(api)
+    void syncHistory(api)
   }
   const handleOffline = () => {
     if (signedIn()) setStatus('offline')
@@ -128,6 +165,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   if (signedIn()) {
     pushIfRunning()
     void flushPendingLifetime(api)
+    void syncHistory(api)
   }
 
   return () => {
