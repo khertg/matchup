@@ -8,7 +8,7 @@ import {
   type LoginResponse,
   type ResetPasswordRequest,
   type ResetPasswordResponse,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import type { Db } from '../db'
 import { AppError } from '../errors'
 import { dummyHash, hashPassword, verifyPassword } from './password'

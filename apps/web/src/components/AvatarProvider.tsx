@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { AvatarIndex } from '@matchup/shared'
+import type { AvatarIndex } from '@q2dink/shared'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { db, type Player } from '@/db/db'

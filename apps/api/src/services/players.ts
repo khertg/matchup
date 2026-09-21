@@ -1,4 +1,4 @@
-import { MAX_PLAYER_NAME_LENGTH, avatarKey } from '@matchup/shared'
+import { MAX_PLAYER_NAME_LENGTH, avatarKey } from '@q2dink/shared'
 import type { Db } from '../db'
 import { AppError } from '../errors'
 

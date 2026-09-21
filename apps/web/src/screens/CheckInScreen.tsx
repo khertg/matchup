@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
+import { MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
 import { db, type Gender, type SkillLevel } from '@/db/db'
 import { addOrGetPlayer } from '@/db/roster'
 import { PlayerAvatar } from '@/components/PlayerAvatar'

@@ -54,7 +54,7 @@ export default defineConfig({
     },
     {
       // The real API, with limits raised so many tests can share one address.
-      command: 'npm run start:test -w @matchup/api',
+      command: 'npm run start:test -w @q2dink/api',
       cwd: '../..',
       url: `${apiURL}/api/health`,
       reuseExistingServer: !process.env.CI,

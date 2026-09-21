@@ -3,14 +3,14 @@ import {
   parseFullBackupEnvelope,
   parsePublicSnapshot,
   type PublicSnapshot,
-} from '@matchup/shared'
+} from '@q2dink/shared'
 import { nextGroup } from '@/rotation/engine'
 import type { LifetimeCounts } from '@/rotation/lifetime'
 import type { SessionState } from '@/rotation/types'
 import { migrateSession, SESSION_STORE_VERSION } from '@/store/migrate'
 
 /**
- * Two shapes go to the cloud (their wire format is defined in @matchup/shared):
+ * Two shapes go to the cloud (their wire format is defined in @q2dink/shared):
  *  - PublicSnapshot: what the public viewer page shows. It leaves out genders
  *    and per-player results history.
  *  - FullBackup: the whole session, only retrievable with a staff token, so a

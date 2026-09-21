@@ -6,7 +6,7 @@ import { apiCreateClub, apiPublish, bearer, expectSignedIn, storedToken, uiCreat
 failOnCspViolations(test)
 
 /** The login screen: the description is unique to it. */
-const gate = (page: Page) => page.getByText('Log in to your club to use Matchup')
+const gate = (page: Page) => page.getByText('Log in to your club to use Q2Dink')
 
 test.describe('the login gate', () => {
   test('a signed-out device sees only the login screen', async ({ page }) => {

@@ -17,7 +17,7 @@ test.describe('theme switch with the cloud', () => {
     const club = uniqueClub('Theme')
     await apiCreateClub(request, club)
     await page.goto('/')
-    await expect(page.getByText('Log in to your club to use Matchup')).toBeVisible()
+    await expect(page.getByText('Log in to your club to use Q2Dink')).toBeVisible()
     await chooseDark(page)
     await uiLogin(page, club)
     await expectSignedIn(page)

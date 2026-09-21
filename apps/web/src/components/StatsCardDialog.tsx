@@ -33,7 +33,7 @@ export function StatsCardDialog({ standing, location, date }: Props) {
       const dataUrl = await toPng(cardRef.current, { pixelRatio: 3, cacheBust: true })
       const link = document.createElement('a')
       link.href = dataUrl
-      link.download = `${fileSafe(standing.name) || 'player'}-matchup-stats.png`
+      link.download = `${fileSafe(standing.name) || 'player'}-q2dink-stats.png`
       link.click()
     } catch {
       toast.error('Could not create the image. Try again.')

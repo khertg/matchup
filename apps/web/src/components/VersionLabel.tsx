@@ -5,7 +5,7 @@ export function VersionLabel() {
   return (
     <p
       data-testid="app-version"
-      title={`Matchup ${appBuild.version}, commit ${appBuild.commit}, built ${appBuild.date}`}
+      title={`Q2Dink ${appBuild.version}, commit ${appBuild.commit}, built ${appBuild.date}`}
       className="mt-8 text-center text-xs text-muted-foreground select-text"
     >
       {appVersion}

@@ -2,7 +2,7 @@ import type { CloudApi } from './api'
 import { createHttpApi } from './httpApi'
 
 /**
- * Where the Matchup API lives, for example `/api` (same origin, the normal
+ * Where the Q2Dink API lives, for example `/api` (same origin, the normal
  * setup) or `https://example.com/api`. Leave it unset for a static-only
  * deployment and every cloud feature stays hidden.
  */

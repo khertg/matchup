@@ -93,7 +93,7 @@ test('downloads a stats card image', async ({ page }) => {
     page.waitForEvent('download'),
     dialog.getByRole('button', { name: 'Download image' }).click(),
   ])
-  expect(download.suggestedFilename()).toBe('ann-matchup-stats.png')
+  expect(download.suggestedFilename()).toBe('ann-q2dink-stats.png')
 
   // A real PNG starts with the PNG signature.
   const bytes = readFileSync(await download.path())

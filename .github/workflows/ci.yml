@@ -60,7 +60,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test -w @matchup/api
+      - run: npm test -w @q2dink/api
 
   # The production images must build, and the API image must run on Alpine (native argon2 module).
   docker:
@@ -76,11 +76,11 @@ jobs:
         run: |
           docker compose -f docker-compose.yml config -q
           docker compose -f deploy/docker-compose.prod.yml config -q
-      - run: docker build -f apps/api/Dockerfile --target prod --build-arg GIT_SHA=${{ github.sha }} -t matchup-api .
-      - run: docker build -f deploy/Dockerfile --build-arg GIT_SHA=${{ github.sha }} -t matchup-caddy .
+      - run: docker build -f apps/api/Dockerfile --target prod --build-arg GIT_SHA=${{ github.sha }} -t q2dink-api .
+      - run: docker build -f deploy/Dockerfile --build-arg GIT_SHA=${{ github.sha }} -t q2dink-caddy .
       - name: The API image loads its native password hashing
         run: >-
-          docker run --rm -w /app matchup-api node --input-type=module
+          docker run --rm -w /app q2dink-api node --input-type=module
           -e "const { hash, verify } = await import('@node-rs/argon2'); const h = await hash('x'); if (!h.startsWith('\$argon2id\$') || !(await verify(h, 'x'))) process.exit(1)"
 
   # The production stack (Caddy + API + Postgres) has to start and serve the app with its security

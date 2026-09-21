@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AvatarIndex } from '@matchup/shared'
+import type { AvatarIndex } from '@q2dink/shared'
 import { cloud } from '@/cloud/client'
 import { avatarKey, colorFor, initialsOf, type PlayerAvatar } from './avatar'
 

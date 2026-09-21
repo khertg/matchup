@@ -27,7 +27,7 @@ export function StatsCard({ standing, location, date, ref }: Props) {
       <div className="flex items-center justify-between text-sm font-semibold tracking-widest">
         <span className="flex items-center gap-2">
           <ClubLogo className="max-h-7 max-w-24 rounded" />
-          MATCHUP
+          Q2DINK
         </span>
         <span className="opacity-80">{date}</span>
       </div>

@@ -1,4 +1,4 @@
-import type { FullBackupEnvelope, LiveRow, PublicSnapshot } from '@matchup/shared'
+import type { FullBackupEnvelope, LiveRow, PublicSnapshot } from '@q2dink/shared'
 import type { Db, Queryable } from '../db'
 
 const toIso = (value: unknown) => new Date(value as string | number | Date).toISOString()

@@ -1,9 +1,9 @@
 {
-  "name": "@matchup/api",
+  "name": "@q2dink/api",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Matchup API: clubs, live sessions, club leaderboards.",
+  "description": "Q2Dink API: clubs, live sessions, club leaderboards.",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsup",
@@ -18,7 +18,7 @@
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
     "@fastify/rate-limit": "^11.2.0",
-    "@matchup/shared": "*",
+    "@q2dink/shared": "*",
     "@node-rs/argon2": "^2.2.1",
     "fastify": "^5.12.5",
     "pg": "^8.23.0"

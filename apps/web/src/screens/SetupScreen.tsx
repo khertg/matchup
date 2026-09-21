@@ -23,7 +23,7 @@ import {
   MIN_AVG_GAME_MINUTES,
   MIN_COURTS,
 } from '@/rotation/engine'
-import { MAX_LOCATION_LENGTH } from '@matchup/shared'
+import { MAX_LOCATION_LENGTH } from '@q2dink/shared'
 import type { GameMode, MatchmakingMode } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -60,7 +60,7 @@ function SetupCard() {
       <CardHeader>
         <div className="flex items-center gap-3">
           <ClubLogo className="max-h-14" />
-          <CardTitle className="text-2xl">Matchup</CardTitle>
+          <CardTitle className="text-2xl">Q2Dink</CardTitle>
         </div>
         <CardDescription>Set up an open play session</CardDescription>
         <div>

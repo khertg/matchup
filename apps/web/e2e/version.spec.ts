@@ -23,7 +23,7 @@ test.describe('version number', () => {
 
   test('says which build it is when hovered, with the full details', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByTestId('app-version')).toHaveAttribute('title', /^Matchup \d+\.\d+\.\d+, commit \S+, built \d{4}-\d{2}-\d{2}$/)
+    await expect(page.getByTestId('app-version')).toHaveAttribute('title', /^Q2Dink \d+\.\d+\.\d+, commit \S+, built \d{4}-\d{2}-\d{2}$/)
   })
 
   test('the same version is shown on every screen of one build', async ({ page }) => {

@@ -389,9 +389,9 @@ test.describe('time played', () => {
     await startSingles(page)
     // Simulate a session saved by the previous version: the game on court 1 has no start time.
     await page.evaluate(() => {
-      const saved = JSON.parse(localStorage.getItem('matchup-session')!)
+      const saved = JSON.parse(localStorage.getItem('q2dink-session')!)
       delete saved.state.session.courts[0].startedAt
-      localStorage.setItem('matchup-session', JSON.stringify(saved))
+      localStorage.setItem('q2dink-session', JSON.stringify(saved))
     })
     await page.reload()
     await expect(court(page).getByText('In play')).toBeVisible()
@@ -408,7 +408,7 @@ test.describe('time played', () => {
     await enterScore(page, 11, 6)
     // Rewrite the saved session as version 6: stats without points or time.
     await page.evaluate(() => {
-      const saved = JSON.parse(localStorage.getItem('matchup-session')!)
+      const saved = JSON.parse(localStorage.getItem('q2dink-session')!)
       saved.version = 6
       for (const stats of Object.values(saved.state.session.stats) as Record<string, unknown>[]) {
         delete stats.pointsFor
@@ -416,7 +416,7 @@ test.describe('time played', () => {
         delete stats.scoredGames
         delete stats.secondsPlayed
       }
-      localStorage.setItem('matchup-session', JSON.stringify(saved))
+      localStorage.setItem('q2dink-session', JSON.stringify(saved))
     })
     await page.reload()
 

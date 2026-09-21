@@ -1,4 +1,4 @@
-import type { LiveEvent } from '@matchup/shared'
+import type { LiveEvent } from '@q2dink/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { LiveHub, type Subscriber } from '../src/realtime'
 

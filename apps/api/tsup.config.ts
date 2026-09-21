@@ -29,6 +29,6 @@ export default defineConfig({
     __API_COMMIT__: JSON.stringify(gitCommit()),
   },
   // Inline the workspace package; keep real dependencies external so they come from node_modules.
-  noExternal: [/^@matchup\//],
+  noExternal: [/^@q2dink\//],
   external: ['@electric-sql/pglite'],
 })

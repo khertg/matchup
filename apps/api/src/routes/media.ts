@@ -1,4 +1,4 @@
-import type { PutAvatarRequest, PutLogoRequest } from '@matchup/shared'
+import type { PutAvatarRequest, PutLogoRequest } from '@q2dink/shared'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError } from '../errors'

@@ -1,4 +1,4 @@
-import type { FullBackupEnvelope, PublicSnapshot } from '@matchup/shared'
+import type { FullBackupEnvelope, PublicSnapshot } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import { buildApp, type AppDeps } from '../src/app'
 import { loadConfig, type Config } from '../src/config'

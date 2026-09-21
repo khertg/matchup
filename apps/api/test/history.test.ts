@@ -1,4 +1,4 @@
-import { MAX_HISTORY_PER_CLUB, SNAPSHOT_LIMITS } from '@matchup/shared'
+import { MAX_HISTORY_PER_CLUB, SNAPSHOT_LIMITS } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Db } from '../src/db'

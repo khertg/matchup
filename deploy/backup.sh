@@ -6,7 +6,7 @@ set -eu
 
 dir="${1:-./backups}"
 mkdir -p "$dir"
-file="$dir/matchup-$(date +%Y%m%d-%H%M%S).sql.gz"
+file="$dir/q2dink-$(date +%Y%m%d-%H%M%S).sql.gz"
 
 # pg_dump runs inside the database container, using its own credentials.
 docker compose -f docker-compose.prod.yml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "$file"
@@ -18,5 +18,5 @@ if [ ! -s "$file" ] || [ "$(gzip -dc "$file" | wc -c)" -lt 100 ]; then
   exit 1
 fi
 
-ls -1t "$dir"/matchup-*.sql.gz | tail -n +15 | xargs -r rm --
+ls -1t "$dir"/q2dink-*.sql.gz "$dir"/matchup-*.sql.gz 2>/dev/null | tail -n +15 | xargs -r rm --
 echo "wrote $file"

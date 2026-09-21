@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { ResolvedAvatar } from '@/lib/avatars'
-import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
+import { MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
 
 interface Props {
   name: string

@@ -34,7 +34,7 @@ services:
         GIT_SHA: ${GIT_SHA:-}
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-matchup}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}@db:5432/${POSTGRES_DB:-matchup}
+      DATABASE_URL: postgres://${POSTGRES_USER:-q2dink}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}@db:5432/${POSTGRES_DB:-q2dink}
       TRUST_PROXY: "true" # the real client address arrives from Caddy, so rate limits are per person
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
@@ -46,9 +46,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-matchup}
+      POSTGRES_USER: ${POSTGRES_USER:-q2dink}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
-      POSTGRES_DB: ${POSTGRES_DB:-matchup}
+      POSTGRES_DB: ${POSTGRES_DB:-q2dink}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

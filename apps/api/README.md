@@ -1,4 +1,4 @@
-# Matchup API
+# Q2Dink API
 
 The server behind the optional cloud features: club login, the public live board, resuming a session on a
 second device, and the club leaderboard. It is a small [Fastify](https://fastify.dev) app on Postgres.
@@ -9,7 +9,7 @@ The web app works fully without it. Everything here is opt-in.
 
 ```bash
 npm install                      # once, from the repository root
-npm run dev -w @matchup/api      # http://localhost:8787, hot reload
+npm run dev -w @q2dink/api      # http://localhost:8787, hot reload
 ```
 
 With no configuration it uses an **embedded Postgres (PGlite)** stored in `apps/api/.data`, so you need no
@@ -88,8 +88,8 @@ There is deliberately **no endpoint that lists clubs**.
 ## Tests
 
 ```bash
-npm test -w @matchup/api                       # embedded Postgres, no Docker needed
-TEST_DATABASE_URL=postgres://... npm test -w @matchup/api   # the same suite on a real Postgres
+npm test -w @q2dink/api                       # embedded Postgres, no Docker needed
+TEST_DATABASE_URL=postgres://... npm test -w @q2dink/api   # the same suite on a real Postgres
 ```
 
 The suite covers every route, authentication and expiry, rate limits and lockouts, privacy of the public board,

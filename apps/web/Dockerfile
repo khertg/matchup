@@ -15,4 +15,4 @@ RUN npm ci
 FROM deps AS dev
 ENV USE_POLLING=true
 EXPOSE 5173
-CMD ["npm", "run", "dev", "-w", "@matchup/web", "--", "--host", "0.0.0.0"]
+CMD ["npm", "run", "dev", "-w", "@q2dink/web", "--", "--host", "0.0.0.0"]

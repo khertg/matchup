@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { PlayerAvatar } from '@/lib/avatar'
 import type { HistoryRecord } from './history'
+import { migrateLegacyDatabase } from './legacyMigration'
 
 export type SkillLevel = 1 | 2 | 3 | 4 | 5 | 6
 
@@ -38,7 +39,7 @@ export interface Setting {
   value: unknown
 }
 
-export const db = new Dexie('matchup') as Dexie & {
+export const db = new Dexie('q2dink') as Dexie & {
   players: EntityTable<Player, 'id'>
   sessions: EntityTable<Session, 'id'>
   /** Ended sessions, kept so they can be viewed and resumed. */
@@ -65,3 +66,7 @@ db.version(3).stores({
   history: 'id, endedAt',
   settings: 'key',
 })
+
+// A device that used the app under its old name brings its data across (see legacyMigration.ts) before the
+// first query runs.
+db.on('ready', () => migrateLegacyDatabase(db))

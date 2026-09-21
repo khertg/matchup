@@ -174,7 +174,7 @@ describe('session store', () => {
     it('gives a session that was already running before history existed an identity on upgrade', async () => {
       store().startSession('Old', 'doubles', 1)
       const session = store().session!
-      localStorage.setItem('matchup-session', JSON.stringify({ state: { location: 'Old', session }, version: 5 }))
+      localStorage.setItem('q2dink-session', JSON.stringify({ state: { location: 'Old', session }, version: 5 }))
       await useSessionStore.persist.rehydrate()
       expect(store().location).toBe('Old')
       expect(store().sessionId).toMatch(/^[0-9a-f-]{36}$/)
@@ -183,7 +183,7 @@ describe('session store', () => {
     })
 
     it('has no identity when an upgraded store had no session running', async () => {
-      localStorage.setItem('matchup-session', JSON.stringify({ state: { location: '', session: null }, version: 5 }))
+      localStorage.setItem('q2dink-session', JSON.stringify({ state: { location: '', session: null }, version: 5 }))
       await useSessionStore.persist.rehydrate()
       expect(store()).toMatchObject({ session: null, sessionId: '', startedAt: 0 })
     })

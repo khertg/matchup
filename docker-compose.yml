@@ -28,7 +28,7 @@ services:
     ports:
       - "8787:8787"
     environment:
-      DATABASE_URL: postgres://matchup:matchup@db:5432/matchup
+      DATABASE_URL: postgres://q2dink:q2dink@db:5432/q2dink
       PORT: "8787"
     depends_on:
       db:
@@ -44,19 +44,19 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     environment:
-      POSTGRES_USER: matchup
-      POSTGRES_PASSWORD: matchup
-      POSTGRES_DB: matchup
+      POSTGRES_USER: q2dink
+      POSTGRES_PASSWORD: q2dink
+      POSTGRES_DB: q2dink
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U matchup -d matchup"]
+      test: ["CMD-SHELL", "pg_isready -U q2dink -d q2dink"]
       interval: 3s
       timeout: 3s
       retries: 20
 
   # Web UI for the dev database (http://localhost:8080). Log in with System PostgreSQL,
-  # server db, user/password/database matchup. Dev only: it is not part of the production stack.
+  # server db, user/password/database q2dink. Dev only: it is not part of the production stack.
   adminer:
     image: adminer:latest
     ports:

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { clubSlugFromPath } from '@matchup/shared'
+import { clubSlugFromPath } from '@q2dink/shared'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { requiresLogin } from '@/cloud/gate'

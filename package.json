@@ -1,5 +1,5 @@
 {
-  "name": "matchup",
+  "name": "q-2-dink",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -8,13 +8,13 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @matchup/web",
+    "dev": "npm run dev -w @q2dink/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "oxlint apps packages",
-    "test:e2e": "npm run test:e2e -w @matchup/web",
-    "test:e2e:ui": "npm run test:e2e:ui -w @matchup/web"
+    "test:e2e": "npm run test:e2e -w @q2dink/web",
+    "test:e2e:ui": "npm run test:e2e:ui -w @q2dink/web"
   },
   "devDependencies": {
     "oxlint": "^1.81.0"

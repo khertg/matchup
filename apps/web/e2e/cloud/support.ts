@@ -1,4 +1,4 @@
-import { slugify } from '@matchup/shared'
+import { slugify } from '@q2dink/shared'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 
 /**
@@ -82,7 +82,7 @@ export const apiLive = (request: APIRequestContext, slug: string) =>
 /** The staff token the app kept after signing in. */
 export async function storedToken(page: Page): Promise<string> {
   const token = await page.evaluate(() => {
-    const raw = localStorage.getItem('matchup-club')
+    const raw = localStorage.getItem('q2dink-club')
     return raw ? (JSON.parse(raw) as { state: { club: { token: string } | null } }).state.club?.token : null
   })
   if (!token) throw new Error('Not signed in to a club in this page')
