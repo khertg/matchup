@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame, recordWin } from '../helpers'
+import { addCourt, checkIn, startGame, recordWin } from '../helpers'
 import {
   apiCreateClub,
   apiLive,
@@ -455,7 +455,7 @@ test.describe('managing courts', () => {
 
     await expectCourts(['Court 1', 'Court 2', 'Court 3', 'Court 4'])
 
-    await page.getByRole('button', { name: 'Add court' }).click()
+    await addCourt(page)
     await expectCourts(['Court 1', 'Court 2', 'Court 3', 'Court 4', 'Court 5'])
 
     await page.getByRole('button', { name: 'Manage courts' }).click()
@@ -495,7 +495,7 @@ test.describe('managing courts', () => {
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal'])
     await startGame(page)
 
-    await page.getByRole('button', { name: 'Add court' }).click()
+    await addCourt(page)
     const court2 = viewer.getByRole('region', { name: 'Court 2' })
     await expect(court2.getByText('Open')).toBeVisible({ timeout: 8000 })
     await startGame(page, 'Court 2')

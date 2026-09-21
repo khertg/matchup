@@ -134,8 +134,8 @@ function CourtRow({ court, index, count }: RowProps) {
   )
 }
 
-/** Add a court from the Board tab: the most common change, so it gets its own button. */
-export function AddCourtButton({ session }: { session: SessionState }) {
+/** Add a court. It lives only in the Manage courts dialog, beside renaming, reordering and closing. */
+function AddCourtButton({ session }: { session: SessionState }) {
   const addCourt = useSessionStore((s) => s.addCourt)
   const atLimit = session.courts.length >= MAX_COURTS
 
