@@ -127,6 +127,10 @@ export function CourtCard({
                 </div>
                 <ScoreDialog
                   courtName={court.name}
+                  teamNames={[
+                    court.teams[0].map((id) => players[id]?.name ?? ''),
+                    court.teams[1].map((id) => players[id]?.name ?? ''),
+                  ]}
                   winner={pendingWinner}
                   onClose={() => setPendingWinner(null)}
                   onSubmit={(a, b) => onScore?.(a, b)}

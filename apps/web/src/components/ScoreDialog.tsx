@@ -13,6 +13,8 @@ import { isValidScore, MAX_SCORE, winnerScoreProblem } from '@/rotation/engine'
 
 interface Props {
   courtName: string
+  /** Player names on Team A and Team B, shown so staff can check who they are scoring. */
+  teamNames: [string[], string[]]
   /** The team whose win button was pressed. The pop-up is open while this is set. */
   winner: 0 | 1 | null
   /** Closed without recording anything: the game stays in play. */
@@ -30,21 +32,41 @@ const DEFAULT_WINNING_SCORE = '11'
 const parse = (text: string) => (text.trim() === '' ? NaN : Number(text))
 
 /** The score of a finished game. Every game is finished with one, so points always count. */
-export function ScoreDialog({ courtName, winner, onClose, onSubmit }: Props) {
+export function ScoreDialog({ courtName, teamNames, winner, onClose, onSubmit }: Props) {
   return (
     <Dialog open={winner !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         {/* Keyed by team so the fields start empty every time the pop-up opens. */}
         {winner !== null && (
-          <ScoreForm key={winner} courtName={courtName} winner={winner} onClose={onClose} onSubmit={onSubmit} />
+          <ScoreForm
+            key={winner}
+            courtName={courtName}
+            teamNames={teamNames}
+            winner={winner}
+            onClose={onClose}
+            onSubmit={onSubmit}
+          />
         )}
       </DialogContent>
     </Dialog>
   )
 }
 
+function TeamPlayers({ names }: { names: string[] }) {
+  return (
+    <ul className="text-sm text-muted-foreground">
+      {names.map((name, i) => (
+        <li key={i} className="truncate">
+          {name}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function ScoreForm({
   courtName,
+  teamNames,
   winner,
   onClose,
   onSubmit,
@@ -79,6 +101,7 @@ function ScoreForm({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="score-a">Team A score</Label>
+            <TeamPlayers names={teamNames[0]} />
             <Input
               id="score-a"
               type="number"
@@ -93,6 +116,7 @@ function ScoreForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="score-b">Team B score</Label>
+            <TeamPlayers names={teamNames[1]} />
             <Input
               id="score-b"
               type="number"
