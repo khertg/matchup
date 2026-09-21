@@ -30,9 +30,8 @@ const queueLength = (request: Parameters<typeof apiLive>[0], slug: string) => as
 }
 
 test.describe('club sign-in', () => {
-  test('offers to create a club or log in when an API is configured', async ({ page }) => {
+  test('asks to log in or create a club first when an API is configured (see gate.spec.ts)', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText('Cloud club')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Create a club' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible()
   })
@@ -313,15 +312,15 @@ test.describe('publishing the live session', () => {
     await expect(page.getByRole('status')).toHaveCount(0)
   })
 
-  test('sends nothing without a club login', async ({ page }) => {
+  test('sends nothing before a club login, because no session can be started', async ({ page }) => {
     const sessionRequests: string[] = []
     page.on('request', (r) => {
       if (r.url().includes('/api/session')) sessionRequests.push(r.method())
     })
     await page.goto('/')
-    await page.getByRole('button', { name: 'Start session' }).click()
-    await checkIn(page, ['Ann', 'Bob'])
-    await page.waitForTimeout(1500)
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start session' })).toHaveCount(0)
+    await page.waitForTimeout(1000)
     expect(sessionRequests).toEqual([])
     await expect(page.getByRole('status')).toHaveCount(0)
   })

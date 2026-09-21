@@ -16,18 +16,21 @@ import type { RosterPlayer } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi } from './api'
 import { useClubAuth } from './auth'
-import { flushPendingLifetime, startCloudSync, useSyncStore } from './sync'
+import { checkLogin, flushPendingLifetime, startCloudSync, useSyncStore } from './sync'
 
 const club = { slug: 'downtown', name: 'Downtown', token: 'tok-1' }
 
 type AsyncMock = ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>
 
-function fakeApi(overrides: { publish?: AsyncMock; clear?: AsyncMock; recordLifetime?: AsyncMock } = {}) {
+function fakeApi(
+  overrides: { publish?: AsyncMock; clear?: AsyncMock; recordLifetime?: AsyncMock; fetchFullSession?: AsyncMock } = {},
+) {
   const api = {
     publish: overrides.publish ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
     clear: overrides.clear ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
     recordLifetime:
       overrides.recordLifetime ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
+    fetchFullSession: overrides.fetchFullSession ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
   }
   return { api, cloudApi: api as unknown as CloudApi }
 }
@@ -116,7 +119,70 @@ describe('flushPendingLifetime', () => {
   })
 })
 
+describe('checkLogin', () => {
+  it('signs out when the server says the saved login has expired', async () => {
+    const fetchFullSession = vi.fn<(...args: unknown[]) => Promise<void>>().mockRejectedValue(new CloudError('invalid_token'))
+    const { api, cloudApi } = fakeApi({ fetchFullSession })
+    useClubAuth.setState({ club })
+    await checkLogin(cloudApi)
+    expect(api.fetchFullSession).toHaveBeenCalledWith('tok-1')
+    expect(useClubAuth.getState().club).toBeNull()
+  })
+
+  it('stays logged in when the server cannot be reached, so the app keeps working offline', async () => {
+    const fetchFullSession = vi.fn<(...args: unknown[]) => Promise<void>>().mockRejectedValue(new CloudError('network'))
+    const { cloudApi } = fakeApi({ fetchFullSession })
+    useClubAuth.setState({ club })
+    await checkLogin(cloudApi)
+    expect(useClubAuth.getState().club).toEqual(club)
+  })
+
+  it('stays logged in on a server error', async () => {
+    const fetchFullSession = vi.fn<(...args: unknown[]) => Promise<void>>().mockRejectedValue(new CloudError('internal_error'))
+    const { cloudApi } = fakeApi({ fetchFullSession })
+    useClubAuth.setState({ club })
+    await checkLogin(cloudApi)
+    expect(useClubAuth.getState().club).toEqual(club)
+  })
+
+  it('does not ask the server when nobody is logged in', async () => {
+    const { api, cloudApi } = fakeApi()
+    await checkLogin(cloudApi)
+    expect(api.fetchFullSession).not.toHaveBeenCalled()
+  })
+
+  it('does not sign out a newer login because of an answer about the old one', async () => {
+    let reject: (error: unknown) => void = () => {}
+    const fetchFullSession = vi.fn<(...args: unknown[]) => Promise<void>>(() => new Promise((_, r) => (reject = r)))
+    const { cloudApi } = fakeApi({ fetchFullSession })
+    useClubAuth.setState({ club })
+    const pending = checkLogin(cloudApi)
+    useClubAuth.setState({ club: { ...club, token: 'tok-2' } })
+    reject(new CloudError('invalid_token'))
+    await pending
+    expect(useClubAuth.getState().club?.token).toBe('tok-2')
+  })
+})
+
 describe('startCloudSync', () => {
+  it('checks the saved login when it starts and again when the connection returns', async () => {
+    const { api, cloudApi } = fakeApi()
+    useClubAuth.setState({ club })
+    const stop = startCloudSync(cloudApi)
+    expect(api.fetchFullSession).toHaveBeenCalledTimes(1)
+    fire('online')
+    expect(api.fetchFullSession).toHaveBeenCalledTimes(2)
+    stop()
+  })
+
+  it('does not check anything while signed out', () => {
+    const { api, cloudApi } = fakeApi()
+    const stop = startCloudSync(cloudApi)
+    fire('online')
+    expect(api.fetchFullSession).not.toHaveBeenCalled()
+    stop()
+  })
+
   it('does nothing without cloud credentials', () => {
     expect(startCloudSync(null)()).toBeUndefined()
   })

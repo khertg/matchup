@@ -50,15 +50,15 @@ Every player has a round **avatar** and the club can have a **logo**, both chang
 - **Logo:** add or change it with the **Club logo** button on the setup screen. You can optionally **crop it with a free rectangle** (or use the whole picture). It shows on the setup screen, the session header, the stats card and the players' live page.
 - **In the club cloud (signed in):** the logo and emoji and initials avatars are sent to the club, so the players' live page and other staff devices show them. **Photos are not shared unless staff switch on "Show player photos on the live page"** in the club panel (off by default, because anyone with the live link can then see them); switching it off removes the photos from the server. A device's own avatar wins over the club's for the same player, and the club's is matched by name.
 
-## Cloud sync and live board (optional)
+## Cloud sync and live board
 
-With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the setup screen offers a **Cloud club**. Staff create a club (and get a one-time **recovery code**) or log in, then get:
+With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the app opens on a **login screen**: staff create a club (and get a one-time **recovery code**) or log in to their club before they can use it. The login is kept on the device, so the app then opens and works with no signal; it is asked for again only after **Log out** (the roster, sessions and history stay on the device) or when the login expires (30 days). You need a connection the first time you log in on a device. The public live page never asks for a login. Logging in gives you:
 
 - a **live board** at `/club/<your-club>` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
 - **resume** of a running session on a second staff device;
 - an **all-time club leaderboard** combined across devices.
 
-Point the web app at the API with `VITE_API_URL=/api` (see `apps/web/.env.example`; the dev server proxies `/api` to `http://localhost:8787`). Without it the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
+Point the web app at the API with `VITE_API_URL=/api` (see `apps/web/.env.example`; the dev server proxies `/api` to `http://localhost:8787`). Without it there is no login: the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
 
 ## UI (shadcn/ui)
 

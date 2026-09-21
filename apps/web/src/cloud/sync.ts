@@ -45,6 +45,22 @@ function handleAuthError(error: unknown) {
 }
 
 /**
+ * Ask the server whether the saved login still works, so an expired one puts the device on the
+ * login screen at launch instead of failing quietly later. Being offline, or a server error, leaves
+ * the device logged in: the app is meant to keep working with no signal.
+ */
+export async function checkLogin(api: CloudApi | null = cloud): Promise<void> {
+  const club = useClubAuth.getState().club
+  if (!api || !club) return
+  try {
+    await api.fetchFullSession(club.token)
+  } catch (error) {
+    // Ignore an answer about a login that has been replaced while this was in flight.
+    if (useClubAuth.getState().club?.token === club.token) handleAuthError(error)
+  }
+}
+
+/**
  * Send finished-session totals that are waiting for the club leaderboard.
  * Safe to call repeatedly: the server applies each batch only once.
  * Returns true when nothing is left waiting for the signed-in club.
@@ -234,6 +250,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   })
 
   const handleOnline = () => {
+    void checkLogin(api)
     publisher.onOnline()
     void flushPendingLifetime(api)
     void syncHistory(api)
@@ -246,6 +263,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   window.addEventListener('offline', handleOffline)
 
   if (signedIn()) {
+    void checkLogin(api)
     pushIfRunning()
     void flushPendingLifetime(api)
     void syncHistory(api)
