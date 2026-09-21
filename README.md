@@ -44,6 +44,8 @@ Matchmaking modes (doubles): *Auto-balanced* (first come, first served, even tea
 
 The active session is saved on the device, so a reload or going offline keeps it.
 
+**Light and dark theme:** the button in the top-right corner of every screen (login, setup, session and the players' live page) chooses **Light**, **Dark** or **System** (follow the phone or computer, which is the default). The choice is remembered on the device.
+
 ## Club logo and player avatars
 
 Every player has a round **avatar** and the club can have a **logo**, both changeable at any time.
