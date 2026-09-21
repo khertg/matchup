@@ -96,7 +96,7 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
           <DialogTitle>End this session?</DialogTitle>
           <DialogDescription>
             {podium.length > 0
-              ? 'Final top players. Save the results to add them to everyone’s all-time totals. Either way you can resume this session later from Past sessions.'
+              ? 'Final top players. Ending saves the results to everyone’s all-time totals, and you can still resume this session later from Past sessions.'
               : 'Nothing is lost: you can look at it or resume it later from Past sessions. Your saved player list is kept.'}
           </DialogDescription>
         </DialogHeader>
@@ -123,14 +123,9 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
             <Button variant="outline">Keep playing</Button>
           </DialogClose>
           {podium.length > 0 ? (
-            <>
-              <Button variant="destructive" onClick={() => finish(false)} disabled={saving}>
-                End without saving
-              </Button>
-              <Button onClick={() => finish(true)} disabled={saving}>
-                {saving ? 'Saving…' : 'Save and end session'}
-              </Button>
-            </>
+            <Button onClick={() => finish(true)} disabled={saving}>
+              {saving ? 'Saving…' : 'Save and end session'}
+            </Button>
           ) : (
             <Button variant="destructive" onClick={() => finish(false)} disabled={saving}>
               End session
