@@ -1,4 +1,4 @@
-import { MAX_COURT_NAME_LENGTH } from '@matchup/shared'
+import { MAX_COURT_NAME_LENGTH, MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
 import type { SkillLevel } from '../db/db'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
 import type {
@@ -174,6 +174,32 @@ export function setPlayerSkill(state: SessionState, playerId: number, skill: Ski
   if (!Number.isInteger(skill) || skill < 1 || skill > 6) throw new RangeError('Skill level must be 1 to 6')
   if (player.skill === skill) return state
   return { ...state, players: { ...state.players, [playerId]: { ...player, skill } } }
+}
+
+/** A player's name as it will be kept: trimmed, 1 to 80 characters. Throws a RangeError with a readable message. */
+export function cleanPlayerName(name: string): string {
+  const trimmed = name.trim()
+  if (trimmed.length < 1) throw new RangeError('Enter a name')
+  if (trimmed.length > MAX_PLAYER_NAME_LENGTH) {
+    throw new RangeError(`Names can be at most ${MAX_PLAYER_NAME_LENGTH} characters`)
+  }
+  return trimmed
+}
+
+/**
+ * Change a checked-in player's name. Everything shown follows it (queue, courts, standings, the
+ * live page) because games and stats refer to players by id. Another player in the session may not
+ * have the same name (ignoring case); changing only the capitals of your own name is fine.
+ */
+export function renamePlayer(state: SessionState, playerId: number, name: string): SessionState {
+  const player = state.players[playerId]
+  if (!player) throw new Error(`Player ${playerId} is not in this session`)
+  const trimmed = cleanPlayerName(name)
+  if (Object.values(state.players).some((p) => p.id !== playerId && sameName(p.name, trimmed))) {
+    throw new RangeError(`${trimmed} is already in this session`)
+  }
+  if (player.name === trimmed) return state
+  return { ...state, players: { ...state.players, [playerId]: { ...player, name: trimmed } } }
 }
 
 export function setAvgGameMinutes(state: SessionState, minutes: number): SessionState {

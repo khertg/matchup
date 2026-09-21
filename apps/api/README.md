@@ -56,6 +56,7 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `GET /history/:id` | staff | One ended session in full (`404` if unknown or another club's). |
 | `DELETE /history/:id` | staff | Remove an ended session. |
 | `POST /lifetime` `{batchId, players[]}` | staff | Add a session's totals to the club leaderboard. A `batchId` is applied once, so retries are safe. |
+| `POST /players/rename` `{from, to}` | staff | A player was renamed: their leaderboard row and shared avatar move to the new name (matched ignoring case). If the new name already has totals they are added together; if it already has an avatar that one is kept. A name the club has nothing under is a successful no-op, so it is safe to repeat. |
 | `GET /clubs/:slug/live` | none | The public live board, with `ETag` (`304` when unchanged). `404` for an unknown club and for a club with no session, identically. |
 | `GET /clubs/:slug/live/stream` | none | Server-Sent Events: `update` (carries the board) and `cleared`, plus a heartbeat. |
 | `GET /clubs/:slug/players` | none | The club leaderboard. |

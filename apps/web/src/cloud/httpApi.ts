@@ -98,6 +98,10 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
       await request('POST', '/lifetime', { token, body: { batchId, players } })
     },
 
+    async renamePlayer(token, from, to) {
+      await request('POST', '/players/rename', { token, body: { from, to } })
+    },
+
     async putHistory(token, id, entry, backup) {
       await request('PUT', `/history/${encodeURIComponent(id)}`, { token, body: { ...entry, full: backup } })
     },

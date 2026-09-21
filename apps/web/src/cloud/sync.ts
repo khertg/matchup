@@ -4,11 +4,15 @@ import { db } from '@/db/db'
 import { markHistorySynced, unsyncedHistory } from '@/db/history'
 import { clearAvatarDirty, markPhotosDirty } from '@/db/roster'
 import {
+  addPendingRename,
+  clearPendingRenames,
   getLogoSetting,
+  getPendingRenames,
   getPhotoPurgePending,
   getSharePhotos,
   getSyncClub,
   markLogoSynced,
+  removePendingRename,
   setPhotoPurgePending,
   setSharePhotos,
   setSyncClub,
@@ -129,11 +133,61 @@ export async function adoptClub(slug: string): Promise<void> {
   if (previous === slug) return
   if (previous !== undefined) {
     await clearAvatarDirty()
+    await clearPendingRenames()
     await markLogoSynced()
     await setPhotoPurgePending(false)
     await setSharePhotos(false)
   }
   await setSyncClub(slug)
+}
+
+/** A rename the club will never accept (a name it refuses) is dropped: retrying cannot help. */
+const isRenameRefused = (error: unknown) =>
+  isPermanent(error) || (error instanceof CloudError && error.code === 'invalid_request')
+
+/**
+ * Tell the club about players renamed on this device, in the order they were renamed, so their
+ * leaderboard row and shared avatar move to the new name. Safe to call repeatedly (the club treats
+ * a repeat as nothing to do). Returns true when nothing is left waiting.
+ */
+export async function flushRenames(api: CloudApi | null = cloud): Promise<boolean> {
+  const club = useClubAuth.getState().club
+  if (!api || !club) return false
+  try {
+    await adoptClub(club.slug)
+    for (const rename of await getPendingRenames()) {
+      try {
+        await api.renamePlayer(club.token, rename.from, rename.to)
+      } catch (error) {
+        if (!isRenameRefused(error) || isExpiredLogin(error)) throw error
+      }
+      await removePendingRename(rename)
+    }
+    return true
+  } catch (error) {
+    handleAuthError(error)
+    return false
+  }
+}
+
+/**
+ * A player was renamed on this device: remember to move the club's copy of them, and make sure
+ * totals still waiting to upload use the new name. Does nothing when there is no cloud.
+ */
+export async function queueClubRename(from: string, to: string, api: CloudApi | null = cloud): Promise<void> {
+  if (!api || from === to) return
+  useClubAuth.getState().renamePendingLifetime(from, to)
+  await addPendingRename({ from, to })
+  void runSync(api)
+}
+
+/**
+ * One pass over everything waiting to reach the club. Renames go first, so a name that changed is
+ * never uploaded under its old spelling by the passes that follow.
+ */
+async function runSync(api: CloudApi): Promise<void> {
+  await flushRenames(api)
+  await Promise.all([flushPendingLifetime(api), syncHistory(api), syncMedia(api)])
 }
 
 /** What the club is sent for an avatar: emoji and initials always, a photo only while photos are shared. */
@@ -266,9 +320,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     if (state.club && !prev.club) {
       setStatus('idle')
       pushIfRunning()
-      void flushPendingLifetime(api)
-      void syncHistory(api)
-      void syncMedia(api)
+      void runSync(api)
     } else if (!state.club && prev.club) {
       setStatus('off')
     }
@@ -277,9 +329,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   const handleOnline = () => {
     void checkLogin(api)
     publisher.onOnline()
-    void flushPendingLifetime(api)
-    void syncHistory(api)
-    void syncMedia(api)
+    void runSync(api)
   }
   const handleOffline = () => {
     if (signedIn()) setStatus('offline')
@@ -290,9 +340,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   if (signedIn()) {
     void checkLogin(api)
     pushIfRunning()
-    void flushPendingLifetime(api)
-    void syncHistory(api)
-    void syncMedia(api)
+    void runSync(api)
   }
 
   return () => {

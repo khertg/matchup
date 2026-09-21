@@ -35,6 +35,9 @@ export interface CloudApi {
   /** Add a session's totals to the club leaderboard. Applied once per batch id. */
   recordLifetime(token: string, batchId: string, players: LifetimePlayer[]): Promise<void>
 
+  /** A player was renamed: their leaderboard row and shared avatar move to the new name. Safe to repeat. */
+  renamePlayer(token: string, from: string, to: string): Promise<void>
+
   /** Keep an ended session in the club's history. Sending the same id again replaces it. */
   putHistory(token: string, id: string, entry: Omit<PutHistoryRequest, 'full'>, backup: FullBackup): Promise<void>
   /** The club's ended sessions, newest first, without their contents. */

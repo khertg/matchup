@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { AvatarEditorDialog } from '@/components/AvatarEditorDialog'
 import { AvatarViewDialog } from '@/components/AvatarViewDialog'
+import { renamePlayer } from '@/lib/rename'
 import { cn } from '@/lib/utils'
 import { usePlayerAvatar, type ResolvedAvatar } from '@/lib/avatars'
 
@@ -97,6 +99,7 @@ export function PlayerAvatar({ id, name, size = 'md', editable = false, viewable
         avatar={avatar}
         open={viewing}
         onOpenChange={setViewing}
+        onRename={canEdit ? (next) => rename(id, next) : undefined}
         onChange={
           canEdit
             ? () => {
@@ -109,4 +112,15 @@ export function PlayerAvatar({ id, name, size = 'md', editable = false, viewable
       {canEdit && <AvatarEditorDialog playerId={id} name={name} open={editing} onOpenChange={setEditing} />}
     </>
   )
+}
+
+/** Rename from the large view: says why in plain words when the name is refused, and tells staff when it worked. */
+async function rename(id: number, name: string): Promise<string | null> {
+  try {
+    const { from, to } = await renamePlayer(id, name)
+    if (from !== to) toast(`${from} is now ${to}`)
+    return null
+  } catch (error) {
+    return error instanceof RangeError ? error.message : 'That name could not be saved. Try again.'
+  }
 }

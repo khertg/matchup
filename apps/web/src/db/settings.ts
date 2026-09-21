@@ -58,3 +58,38 @@ export async function getSyncClub(): Promise<string | undefined> {
 export async function setSyncClub(slug: string): Promise<void> {
   await db.settings.put({ key: SYNC_CLUB, value: slug })
 }
+
+const PENDING_RENAMES = 'pendingRenames'
+
+/** A player was renamed here; the club's leaderboard row and avatar have not moved to the new name yet. */
+export interface PendingRename {
+  from: string
+  to: string
+}
+
+export async function getPendingRenames(): Promise<PendingRename[]> {
+  const value = (await db.settings.get(PENDING_RENAMES))?.value
+  return Array.isArray(value) ? (value as PendingRename[]) : []
+}
+
+export async function addPendingRename(rename: PendingRename): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    await db.settings.put({ key: PENDING_RENAMES, value: [...(await getPendingRenames()), rename] })
+  })
+}
+
+/** The club has this rename: forget the first pending one that matches. */
+export async function removePendingRename(rename: PendingRename): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    const list = await getPendingRenames()
+    const index = list.findIndex((r) => r.from === rename.from && r.to === rename.to)
+    if (index < 0) return
+    const rest = list.filter((_, i) => i !== index)
+    if (rest.length === 0) await db.settings.delete(PENDING_RENAMES)
+    else await db.settings.put({ key: PENDING_RENAMES, value: rest })
+  })
+}
+
+export async function clearPendingRenames(): Promise<void> {
+  await db.settings.delete(PENDING_RENAMES)
+}

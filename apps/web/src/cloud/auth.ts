@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { avatarKey } from '@matchup/shared'
 import type { LifetimePlayer } from './api'
 
 export interface Club {
@@ -23,6 +24,8 @@ interface ClubAuthStore {
   signOut: () => void
   enqueueLifetime: (pending: PendingLifetime) => void
   dequeueLifetime: (batchId: string) => void
+  /** A player was renamed: totals still waiting to upload must carry the new name, or they would recreate the old one. */
+  renamePendingLifetime: (from: string, to: string) => void
 }
 
 export const useClubAuth = create<ClubAuthStore>()(
@@ -36,6 +39,13 @@ export const useClubAuth = create<ClubAuthStore>()(
         set((s) => ({ pendingLifetime: [...s.pendingLifetime, pending] })),
       dequeueLifetime: (batchId) =>
         set((s) => ({ pendingLifetime: s.pendingLifetime.filter((p) => p.batchId !== batchId) })),
+      renamePendingLifetime: (from, to) =>
+        set((s) => ({
+          pendingLifetime: s.pendingLifetime.map((batch) => ({
+            ...batch,
+            players: batch.players.map((p) => (avatarKey(p.name) === avatarKey(from) ? { ...p, name: to } : p)),
+          })),
+        })),
     }),
     {
       name: 'matchup-club',

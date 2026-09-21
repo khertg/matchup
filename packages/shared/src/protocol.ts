@@ -83,6 +83,12 @@ export interface RecordLifetimeRequest {
   players: LifetimePlayer[]
 }
 
+/** A player was renamed: the club's leaderboard row and shared avatar move to the new name. */
+export interface RenamePlayerRequest {
+  from: string
+  to: string
+}
+
 /** A live session as viewers receive it. */
 export interface LiveRow {
   state: unknown

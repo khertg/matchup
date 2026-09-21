@@ -66,6 +66,35 @@ describe('session store', () => {
     expect(store().undo()).toBe(false)
   })
 
+  describe('renaming a player', () => {
+    it('changes the name for the rest of the session and survives a reload', async () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().renamePlayer(2, 'Anne')
+      expect(store().session!.players[2].name).toBe('Anne')
+      await useSessionStore.persist.rehydrate()
+      expect(store().session!.players[2].name).toBe('Anne')
+    })
+
+    it('keeps the pending result undo, and undoing never brings the old name back', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().recordScore(1, 11, 5)
+      store().renamePlayer(3, 'Cyrus')
+      expect(store().undo()).toBe(true)
+      expect(store().session!.players[3].name).toBe('Cyrus')
+    })
+
+    it('refuses a taken name and changes nothing', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(2)
+      const before = store().session
+      expect(() => store().renamePlayer(1, 'p2')).toThrow('already in this session')
+      expect(store().session).toBe(before)
+    })
+  })
+
   describe('changing a skill level', () => {
     it('changes the level for the rest of the session and survives a reload', async () => {
       store().startSession('Club', 'doubles', 1)
