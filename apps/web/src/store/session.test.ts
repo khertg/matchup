@@ -353,6 +353,17 @@ describe('session store', () => {
       expect(store().session!.courts[0].startedAt).toBeDefined()
     })
 
+    it('logs a finished game and drops it again on undo', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().recordScore(1, 11, 5)
+      expect(store().session!.matches).toHaveLength(1)
+      expect(store().session!.matches![0]).toMatchObject({ courtName: 'Court 1', winner: 0, score: [11, 5] })
+      expect(store().undo()).toBe(true)
+      expect(store().session!.matches ?? []).toEqual([])
+    })
+
     it('refuses to undo a score after another change', () => {
       store().startSession('Club', 'doubles', 1)
       checkInMany(4)

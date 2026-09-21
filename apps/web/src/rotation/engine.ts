@@ -445,6 +445,17 @@ function finishGame(
         ...Object.fromEntries(losers.map((id) => [id, 'L' as const])),
       },
       stats,
+      matches: [
+        ...(state.matches ?? []),
+        {
+          courtName: court.name,
+          teams: court.teams,
+          winner,
+          ...(score ? { score } : {}),
+          seconds,
+          ...(now === undefined ? {} : { endedAt: now }),
+        },
+      ],
     },
   }
 }
