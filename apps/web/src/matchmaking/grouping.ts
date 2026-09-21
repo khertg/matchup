@@ -9,6 +9,11 @@ import type { MatchmakingMode, SessionState, Teams } from '@/rotation/types'
  * completed into a group is the anchor, so first come, first served always
  * holds for the player at the front. The other spots are then filled by the
  * chosen mode, looking only a few units ahead so nobody far back jumps the line.
+ *
+ * Every mode also avoids repeats: who has been partners or opponents lately is
+ * remembered (from the finished games), so a group that just played together
+ * counts as a few places further back in the queue, and the teams are split so
+ * partners rotate instead of being paired again.
  */
 
 /** How many units behind the anchor the scored modes may look. */
@@ -18,6 +23,72 @@ const FALLBACK_POOL_UNITS = 24
 
 type Partners = SessionState['partners']
 type Score = number[]
+
+/** How many finished games back "played together lately" reaches. */
+export const RECENT_MATCHES = 12
+/** A recent partnership counts double a recent opposition when rating how stale a group is. */
+const PARTNER_WEIGHT = 2
+/**
+ * Fresh partners are preferred over the most balanced split, but never at the price of clearly
+ * lopsided teams. Team skill totals of the same four players always differ by an even amount, so a
+ * limit of 2 allows, for example, 6 against 4 instead of 5 against 5, and nothing more lopsided.
+ */
+export const LOPSIDED_LIMIT = 2
+
+/**
+ * How often each pair of players teamed up, or faced each other, in the recent games, and how
+ * recently: `*Recency` adds up a weight per game that grows with how late it was (the oldest of the
+ * remembered games weighs 1), so of two pairs seen equally often, the one seen longer ago is smaller.
+ */
+export interface PairHistory {
+  partners: Map<string, number>
+  opponents: Map<string, number>
+  partnerRecency: Map<string, number>
+  opponentRecency: Map<string, number>
+}
+
+const pairKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`)
+const bump = (counts: Map<string, number>, a: number, b: number, by = 1) => {
+  const key = pairKey(a, b)
+  counts.set(key, (counts.get(key) ?? 0) + by)
+}
+
+export function pairHistory(state: SessionState): PairHistory {
+  const partners = new Map<string, number>()
+  const opponents = new Map<string, number>()
+  const partnerRecency = new Map<string, number>()
+  const opponentRecency = new Map<string, number>()
+  ;(state.matches ?? []).slice(-RECENT_MATCHES).forEach(({ teams }, index) => {
+    const weight = index + 1
+    for (const team of teams) {
+      for (let i = 0; i < team.length; i++) {
+        for (let j = i + 1; j < team.length; j++) {
+          bump(partners, team[i], team[j])
+          bump(partnerRecency, team[i], team[j], weight)
+        }
+      }
+    }
+    for (const a of teams[0]) {
+      for (const b of teams[1]) {
+        bump(opponents, a, b)
+        bump(opponentRecency, a, b, weight)
+      }
+    }
+  })
+  return { partners, opponents, partnerRecency, opponentRecency }
+}
+
+/** How much these players have already played together or against each other lately (0 when never). */
+export function repeatPenalty(history: PairHistory, ids: number[]): number {
+  let total = 0
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const key = pairKey(ids[i], ids[j])
+      total += (history.partners.get(key) ?? 0) * PARTNER_WEIGHT + (history.opponents.get(key) ?? 0)
+    }
+  }
+  return total
+}
 
 interface Unit {
   ids: number[]
@@ -121,12 +192,14 @@ function pickBest(
   pool: Unit[],
   need: number,
   mode: Mode,
+  history: PairHistory,
 ): number[] | null {
   let best: { ids: number[]; score: Score } | null = null
   for (const combo of combos(pool, need)) {
     const ids = [...anchor.ids, ...combo.flatMap((u) => u.ids)]
     if (!mode.feasible(state, ids)) continue
-    const cost = anchor.cost + combo.reduce((sum, u) => sum + u.cost, 0)
+    // A group that has played together lately counts as if it stood further back in the queue.
+    const cost = anchor.cost + combo.reduce((sum, u) => sum + u.cost, 0) + repeatPenalty(history, ids)
     const score = mode.score(state, ids, cost)
     if (!best || compare(score, best.score) < 0) best = { ids, score }
   }
@@ -153,6 +226,7 @@ export function selectGroup(
 ): number[] | null {
   const matchmaking = ignoreMode ? 'balanced' : state.matchmaking
   const units = buildUnits(queue, state.partners)
+  const history = pairHistory(state)
   for (let a = 0; a < units.length; a++) {
     const anchor = units[a]
     const rest = units.slice(a + 1)
@@ -163,10 +237,10 @@ export function selectGroup(
     if (matchmaking !== 'balanced') {
       // Mixed is a hard requirement, so search wider for a valid group.
       const window = matchmaking === 'mixed' ? FALLBACK_POOL_UNITS : LOOKAHEAD_UNITS
-      group = pickBest(state, anchor, rest.slice(0, window), need, MODES[matchmaking])
+      group = pickBest(state, anchor, rest.slice(0, window), need, MODES[matchmaking], history)
       if (!group && matchmaking === 'mixed') continue
     }
-    group ??= pickBest(state, anchor, rest.slice(0, FALLBACK_POOL_UNITS), need, MODES.balanced)
+    group ??= pickBest(state, anchor, rest.slice(0, FALLBACK_POOL_UNITS), need, MODES.balanced, history)
     if (group) return group.sort((x, y) => queue.indexOf(x) - queue.indexOf(y))
   }
   return null
@@ -174,7 +248,10 @@ export function selectGroup(
 
 /**
  * Split four players into two teams: keep locked partners together, keep mixed
- * games one man and one woman per side, then minimise the skill gap.
+ * games one man and one woman per side, then prefer partners (and then opponents)
+ * who have not been paired lately, as long as the teams are not clearly lopsided,
+ * then minimise the skill gap, then prefer whoever was paired longest ago. Without
+ * history this is simply the most balanced split.
  */
 export function splitGroup(state: SessionState, group: number[]): Teams {
   const [a, b, c, d] = group
@@ -198,5 +275,20 @@ export function splitGroup(state: SessionState, group: number[]): Teams {
 
   const skill = (side: number[]) => side.reduce((sum, id) => sum + state.players[id].skill, 0)
   const gap = (teams: Teams) => Math.abs(skill(teams[0]) - skill(teams[1]))
-  return allowed.reduce((best, teams) => (gap(teams) < gap(best) ? teams : best), allowed[0])
+  const bestGap = Math.min(...allowed.map(gap))
+  const fair = allowed.filter((teams) => gap(teams) <= bestGap + LOPSIDED_LIMIT)
+
+  const history = pairHistory(state)
+  const partnerSum = (teams: Teams, counts: Map<string, number>) =>
+    teams.reduce((n, side) => n + (counts.get(pairKey(side[0], side[1])) ?? 0), 0)
+  const opponentSum = (teams: Teams, counts: Map<string, number>) =>
+    teams[0].reduce((n, a) => n + teams[1].reduce((m, b) => m + (counts.get(pairKey(a, b)) ?? 0), 0), 0)
+  const rank = (teams: Teams): Score => [
+    partnerSum(teams, history.partners),
+    opponentSum(teams, history.opponents),
+    gap(teams),
+    partnerSum(teams, history.partnerRecency),
+    opponentSum(teams, history.opponentRecency),
+  ]
+  return fair.reduce((best, teams) => (compare(rank(teams), rank(best)) < 0 ? teams : best), fair[0])
 }
