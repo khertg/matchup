@@ -8,7 +8,7 @@ Matchup is a free, offline-first pickleball open-play manager (product spec: `do
 
 Run from the repo root unless noted. Each script runs in every workspace that defines it.
 
-- `npm run dev` (web), `npm run dev -w @matchup/api` (API on 8787, embedded PGlite, no database needed), or `docker compose up` (web 5173 + API + Postgres, hot reload)
+- `npm run dev` (web), `npm run dev -w @matchup/api` (API on 8787, embedded PGlite, no database needed), or `docker compose up` (web 5173 + API + Postgres + Adminer on 8080, hot reload)
 - `npm test`, `npm run typecheck`, `npm run build`
 - `npm run lint` (root only, oxlint over `apps packages`; workspaces have no lint script)
 - One unit test: `cd apps/web && npx vitest run src/rotation/engine.test.ts -t "part of the name"` (same in `apps/api`, `packages/shared`)
