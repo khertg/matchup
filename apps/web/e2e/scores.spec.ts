@@ -30,6 +30,27 @@ async function startSingles(page: Page, options: { courts?: number; players?: st
 const openStandings = (page: Page) => page.getByRole('tab', { name: 'Standings' }).click()
 const cell = (row: Locator, index: number) => row.getByRole('cell').nth(index)
 
+test.describe('match log', () => {
+  test('a finished game is listed in Matches below the queue, and undo removes it', async ({ page }) => {
+    await startSingles(page)
+    const matches = page.getByRole('group', { name: 'Matches' })
+    await expect(matches).toContainText('No games finished yet')
+
+    await enterScore(page, 4, 11)
+    await expect(matches).toContainText('Matches (1)')
+    await expect(matches).toContainText('Court 1')
+    await expect(matches).toContainText('Bob beat Ann')
+    await expect(matches).toContainText('11–4')
+
+    // It sits at the very bottom of the Board, after the Queue.
+    const queueY = (await page.getByText('Queue (2)').boundingBox())!.y
+    expect((await matches.boundingBox())!.y).toBeGreaterThan(queueY)
+
+    await page.getByRole('button', { name: 'Undo' }).click()
+    await expect(matches).toContainText('Matches (0)')
+  })
+})
+
 test.describe('entering a score', () => {
   test('the higher score wins, the court opens and the toast says the score', async ({ page }) => {
     await startSingles(page)

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { CourtCard } from '@/components/CourtCard'
 import { AddCourtButton, ManageCourtsDialog } from '@/components/ManageCourtsDialog'
+import { MatchLog } from '@/components/MatchLog'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
 import { Input } from '@/components/ui/input'
@@ -158,6 +159,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
         onReset={resetNextUp}
       />
       <QueueList session={session} nextUp={group?.players} />
+      <MatchLog matches={session.matches ?? []} players={session.players} />
     </div>
   )
 }

@@ -456,6 +456,58 @@ describe('time played', () => {
   })
 })
 
+describe('match log', () => {
+  const T0 = 1_000_000
+  const started = () => startGame(withPlayers(createSession('doubles', 2), 8), 1, { now: T0 })
+
+  it('starts with no matches', () => {
+    expect(createSession('doubles', 1).matches ?? []).toEqual([])
+  })
+
+  it('records a scored game with its court, teams, winner, score and time', () => {
+    const s = started()
+    const teams = s.courts[0].teams!
+    const { state } = recordScore(s, 1, 7, 11, { now: T0 + 600_000 })
+    expect(state.matches).toEqual([
+      { courtName: 'Court 1', teams, winner: 1, score: [7, 11], seconds: 600, endedAt: T0 + 600_000 },
+    ])
+  })
+
+  it('records a winner-only game without a score', () => {
+    const { state } = recordResult(started(), 1, 0, { now: T0 + 60_000 })
+    expect(state.matches).toHaveLength(1)
+    expect(state.matches![0]).toMatchObject({ winner: 0, seconds: 60 })
+    expect(state.matches![0]).not.toHaveProperty('score')
+  })
+
+  it('records 0 seconds and no end time when the game has no times', () => {
+    const { state } = recordResult(fillCourts(withPlayers(createSession('doubles', 1), 4)), 1, 0)
+    expect(state.matches![0]).toMatchObject({ seconds: 0 })
+    expect(state.matches![0]).not.toHaveProperty('endedAt')
+  })
+
+  it('keeps games in the order they ended', () => {
+    let s = startGame(started(), 2, { now: T0 })
+    s = recordScore(s, 2, 11, 1, { now: T0 + 1000 }).state
+    s = recordScore(s, 1, 11, 2, { now: T0 + 2000 }).state
+    expect(s.matches!.map((m) => [m.courtName, m.score])).toEqual([
+      ['Court 2', [11, 1]],
+      ['Court 1', [11, 2]],
+    ])
+  })
+
+  it('does not record cancelled games or closed courts', () => {
+    expect(cancelMatch(started(), 1).matches ?? []).toEqual([])
+    expect(closeCourt(started(), 1).matches ?? []).toEqual([])
+  })
+
+  it('keeps the court name it had at the time', () => {
+    let s = recordScore(started(), 1, 11, 5, { now: T0 + 1000 }).state
+    s = renameCourt(s, 1, 'Center')
+    expect(s.matches![0].courtName).toBe('Court 1')
+  })
+})
+
 describe('cancelMatch', () => {
   it('returns players to the front of the queue', () => {
     const s = fillCourts(withPlayers(createSession('doubles', 1), 5))

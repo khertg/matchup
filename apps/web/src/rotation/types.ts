@@ -43,6 +43,21 @@ export interface Court {
   startedAt?: number
 }
 
+/** A finished game, kept in the order it ended. Cancelled games are not recorded. */
+export interface MatchRecord {
+  /** The court's name when the game ended; courts can be renamed or closed afterwards. */
+  courtName: string
+  teams: Teams
+  /** Index of the winning side. */
+  winner: 0 | 1
+  /** Team A, then Team B. Missing when only the winner was recorded. */
+  score?: [number, number]
+  /** Whole seconds on court; 0 when the game's start time was not known. */
+  seconds: number
+  /** When the game ended (ms since the epoch), if known. */
+  endedAt?: number
+}
+
 /** A partner lock that is not in force yet: it starts once both have finished a game after locking. */
 export interface PendingPartners {
   pair: [number, number]
@@ -77,4 +92,6 @@ export interface SessionState {
    * one of them is still waiting. Missing means automatic.
    */
   nextUpPick?: number[]
+  /** Every game finished this session, oldest first. Missing in sessions saved before this was kept. */
+  matches?: MatchRecord[]
 }
