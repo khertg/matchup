@@ -28,7 +28,7 @@ Run everything from the repository root: `npm install` once, then the scripts be
 - `npm run test:e2e`: Playwright end-to-end tests (desktop and mobile Chrome) against production builds; `npm run test:e2e:ui` opens the interactive runner. First run needs `npx playwright install chromium`. Tests and config live in `apps/web/e2e` and `apps/web/playwright.config.ts`. Cloud features run against a second build (`npm run build:cloudtest`) that talks to a **real API** (embedded Postgres, started automatically for each run), so the whole stack is tested end to end.
 - `npm test -w @matchup/api`: the API suite on embedded Postgres; set `TEST_DATABASE_URL` to run it on a real Postgres instead (CI does both).
 
-Requires Node 20.19+ (built with Node 26).
+Requires Node 24 (what CI and the Docker images use; built with Node 26).
 
 ## Using the app
 
@@ -52,7 +52,7 @@ Every player has a round **avatar** and the club can have a **logo**, both chang
 
 ## Cloud sync and live board
 
-With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the app opens on a **login screen**: staff create a club (and get a one-time **recovery code**) or log in to their club before they can use it. The login is kept on the device, so the app then opens and works with no signal; it is asked for again only after **Log out** (the roster, sessions and history stay on the device) or when the login expires (30 days). You need a connection the first time you log in on a device. The public live page never asks for a login. Logging in gives you:
+With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @matchup/api` needs no database) the app opens on a **login screen**: staff create a club (a password of at least 8 characters, and a one-time **recovery code**) or log in to their club before they can use it. The login is kept on the device, so the app then opens and works with no signal; it is asked for again only after **Log out** (the roster, sessions and history stay on the device) or when the login expires (30 days). You need a connection the first time you log in on a device. The public live page never asks for a login. Logging in gives you:
 
 - a **live board** at `/club/<your-club>` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
 - **resume** of a running session on a second staff device;
@@ -75,7 +75,7 @@ Components live in `apps/web/src/components/ui` and are ours to edit. Add more w
 **Development** (`docker-compose.yml`): the web app, the API and a Postgres database, all with hot reload.
 
 ```bash
-docker compose up            # web http://localhost:5173, API http://localhost:8787, Postgres on :5432, Adminer http://localhost:8080
+docker compose up            # web http://localhost:5173, API http://localhost:8787, Postgres on 127.0.0.1:5432, Adminer http://localhost:8080
 docker compose down -v       # after changing dependencies, so the containers get the new packages
 ```
 

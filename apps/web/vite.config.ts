@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { configDefaults, defineConfig } from 'vitest/config'
+import { CONTENT_SECURITY_POLICY } from './csp.ts'
 
 // The dev and preview servers forward /api to the API, so the browser sees a single origin
 // (exactly as it will behind the reverse proxy in production) and needs no CORS setup.
@@ -39,6 +40,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // Visiting an API address in the browser (for example /api/health) must reach the API, not the app shell.
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'Matchup',
@@ -62,7 +67,8 @@ export default defineConfig({
     watch: process.env.USE_POLLING ? { usePolling: true } : undefined,
   },
   // `vite preview` serves the built app the same way, so E2E runs see the same /api.
-  preview: { proxy: apiProxy },
+  // The same Content-Security-Policy as production, so the E2E runs would catch anything it blocks.
+  preview: { proxy: apiProxy, headers: { 'Content-Security-Policy': CONTENT_SECURITY_POLICY } },
   test: {
     environment: 'node',
     // Playwright specs live in e2e/ and must not be picked up by Vitest.

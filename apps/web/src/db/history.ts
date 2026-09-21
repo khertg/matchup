@@ -26,6 +26,12 @@ export interface HistoryRecord {
   lifetimeCounted: LifetimeCounts
   /** Whether the club cloud has this version. Stays true on devices that never sign in. */
   synced: boolean
+  /**
+   * The club that was logged in when it ended, so it only ever goes to that club's cloud, even if
+   * another club logs in on this device later. Absent on sessions from before this was recorded:
+   * the first club to sync one takes it.
+   */
+  clubSlug?: string
 }
 
 export type HistorySummary = Omit<HistoryRecord, 'session' | 'storeVersion' | 'lifetimeCounted'>
@@ -47,6 +53,8 @@ export async function archiveSession(input: {
   startedAt: number
   session: SessionState
   lifetimeCounted: LifetimeCounts
+  /** The club logged in right now, if any. */
+  clubSlug?: string
   now?: number
 }): Promise<HistoryRecord | null> {
   const { session } = input
@@ -63,6 +71,7 @@ export async function archiveSession(input: {
     storeVersion: SESSION_STORE_VERSION,
     lifetimeCounted: input.lifetimeCounted,
     synced: false,
+    ...(input.clubSlug ? { clubSlug: input.clubSlug } : {}),
   }
   await db.transaction('rw', db.history, async () => {
     await db.history.put(record)
@@ -85,8 +94,11 @@ export const getHistory = (id: string) => db.history.get(id)
 
 export const deleteHistory = (id: string) => db.history.delete(id)
 
-export async function markHistorySynced(id: string): Promise<void> {
-  await db.history.update(id, { synced: true })
+/** The club has this session. Also records which club, so it is never offered to another one. */
+export async function markHistorySynced(id: string, clubSlug?: string): Promise<void> {
+  await db.history.update(id, clubSlug ? { synced: true, clubSlug } : { synced: true })
 }
 
-export const unsyncedHistory = () => db.history.filter((r) => !r.synced).toArray()
+/** Sessions waiting to be sent to this club: its own, and older ones that no club has claimed yet. */
+export const unsyncedHistory = (clubSlug: string) =>
+  db.history.filter((r) => !r.synced && (r.clubSlug === undefined || r.clubSlug === clubSlug)).toArray()

@@ -17,7 +17,7 @@ const STATUS: Record<ErrorCode, number> = {
 }
 
 const MESSAGE: Record<ErrorCode, string> = {
-  weak_password: 'Passwords need between 4 and 128 characters.',
+  weak_password: 'Passwords need between 8 and 128 characters.',
   invalid_club: 'That club name does not make a valid URL. Use 3 to 40 letters, numbers or dashes.',
   club_slug_taken: 'That club URL is already taken.',
   invalid_credentials: 'Wrong club URL or password.',

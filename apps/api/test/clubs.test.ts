@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Db } from '../src/db'
+import { hashPassword } from '../src/services/password'
 import { bearer, clearData, createClub, publish, startTestApp, startTestDb } from './helpers'
 
 let db: Db
@@ -19,9 +20,23 @@ beforeEach(() => clearData(db))
 const post = (url: string, payload: unknown, ip?: string) =>
   app.inject({ method: 'POST', url, payload: payload as object, remoteAddress: ip })
 
+describe('the password minimum', () => {
+  it('applies to new passwords only: a club made with an older, shorter password can still log in', async () => {
+    await db.query('insert into clubs (slug, name, password_hash, recovery_hash) values ($1, $2, $3, $4)', [
+      'old-club',
+      'Old Club',
+      await hashPassword('abcd'),
+      'unused',
+    ])
+    const response = await post('/api/clubs/old-club/login', { password: 'abcd' })
+    expect(response.statusCode).toBe(200)
+    expect(response.json().token).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
 describe('creating a club', () => {
   it('returns a staff token and a one-time recovery code', async () => {
-    const response = await post('/api/clubs', { name: 'Downtown Club', slug: 'downtown-club', password: 'secret' })
+    const response = await post('/api/clubs', { name: 'Downtown Club', slug: 'downtown-club', password: 'secret-pass' })
     expect(response.statusCode).toBe(201)
     const body = response.json()
     expect(body.token).toMatch(/^[0-9a-f]{64}$/)
@@ -41,35 +56,35 @@ describe('creating a club', () => {
   })
 
   it('normalizes the club URL and name', async () => {
-    await post('/api/clubs', { name: '  Downtown Club  ', slug: ' Downtown-Club ', password: 'secret' })
+    await post('/api/clubs', { name: '  Downtown Club  ', slug: ' Downtown-Club ', password: 'secret-pass' })
     const club = (await db.query<{ slug: string; name: string }>('select slug, name from clubs')).rows[0]
     expect(club).toEqual({ slug: 'downtown-club', name: 'Downtown Club' })
   })
 
   it('refuses a URL that is already taken, ignoring case', async () => {
     await createClub(app, { slug: 'downtown-club' })
-    const response = await post('/api/clubs', { name: 'Other', slug: 'DOWNTOWN-CLUB', password: 'secret' })
+    const response = await post('/api/clubs', { name: 'Other', slug: 'DOWNTOWN-CLUB', password: 'secret-pass' })
     expect(response.statusCode).toBe(409)
     expect(response.json().error).toBe('club_slug_taken')
     expect((await db.query('select 1 from clubs')).rowCount).toBe(1)
   })
 
   it('refuses weak or oversized passwords', async () => {
-    for (const password of ['abc', '', 'x'.repeat(129)]) {
+    for (const password of ['abc', 'abcdefg', '', 'x'.repeat(129)]) {
       const response = await post('/api/clubs', { name: 'A', slug: 'some-club', password })
       expect(response.statusCode, password.length.toString()).toBe(400)
       expect(response.json().error).toBe('weak_password')
     }
-    expect((await post('/api/clubs', { name: 'A', slug: 'a-club', password: 'abcd' })).statusCode).toBe(201)
+    expect((await post('/api/clubs', { name: 'A', slug: 'a-club', password: 'abcdefgh' })).statusCode).toBe(201)
   })
 
   it('refuses invalid club names and URLs', async () => {
     for (const body of [
-      { name: 'A', slug: 'ab', password: 'secret' },
-      { name: 'A', slug: 'Has Space', password: 'secret' },
-      { name: 'A', slug: '-lead', password: 'secret' },
-      { name: '   ', slug: 'valid-slug', password: 'secret' },
-      { name: 'n'.repeat(81), slug: 'valid-slug', password: 'secret' },
+      { name: 'A', slug: 'ab', password: 'secret-pass' },
+      { name: 'A', slug: 'Has Space', password: 'secret-pass' },
+      { name: 'A', slug: '-lead', password: 'secret-pass' },
+      { name: '   ', slug: 'valid-slug', password: 'secret-pass' },
+      { name: 'n'.repeat(81), slug: 'valid-slug', password: 'secret-pass' },
     ]) {
       const response = await post('/api/clubs', body)
       expect(response.statusCode, JSON.stringify(body)).toBe(400)
@@ -78,12 +93,12 @@ describe('creating a club', () => {
   })
 
   it('refuses malformed requests', async () => {
-    for (const body of [{}, { name: 'A', slug: 'some-club' }, { name: 1, slug: 'x', password: 'secret' }]) {
+    for (const body of [{}, { name: 'A', slug: 'some-club' }, { name: 1, slug: 'x', password: 'secret-pass' }]) {
       const response = await post('/api/clubs', body)
       expect(response.statusCode).toBe(400)
       expect(response.json().error).toBe('invalid_request')
     }
-    const extra = await post('/api/clubs', { name: 'A', slug: 'some-club', password: 'secret', admin: true })
+    const extra = await post('/api/clubs', { name: 'A', slug: 'some-club', password: 'secret-pass', admin: true })
     expect(extra.json().error).toBe('invalid_request')
     const junk = await app.inject({
       method: 'POST',
@@ -98,8 +113,8 @@ describe('creating a club', () => {
 
 describe('logging in', () => {
   it('returns a working token and the club name', async () => {
-    await createClub(app, { name: 'Downtown Club', slug: 'downtown-club', password: 'secret' })
-    const response = await post('/api/clubs/downtown-club/login', { password: 'secret' })
+    await createClub(app, { name: 'Downtown Club', slug: 'downtown-club', password: 'secret-pass' })
+    const response = await post('/api/clubs/downtown-club/login', { password: 'secret-pass' })
     expect(response.statusCode).toBe(200)
     const { token, name } = response.json()
     expect(name).toBe('Downtown Club')
@@ -109,22 +124,22 @@ describe('logging in', () => {
 
   it('accepts the club URL in any case', async () => {
     await createClub(app, { slug: 'downtown-club' })
-    const response = await post('/api/clubs/Downtown-Club/login', { password: 'secret' })
+    const response = await post('/api/clubs/Downtown-Club/login', { password: 'secret-pass' })
     expect(response.statusCode).toBe(200)
   })
 
   it('issues a fresh token every time', async () => {
     await createClub(app, { slug: 'downtown-club' })
-    const a = (await post('/api/clubs/downtown-club/login', { password: 'secret' })).json().token
-    const b = (await post('/api/clubs/downtown-club/login', { password: 'secret' })).json().token
+    const a = (await post('/api/clubs/downtown-club/login', { password: 'secret-pass' })).json().token
+    const b = (await post('/api/clubs/downtown-club/login', { password: 'secret-pass' })).json().token
     expect(a).not.toBe(b)
   })
 
   it('answers a wrong password and an unknown club identically', async () => {
     await createClub(app, { slug: 'downtown-club' })
     const wrong = await post('/api/clubs/downtown-club/login', { password: 'nope' })
-    const unknown = await post('/api/clubs/no-such-club/login', { password: 'secret' })
-    const malformed = await post('/api/clubs/NOT%20A%20SLUG/login', { password: 'secret' })
+    const unknown = await post('/api/clubs/no-such-club/login', { password: 'secret-pass' })
+    const malformed = await post('/api/clubs/NOT%20A%20SLUG/login', { password: 'secret-pass' })
     for (const response of [wrong, unknown, malformed]) {
       expect(response.statusCode).toBe(401)
       expect(response.json()).toEqual({ error: 'invalid_credentials', message: 'Wrong club URL or password.' })
@@ -155,7 +170,7 @@ describe('logging out', () => {
 
   it('leaves the club’s other logins working', async () => {
     const { token, slug } = await createClub(app, { slug: 'downtown-club' })
-    const other = (await post('/api/clubs/downtown-club/login', { password: 'secret' })).json().token
+    const other = (await post('/api/clubs/downtown-club/login', { password: 'secret-pass' })).json().token
     await app.inject({ method: 'POST', url: '/api/logout', headers: bearer(token) })
     expect((await publish(app, other, 'Still here')).statusCode).toBe(200)
     expect(slug).toBe('downtown-club')
@@ -205,7 +220,7 @@ describe('recovering a password', () => {
 
   it('keeps the code valid when the new password is rejected', async () => {
     const { recoveryCode } = await createClub(app, { slug: 'downtown-club' })
-    const weak = await post('/api/clubs/downtown-club/reset-password', { recoveryCode, newPassword: 'abc' })
+    const weak = await post('/api/clubs/downtown-club/reset-password', { recoveryCode, newPassword: 'abcdefg' })
     expect(weak.json().error).toBe('weak_password')
     const retry = await post('/api/clubs/downtown-club/reset-password', { recoveryCode, newPassword: 'better-secret' })
     expect(retry.statusCode).toBe(200)

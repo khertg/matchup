@@ -46,3 +46,15 @@ export async function getPhotoPurgePending(): Promise<boolean> {
 export async function setPhotoPurgePending(pending: boolean): Promise<void> {
   await db.settings.put({ key: PURGE_PHOTOS, value: pending })
 }
+
+const SYNC_CLUB = 'syncClub'
+
+/** The club this device's pending logo and avatar uploads are for, once one has logged in. */
+export async function getSyncClub(): Promise<string | undefined> {
+  const value = (await db.settings.get(SYNC_CLUB))?.value
+  return typeof value === 'string' ? value : undefined
+}
+
+export async function setSyncClub(slug: string): Promise<void> {
+  await db.settings.put({ key: SYNC_CLUB, value: slug })
+}

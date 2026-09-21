@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
+import { failOnCspViolations } from '../cspWatch'
 import { setLogo } from '../avatarHelpers'
 import { apiCreateClub, apiPublish, bearer, expectSignedIn, storedToken, uiCreateClub, uiLogin, uniqueClub } from './support'
+
+failOnCspViolations(test)
 
 /** The login screen: the description is unique to it. */
 const gate = (page: Page) => page.getByText('Log in to your club to use Matchup')
@@ -15,6 +18,13 @@ test.describe('the login gate', () => {
     await expect(page.getByRole('button', { name: 'Start session' })).toHaveCount(0)
     await expect(page.getByLabel('Location')).toHaveCount(0)
     await expect(page.getByText('Cloud club')).toHaveCount(0)
+  })
+
+  test('is served under the production Content-Security-Policy, which the specs here watch for violations', async ({ page }) => {
+    const response = await page.goto('/')
+    const policy = response?.headers()['content-security-policy'] ?? ''
+    expect(policy).toContain("default-src 'self'")
+    expect(policy).toContain("frame-ancestors 'none'")
   })
 
   test('the public live page is never gated', async ({ page, request }) => {

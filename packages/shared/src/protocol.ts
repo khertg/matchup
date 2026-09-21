@@ -30,7 +30,7 @@ export interface ErrorBody {
 export const isErrorCode = (value: unknown): value is ErrorCode =>
   typeof value === 'string' && (ERROR_CODES as readonly string[]).includes(value)
 
-export const MIN_PASSWORD_LENGTH = 4
+export const MIN_PASSWORD_LENGTH = 8
 export const MAX_PASSWORD_LENGTH = 128
 export const MAX_CLUB_NAME_LENGTH = 80
 export const MAX_PLAYER_NAME_LENGTH = 80

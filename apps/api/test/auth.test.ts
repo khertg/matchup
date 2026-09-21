@@ -64,7 +64,7 @@ describe('bearer tokens', () => {
   it('clears out expired tokens whenever a new one is issued', async () => {
     const { token } = await createClub(app, { slug: 'downtown-club' })
     await db.query("update club_tokens set expires_at = now() - interval '1 day'")
-    await app.inject({ method: 'POST', url: '/api/clubs/downtown-club/login', payload: { password: 'secret' } })
+    await app.inject({ method: 'POST', url: '/api/clubs/downtown-club/login', payload: { password: 'secret-pass' } })
     const remaining = (await db.query<{ token_hash: string }>('select token_hash from club_tokens')).rows
     expect(remaining).toHaveLength(1)
     expect((await publish(app, token)).statusCode).toBe(401)

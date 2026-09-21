@@ -173,3 +173,37 @@ test.describe('history in the club cloud', () => {
     await other.close()
   })
 })
+
+test.describe('two clubs on one device', () => {
+  test('a session that ended under one club is never uploaded to the next club that logs in', async ({ page, request }) => {
+    const clubA = uniqueClub('Alpha')
+    const clubB = uniqueClub('Bravo')
+    await apiCreateClub(request, clubA)
+    const { token: tokenB } = await apiCreateClub(request, clubB)
+
+    await signInAndPlay(page, clubA, 'Alpha Night')
+    // Alpha's session ends with no connection, so it is kept on the device, waiting to be sent.
+    await page.route('**/api/**', (route) => route.abort('connectionrefused'))
+    await end(page)
+    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.unroute('**/api/**')
+
+    // Bravo logs in on the same device: Alpha's session must not go to Bravo.
+    await uiLogin(page, clubB)
+    await expectSignedIn(page)
+    await page.waitForTimeout(2000)
+    expect(await history(request, tokenB)()).toEqual([])
+    // It is still on this device.
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    await expect(page.getByRole('dialog', { name: 'Past sessions' }).getByRole('listitem')).toHaveCount(1)
+    await page.keyboard.press('Escape')
+
+    // When Alpha logs back in, it is sent to Alpha.
+    await page.getByRole('button', { name: 'Log out' }).click()
+    await uiLogin(page, clubA)
+    await expectSignedIn(page)
+    const tokenA = await storedToken(page)
+    await expect.poll(async () => (await history(request, tokenA)()).map((s) => s.location)).toEqual(['Alpha Night'])
+    expect(await history(request, tokenB)()).toEqual([])
+  })
+})

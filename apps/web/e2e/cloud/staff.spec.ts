@@ -44,8 +44,8 @@ test.describe('club sign-in', () => {
     await dialog.getByLabel('Club name').fill(club.name)
     await expect(dialog.getByText(`/club/${club.slug}`)).toBeVisible()
 
-    // Passwords need at least four characters.
-    await dialog.getByLabel(/^Password/).fill('abc')
+    // Passwords need at least eight characters.
+    await dialog.getByLabel(/^Password/).fill('abcdefg')
     await expect(dialog.getByRole('button', { name: 'Create club' })).toBeDisabled()
     await dialog.getByLabel(/^Password/).fill(club.password)
     await dialog.getByRole('button', { name: 'Create club' }).click()
@@ -104,7 +104,7 @@ test.describe('club sign-in', () => {
 
   test('says so when the club does not exist, without hinting whether it might', async ({ page }) => {
     await page.goto('/')
-    await uiLogin(page, { slug: uniqueClub('Ghost').slug, password: 'secret' })
+    await uiLogin(page, { slug: uniqueClub('Ghost').slug, password: 'secret-pass' })
     await expect(page.getByRole('alert')).toHaveText('Wrong club URL or password.')
   })
 
@@ -129,14 +129,14 @@ test.describe('club sign-in', () => {
       route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'rate_limited', message: 'x' }) }),
     )
     await page.goto('/')
-    await uiLogin(page, { slug: 'some-club', password: 'secret' })
+    await uiLogin(page, { slug: 'some-club', password: 'secret-pass' })
     await expect(page.getByRole('alert')).toContainText('Too many attempts')
   })
 
   test('says so when the server cannot be reached', async ({ page }) => {
     await page.route('**/api/clubs/*/login', (route) => route.abort('connectionrefused'))
     await page.goto('/')
-    await uiLogin(page, { slug: 'some-club', password: 'secret' })
+    await uiLogin(page, { slug: 'some-club', password: 'secret-pass' })
     await expect(page.getByRole('alert')).toContainText('Cannot reach the server')
   })
 })
@@ -199,9 +199,9 @@ test.describe('password recovery', () => {
     await dialog.getByLabel('Club link name').fill('some-club')
     await expect(dialog.getByRole('button', { name: 'Reset password' })).toBeDisabled()
     await dialog.getByLabel('Recovery code').fill('AAAA-AAAA-AAAA-AAAA-AAAA')
-    await dialog.getByLabel(/^New password/).fill('abc')
+    await dialog.getByLabel(/^New password/).fill('abcdefg')
     await expect(dialog.getByRole('button', { name: 'Reset password' })).toBeDisabled()
-    await dialog.getByLabel(/^New password/).fill('abcd')
+    await dialog.getByLabel(/^New password/).fill('abcdefgh')
     await expect(dialog.getByRole('button', { name: 'Reset password' })).toBeEnabled()
   })
 
