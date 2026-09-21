@@ -1,7 +1,12 @@
 import { useEffect } from 'react'
 import { clubSlugFromPath } from '@matchup/shared'
+import { useClubAuth } from '@/cloud/auth'
+import { cloud } from '@/cloud/client'
+import { requiresLogin } from '@/cloud/gate'
 import { startCloudSync } from '@/cloud/sync'
 import { AvatarProvider } from '@/components/AvatarProvider'
+import { LoginGate } from '@/components/LoginGate'
+import { RecoveryCodeHost } from '@/components/RecoveryCodeHost'
 import { Toaster } from '@/components/ui/sonner'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { SetupScreen } from '@/screens/SetupScreen'
@@ -10,10 +15,13 @@ import { useSessionStore } from '@/store/session'
 
 export default function App() {
   const session = useSessionStore((s) => s.session)
+  const signedIn = useClubAuth((s) => s.club !== null)
   const path = window.location.pathname
   // Anything under /club is the public viewer, which never runs staff features.
   const isViewerPath = path === '/club' || path.startsWith('/club/')
   const viewerSlug = clubSlugFromPath(path)
+  // With a cloud set up, staff log in to a club first; the saved login keeps the app working offline.
+  const mustLogIn = requiresLogin({ cloudConfigured: cloud !== null, signedIn, isViewerPath })
 
   useEffect(() => {
     if (isViewerPath) return
@@ -32,11 +40,14 @@ export default function App() {
             That club link isn&apos;t valid. Check the link or scan the QR code again.
           </p>
         )
+      ) : mustLogIn ? (
+        <LoginGate />
       ) : session ? (
         <SessionScreen session={session} />
       ) : (
         <SetupScreen />
       )}
+      <RecoveryCodeHost />
       <Toaster />
     </main>
     </AvatarProvider>

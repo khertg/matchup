@@ -172,22 +172,4 @@ test.describe('history in the club cloud', () => {
     expect(players.find((p) => p.name === 'Bob')?.games).toBe(2)
     await other.close()
   })
-
-  test('signed-out devices keep history on the device only', async ({ page, request }) => {
-    const club = uniqueClub('Signedout')
-    await apiCreateClub(request, club)
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Singles' }).click()
-    await page.getByRole('button', { name: 'Start session' }).click()
-    await checkIn(page, ['Ann', 'Bob'])
-    await startGame(page)
-    await recordWin(page)
-    await expect(page.getByText('Court 1: Team A won')).toBeVisible()
-    await end(page)
-
-    await page.getByRole('button', { name: 'Past sessions' }).click()
-    const list = page.getByRole('dialog', { name: 'Past sessions' })
-    await expect(list.getByRole('listitem')).toHaveCount(1)
-    await expect(list.getByText('Club', { exact: true })).toHaveCount(0)
-  })
 })
