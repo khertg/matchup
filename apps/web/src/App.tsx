@@ -3,6 +3,7 @@ import { clubSlugFromPath } from '@matchup/shared'
 import { startCloudSync } from '@/cloud/sync'
 import { AvatarProvider } from '@/components/AvatarProvider'
 import { Toaster } from '@/components/ui/sonner'
+import { VersionLabel } from '@/components/VersionLabel'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { SetupScreen } from '@/screens/SetupScreen'
 import { ViewerScreen } from '@/screens/ViewerScreen'
@@ -37,6 +38,7 @@ export default function App() {
       ) : (
         <SetupScreen />
       )}
+      <VersionLabel />
       <Toaster />
     </main>
     </AvatarProvider>

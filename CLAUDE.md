@@ -43,6 +43,9 @@ Avatars and the logo are deliberately **outside the session and the live snapsho
 
 `apps/api`: routes in `src/routes`, logic in `src/services`, TypeScript migrations in `src/db/migrations.ts` (append only; a test lists the expected tables), PGlite in dev and tests, real Postgres in production.
 
+### Version
+The version has one source of truth: `version` in the **root** `package.json` (bump with `npm version minor --no-git-tag-version` at the root; workspace versions are unused). `vite.config.ts` (web) and `tsup.config.ts` (API) inject it with `define` along with the short commit (`GIT_SHA` env, else `git rev-parse`, else `dev`) and build date. Docker builds cannot see `.git`, so both Dockerfiles take a `GIT_SHA` build arg (the prod compose file and CI pass it). The web app renders it once in `App.tsx` (`VersionLabel`, `lib/version.ts`); the API reports it on `GET /api/health`. Running from source (tests, tsx) reports `dev` for the API.
+
 ## Conventions and pitfalls
 
 - Tests that need a running board start games explicitly (`startGame`/`fillCourts`), never rely on check-in doing it. E2E helpers live in `apps/web/e2e/helpers.ts` (`startSession`, `checkIn`, `startGame`, `recordWin`, `cancelGame`).

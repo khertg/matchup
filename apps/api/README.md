@@ -64,7 +64,7 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `GET /clubs/:slug/logo` | none | The logo image (`ETag`; cached for a year when the URL carries `?v=`). `404` for an unknown club and a club with no logo, identically. |
 | `GET /clubs/:slug/avatars` | none | `{avatars, logo}`: every avatar by name (without photos) and the logo's version, with `ETag`. |
 | `GET /clubs/:slug/avatars/:key/photo` | none | A player's photo image. |
-| `GET /health` | none | Liveness, checks the database. |
+| `GET /health` | none | Liveness, checks the database, and reports the build: `{ok, version, commit}` (`dev` when run from source or built without `GIT_SHA`). |
 
 There is deliberately **no endpoint that lists clubs**.
 

@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -10,8 +12,28 @@ const apiProxy = {
   '/api': { target: process.env.API_PROXY_TARGET ?? 'http://localhost:8787' },
 }
 
+// The build this is: the release number from the root package.json (one place to bump), the short git
+// commit (GIT_SHA when git is not available, as in a Docker build) and today's date.
+const rootPackage = JSON.parse(readFileSync(path.resolve(import.meta.dirname, '../../package.json'), 'utf8')) as { version: string }
+
+function gitCommit(): string {
+  const fromEnv = process.env.GIT_SHA?.trim()
+  if (fromEnv) return fromEnv.slice(0, 7)
+  try {
+    const out = execSync('git rev-parse --short HEAD', { cwd: import.meta.dirname, stdio: ['ignore', 'pipe', 'ignore'] })
+    return out.toString().trim() || 'dev'
+  } catch {
+    return 'dev'
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(rootPackage.version),
+    __APP_COMMIT__: JSON.stringify(gitCommit()),
+    __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   plugins: [
     react(),
     tailwindcss(),

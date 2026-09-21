@@ -11,6 +11,7 @@ import { registerLiveRoutes } from './routes/live'
 import { registerMediaRoutes } from './routes/media'
 import { registerSessionRoutes } from './routes/session'
 import { LoginGuard } from './services/loginGuard'
+import { apiCommit, apiVersion } from './version'
 
 export interface AppDeps {
   db: Db
@@ -109,7 +110,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     async (api) => {
       api.get('/health', { config: { rateLimit: false } }, async () => {
         await db.query('select 1')
-        return { ok: true }
+        return { ok: true, version: apiVersion, commit: apiCommit }
       })
       registerClubRoutes(api, routeDeps)
       registerSessionRoutes(api, routeDeps)

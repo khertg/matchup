@@ -22,14 +22,16 @@ published ports and no route out. Caddy gets and renews the HTTPS certificate by
 git clone <your repository> matchup && cd matchup/deploy
 cp .env.example .env
 nano .env        # set DOMAIN and a long random POSTGRES_PASSWORD (openssl rand -base64 24)
-docker compose -f docker-compose.prod.yml up -d --build
+GIT_SHA=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+`GIT_SHA` is only there so the app and `/api/health` can say which commit they were built from (Docker builds do not see `.git`); leave it out and they show `dev`.
 
 The first build takes a few minutes. Then check it:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps              # all three "running", api and db "healthy"
-curl https://your-domain/api/health                        # {"ok":true}
+curl https://your-domain/api/health                        # {"ok":true,"version":"0.1.0","commit":"a1b2c3d"}
 ```
 
 Open `https://your-domain` in a browser, create a club, and start a session. Players open
@@ -41,7 +43,7 @@ The database schema is created automatically the first time the API starts.
 
 ```bash
 cd matchup && git pull
-cd deploy && docker compose -f docker-compose.prod.yml up -d --build
+cd deploy && GIT_SHA=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Only what changed is rebuilt. Migrations run automatically on start. **Never run `docker compose down -v`**: the
