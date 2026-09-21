@@ -91,7 +91,7 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
       <DialogTrigger asChild>
         <Button variant="outline">End session</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>End this session?</DialogTitle>
           <DialogDescription>
@@ -106,11 +106,11 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
             {podium.map((row) => (
               <li key={row.id} className="flex items-center gap-3 px-3 py-2">
                 <span className="w-6 text-sm text-muted-foreground">{row.rank}</span>
-                <span className="flex flex-1 items-center gap-1 font-medium">
-                  {row.name}
+                <span className="flex min-w-0 flex-1 items-center gap-1 font-medium">
+                  <span className="min-w-0 truncate">{row.name}</span>
                   <MedalBadge medal={row.medal} />
                 </span>
-                <span className="text-sm text-muted-foreground">
+                <span className="shrink-0 text-sm text-muted-foreground">
                   {row.wins}W {row.losses}L
                 </span>
               </li>
@@ -118,21 +118,24 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
           </ol>
         )}
 
-        <DialogFooter>
+        {/* Stacked on every screen size: three long buttons do not fit side by side. */}
+        <DialogFooter className="sm:flex-col-reverse">
           <DialogClose asChild>
-            <Button variant="outline">Keep playing</Button>
+            <Button variant="outline" className="w-full">
+              Keep playing
+            </Button>
           </DialogClose>
           {podium.length > 0 ? (
             <>
-              <Button variant="destructive" onClick={() => finish(false)} disabled={saving}>
+              <Button variant="destructive" className="w-full" onClick={() => finish(false)} disabled={saving}>
                 End without saving
               </Button>
-              <Button onClick={() => finish(true)} disabled={saving}>
+              <Button className="w-full" onClick={() => finish(true)} disabled={saving}>
                 {saving ? 'Saving…' : 'Save and end session'}
               </Button>
             </>
           ) : (
-            <Button variant="destructive" onClick={() => finish(false)} disabled={saving}>
+            <Button variant="destructive" className="w-full" onClick={() => finish(false)} disabled={saving}>
               End session
             </Button>
           )}
