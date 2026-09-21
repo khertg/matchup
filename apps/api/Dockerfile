@@ -20,6 +20,9 @@ CMD ["npm", "run", "dev:docker", "-w", "@matchup/api"]
 FROM deps AS build
 COPY packages/shared packages/shared
 COPY apps/api apps/api
+# The short commit /api/health reports. .dockerignore leaves .git out, so it is passed in.
+ARG GIT_SHA=
+ENV GIT_SHA=$GIT_SHA
 RUN npm run build -w @matchup/api
 
 # ---- prod-deps: only what the running server needs ----

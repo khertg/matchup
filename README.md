@@ -60,6 +60,12 @@ With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev
 
 Point the web app at the API with `VITE_API_URL=/api` (see `apps/web/.env.example`; the dev server proxies `/api` to `http://localhost:8787`). Without it there is no login: the app runs entirely on the device and every cloud feature is hidden. Changes made offline are held and sent when the connection returns.
 
+## Version
+
+The app shows its build at the bottom of every screen (login, setup, session and the players' live page), for example `v0.1.0 · a1b2c3d · 21 Sep 2026`: the release number, the git commit it was built from and the build date. It tells you which build a phone is really running, which matters for an installed app that updates itself in the background. Hover it for the full details. `GET /api/health` reports the API's own `version` and `commit`. A local build shows `dev` when git is not available, and Docker builds need `--build-arg GIT_SHA=$(git rev-parse --short HEAD)` (the compose files pass it through from the `GIT_SHA` environment variable).
+
+**To release:** bump the one number in the root `package.json` (`npm version minor --no-git-tag-version` at the repo root), commit it, and deploy. The workspace packages stay `0.0.0`; nothing reads them.
+
 ## UI (shadcn/ui)
 
 Components live in `apps/web/src/components/ui` and are ours to edit. Add more with `npx shadcn@latest add <name>`. Import them via the `@/` alias, e.g. `@/components/ui/button`. Theme tokens (green primary, light and dark) are in `apps/web/src/index.css`; dark mode is toggled through `next-themes`.

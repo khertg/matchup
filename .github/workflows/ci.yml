@@ -76,8 +76,8 @@ jobs:
         run: |
           docker compose -f docker-compose.yml config -q
           docker compose -f deploy/docker-compose.prod.yml config -q
-      - run: docker build -f apps/api/Dockerfile --target prod -t matchup-api .
-      - run: docker build -f deploy/Dockerfile -t matchup-caddy .
+      - run: docker build -f apps/api/Dockerfile --target prod --build-arg GIT_SHA=${{ github.sha }} -t matchup-api .
+      - run: docker build -f deploy/Dockerfile --build-arg GIT_SHA=${{ github.sha }} -t matchup-caddy .
       - name: The API image loads its native password hashing
         run: >-
           docker run --rm -w /app matchup-api node --input-type=module

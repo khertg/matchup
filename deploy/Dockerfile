@@ -13,6 +13,10 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 # The API is reached on the same origin, so the app just calls /api.
 ENV VITE_API_URL=/api
+# The short commit shown in the app. .dockerignore leaves .git out, so it is passed in:
+#   docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) ...  (without it the app shows "dev")
+ARG GIT_SHA=
+ENV GIT_SHA=$GIT_SHA
 RUN npm run build -w @matchup/web
 
 FROM caddy:2-alpine

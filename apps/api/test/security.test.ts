@@ -250,6 +250,19 @@ describe('what the server refuses to reveal or log', () => {
     }
   })
 
+  it('reports which build is running on the health check, without anything private', async () => {
+    const a = await app()
+    const response = await a.inject({ method: 'GET', url: '/api/health' })
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.ok).toBe(true)
+    expect(typeof body.version).toBe('string')
+    expect(body.version.length).toBeGreaterThan(0)
+    expect(typeof body.commit).toBe('string')
+    expect(body.commit.length).toBeGreaterThan(0)
+    expect(Object.keys(body).sort()).toEqual(['commit', 'ok', 'version'])
+  })
+
   it('sets protective headers', async () => {
     const a = await app()
     const response = await a.inject({ method: 'GET', url: '/api/health' })

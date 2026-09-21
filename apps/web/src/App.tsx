@@ -8,6 +8,7 @@ import { AvatarProvider } from '@/components/AvatarProvider'
 import { LoginGate } from '@/components/LoginGate'
 import { RecoveryCodeHost } from '@/components/RecoveryCodeHost'
 import { Toaster } from '@/components/ui/sonner'
+import { VersionLabel } from '@/components/VersionLabel'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { SetupScreen } from '@/screens/SetupScreen'
 import { ViewerScreen } from '@/screens/ViewerScreen'
@@ -47,6 +48,7 @@ export default function App() {
       ) : (
         <SetupScreen />
       )}
+      <VersionLabel />
       <RecoveryCodeHost />
       <Toaster />
     </main>
