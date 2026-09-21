@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { syncMedia } from '@/cloud/sync'
 import { AvatarView } from '@/components/PlayerAvatar'
+import { CameraCapture } from '@/components/CameraCapture'
 import { PhotoCropper } from '@/components/PhotoCropper'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,6 +25,7 @@ import {
   type Picture,
   type PlayerAvatar,
 } from '@/lib/avatar'
+import { shouldUseInAppCamera } from '@/lib/camera'
 import type { Crop } from '@/lib/crop'
 import { useOwnAvatar, type ResolvedAvatar } from '@/lib/avatars'
 import { cloud } from '@/cloud/client'
@@ -76,6 +78,8 @@ function Editor({
   const takeRef = useRef<HTMLInputElement>(null)
   // The picture being cropped, once a file has been chosen and before the crop is confirmed.
   const [picture, setPicture] = useState<Picture | null>(null)
+  // The in-app camera, on computers (phones open their own camera app from the Take photo button).
+  const [camera, setCamera] = useState(false)
 
   // A temporary picture URL is released when it is no longer needed, including on closing.
   useEffect(() => () => picture?.release(), [picture])
@@ -123,6 +127,25 @@ function Editor({
     }
   }
 
+  if (camera) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>Take a photo for {name}</DialogTitle>
+          <DialogDescription>Line up your face, then press Take picture. You choose the crop next.</DialogDescription>
+        </DialogHeader>
+        <CameraCapture
+          facing="user"
+          onCapture={(file) => {
+            setCamera(false)
+            void handleFile(file)
+          }}
+          onCancel={() => setCamera(false)}
+        />
+      </>
+    )
+  }
+
   if (picture) {
     return (
       <>
@@ -162,7 +185,7 @@ function Editor({
           <Button type="button" variant="outline" disabled={busy} onClick={() => chooseRef.current?.click()}>
             Choose photo
           </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => takeRef.current?.click()}>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => (shouldUseInAppCamera() ? setCamera(true) : takeRef.current?.click())}>
             Take photo
           </Button>
         </div>

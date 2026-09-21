@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { syncMedia } from '@/cloud/sync'
+import { CameraCapture } from '@/components/CameraCapture'
 import { PhotoCropper } from '@/components/PhotoCropper'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { setLogoSetting } from '@/db/settings'
 import { ImageError, loadPicture, processImage, type Picture } from '@/lib/avatar'
+import { shouldUseInAppCamera } from '@/lib/camera'
 import type { Crop } from '@/lib/crop'
 import { useClubLogo } from '@/lib/avatars'
 import { cn } from '@/lib/utils'
@@ -41,6 +43,8 @@ export function LogoEditorDialog() {
   const takeRef = useRef<HTMLInputElement>(null)
   // The picture being cropped, once a file has been chosen and before the crop is confirmed.
   const [picture, setPicture] = useState<Picture | null>(null)
+  // The in-app camera, on computers (phones open their own camera app from the Take photo button).
+  const [camera, setCamera] = useState(false)
 
   // A temporary picture URL is released when it is no longer needed, including on closing.
   useEffect(() => () => picture?.release(), [picture])
@@ -85,6 +89,7 @@ export function LogoEditorDialog() {
       onOpenChange={(next) => {
         setOpen(next)
         setPicture(null)
+        setCamera(false)
         if (next) setError(null)
       }}
     >
@@ -94,7 +99,22 @@ export function LogoEditorDialog() {
         </Button>
       </DialogTrigger>
       <DialogContent>
-        {picture ? (
+        {camera ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Take a photo of the logo</DialogTitle>
+              <DialogDescription>Hold the logo up to the camera, then press Take picture. You can crop it next.</DialogDescription>
+            </DialogHeader>
+            <CameraCapture
+              facing="environment"
+              onCapture={(file) => {
+                setCamera(false)
+                void handleFile(file)
+              }}
+              onCancel={() => setCamera(false)}
+            />
+          </>
+        ) : picture ? (
           <>
             <DialogHeader>
               <DialogTitle>Crop club logo</DialogTitle>
@@ -132,7 +152,7 @@ export function LogoEditorDialog() {
           <Button type="button" variant="outline" disabled={busy} onClick={() => chooseRef.current?.click()}>
             Choose logo
           </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => takeRef.current?.click()}>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => (shouldUseInAppCamera() ? setCamera(true) : takeRef.current?.click())}>
             Take photo
           </Button>
         </div>
