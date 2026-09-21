@@ -377,7 +377,7 @@ test.describe('two browsers', () => {
     await expect(viewer.getByRole('row').nth(1)).toContainText('Gold medal', { timeout: 8000 })
 
     await page.getByRole('button', { name: 'End session' }).click()
-    await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(viewer.getByText('No game in progress')).toBeVisible({ timeout: 8000 })
 
     await viewerContext.close()

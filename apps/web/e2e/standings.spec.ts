@@ -64,16 +64,6 @@ test('saves results to the lifetime leaderboard when ending the session', async 
   await expect(board.getByRole('row').filter({ hasText: 'Bob' })).toContainText('0%')
 })
 
-test('does not save results when ending without saving', async ({ page }) => {
-  await singlesWithGames(page, 1)
-  await page.getByRole('button', { name: 'End session' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
-
-  await expect(page.getByText('Set up an open play session')).toBeVisible()
-  await page.getByRole('button', { name: 'Lifetime leaderboard' }).click()
-  await expect(page.getByText(/No players with 1 or more saved games yet/)).toBeVisible()
-})
-
 test('filters the lifetime leaderboard by minimum games and validates the input', async ({ page }) => {
   await singlesWithGames(page, 2)
   await page.getByRole('button', { name: 'End session' }).click()

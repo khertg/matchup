@@ -442,7 +442,7 @@ test.describe('past sessions', () => {
     await enterScore(page, 11, 7)
 
     await page.getByRole('button', { name: 'End session' }).click()
-    await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()
 
     await page.getByRole('button', { name: 'Past sessions' }).click()

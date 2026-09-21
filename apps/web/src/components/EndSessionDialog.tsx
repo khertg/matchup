@@ -96,7 +96,7 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
           <DialogTitle>End this session?</DialogTitle>
           <DialogDescription>
             {podium.length > 0
-              ? 'Final top players. Save the results to add them to everyone’s all-time totals. Either way you can resume this session later from Past sessions.'
+              ? 'Final top players. Ending saves the results to everyone’s all-time totals, and you can still resume this session later from Past sessions.'
               : 'Nothing is lost: you can look at it or resume it later from Past sessions. Your saved player list is kept.'}
           </DialogDescription>
         </DialogHeader>
@@ -118,7 +118,7 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
           </ol>
         )}
 
-        {/* Stacked on every screen size: three long buttons do not fit side by side. */}
+        {/* Stacked on every screen size: long buttons do not fit side by side. */}
         <DialogFooter className="sm:flex-col-reverse">
           <DialogClose asChild>
             <Button variant="outline" className="w-full">
@@ -126,14 +126,9 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
             </Button>
           </DialogClose>
           {podium.length > 0 ? (
-            <>
-              <Button variant="destructive" className="w-full" onClick={() => finish(false)} disabled={saving}>
-                End without saving
-              </Button>
-              <Button className="w-full" onClick={() => finish(true)} disabled={saving}>
-                {saving ? 'Saving…' : 'Save and end session'}
-              </Button>
-            </>
+            <Button className="w-full" onClick={() => finish(true)} disabled={saving}>
+              {saving ? 'Saving…' : 'Save and end session'}
+            </Button>
           ) : (
             <Button variant="destructive" className="w-full" onClick={() => finish(false)} disabled={saving}>
               End session

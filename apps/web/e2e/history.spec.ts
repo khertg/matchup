@@ -10,12 +10,6 @@ async function playOneGame(page: Page, location = 'Sunset Club') {
   await expect(page.getByText('Court 1: Team A won')).toBeVisible()
 }
 
-async function endWithoutSaving(page: Page) {
-  await page.getByRole('button', { name: 'End session' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
-  await expect(page.getByText('Set up an open play session')).toBeVisible()
-}
-
 async function endAndSave(page: Page) {
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
@@ -32,7 +26,7 @@ const openPast = async (page: Page) => {
 test.describe('past sessions', () => {
   test('keeps an ended session, and shows how everyone ranked', async ({ page }) => {
     await playOneGame(page)
-    await endWithoutSaving(page)
+    await endAndSave(page)
 
     const list = await openPast(page)
     const row = list.getByRole('button', { name: /Sunset Club/ })
@@ -50,22 +44,11 @@ test.describe('past sessions', () => {
     await expect(view.getByRole('button', { name: /won$/ })).toHaveCount(0)
   })
 
-  test('is kept whether or not the results were saved to the all-time totals', async ({ page }) => {
-    await playOneGame(page, 'Saved One')
-    await endAndSave(page)
-    await playOneGame(page, 'Unsaved One')
-    await endWithoutSaving(page)
-
-    const list = await openPast(page)
-    await expect(list.getByRole('button', { name: /Unsaved One/ })).toBeVisible()
-    await expect(list.getByRole('button', { name: /Saved One/ })).toBeVisible()
-  })
-
   test('lists the newest session first, and survives a reload', async ({ page }) => {
     await playOneGame(page, 'First Night')
-    await endWithoutSaving(page)
+    await endAndSave(page)
     await playOneGame(page, 'Second Night')
-    await endWithoutSaving(page)
+    await endAndSave(page)
 
     await page.reload()
     const list = await openPast(page)
@@ -87,7 +70,7 @@ test.describe('past sessions', () => {
 
   test('deletes a session only after asking', async ({ page }) => {
     await playOneGame(page)
-    await endWithoutSaving(page)
+    await endAndSave(page)
     const list = await openPast(page)
     await list.getByRole('button', { name: /Sunset Club/ }).click()
 
@@ -105,7 +88,7 @@ test.describe('past sessions', () => {
 
   test('goes back from a session to the list', async ({ page }) => {
     await playOneGame(page)
-    await endWithoutSaving(page)
+    await endAndSave(page)
     const list = await openPast(page)
     await list.getByRole('button', { name: /Sunset Club/ }).click()
     await page.getByRole('dialog', { name: 'Sunset Club' }).getByRole('button', { name: 'Back' }).click()
@@ -122,7 +105,7 @@ test.describe('resuming a session', () => {
     await expect(page.getByText('Court 1: Team A won')).toBeVisible()
     await startGame(page, 'Court 2') // Cy v Dee is on court when it ends
     await page.getByRole('button', { name: 'End session' }).click()
-    await page.getByRole('dialog').getByRole('button', { name: 'End without saving' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()
 
     const list = await openPast(page)
@@ -145,8 +128,8 @@ test.describe('resuming a session', () => {
 
   test('is offered right after ending, in case it was a slip', async ({ page }) => {
     await playOneGame(page, 'Slip')
-    await endWithoutSaving(page)
-    await expect(page.getByText('Session ended')).toBeVisible()
+    await endAndSave(page)
+    await expect(page.getByText('Session saved to the all-time leaderboard')).toBeVisible()
 
     await page.getByRole('button', { name: 'Resume' }).click()
     await expect(page.getByRole('heading', { name: 'Slip' })).toBeVisible()
@@ -156,7 +139,7 @@ test.describe('resuming a session', () => {
 
   test('keeps working after a reload', async ({ page }) => {
     await playOneGame(page, 'Reloaded')
-    await endWithoutSaving(page)
+    await endAndSave(page)
     const list = await openPast(page)
     await list.getByRole('button', { name: /Reloaded/ }).click()
     await page.getByRole('dialog', { name: 'Reloaded' }).getByRole('button', { name: 'Resume this session' }).click()
@@ -170,7 +153,7 @@ test.describe('resuming a session', () => {
 
   test('updates the same entry when it ends again, instead of adding another', async ({ page }) => {
     await playOneGame(page, 'Twice')
-    await endWithoutSaving(page)
+    await endAndSave(page)
     let list = await openPast(page)
     await list.getByRole('button', { name: /Twice/ }).click()
     await page.getByRole('dialog', { name: 'Twice' }).getByRole('button', { name: 'Resume this session' }).click()
@@ -178,7 +161,7 @@ test.describe('resuming a session', () => {
     await startGame(page)
     await recordWin(page)
     await expect(page.getByText('Court 1: Team A won').last()).toBeVisible()
-    await endWithoutSaving(page)
+    await endAndSave(page)
 
     list = await openPast(page)
     await expect(list.getByRole('listitem')).toHaveCount(1)

@@ -25,12 +25,9 @@ async function signInAndPlay(page: Page, club: TestClub, location: string) {
   await expect(page.getByText('Court 1: Team A won')).toBeVisible()
 }
 
-async function end(page: Page, save: boolean) {
+async function end(page: Page) {
   await page.getByRole('button', { name: 'End session' }).click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: save ? 'Save and end session' : 'End without saving' })
-    .click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()
 }
 
@@ -57,7 +54,7 @@ test.describe('history in the club cloud', () => {
     await apiCreateClub(request, club)
     await signInAndPlay(page, club, 'Cloud Night')
     const token = await storedToken(page)
-    await end(page, false)
+    await end(page)
 
     await expect.poll(async () => (await history(request, token)()).map((s) => s.location)).toEqual(['Cloud Night'])
     const [entry] = await history(request, token)()
@@ -69,7 +66,7 @@ test.describe('history in the club cloud', () => {
     await apiCreateClub(request, club)
     await signInAndPlay(page, club, 'Shared Night')
     const token = await storedToken(page)
-    await end(page, false)
+    await end(page)
     await expect.poll(async () => (await history(request, token)()).length).toBe(1)
 
     const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
@@ -112,7 +109,7 @@ test.describe('history in the club cloud', () => {
     const token = await storedToken(page)
 
     await context.setOffline(true)
-    await end(page, false)
+    await end(page)
     await page.waitForTimeout(1500)
     expect(await history(request, token)()).toEqual([])
 
@@ -130,7 +127,7 @@ test.describe('history in the club cloud', () => {
     await apiCreateClub(request, club)
     await signInAndPlay(page, club, 'Doomed Night')
     const token = await storedToken(page)
-    await end(page, false)
+    await end(page)
     await expect.poll(async () => (await history(request, token)()).length).toBe(1)
 
     await page.getByRole('button', { name: 'Past sessions' }).click()
@@ -151,7 +148,7 @@ test.describe('history in the club cloud', () => {
     await apiCreateClub(request, club)
     await signInAndPlay(page, club, 'Count Night')
     const token = await storedToken(page)
-    await end(page, true)
+    await end(page)
     await expect.poll(async () => (await clubPlayers(request, club.slug)()).find((p) => p.name === 'Ann')?.games).toBe(1)
     await expect.poll(async () => (await history(request, token)()).length).toBe(1)
 
@@ -186,7 +183,7 @@ test.describe('history in the club cloud', () => {
     await startGame(page)
     await recordWin(page)
     await expect(page.getByText('Court 1: Team A won')).toBeVisible()
-    await end(page, false)
+    await end(page)
 
     await page.getByRole('button', { name: 'Past sessions' }).click()
     const list = page.getByRole('dialog', { name: 'Past sessions' })
