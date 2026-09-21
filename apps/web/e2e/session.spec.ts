@@ -293,6 +293,60 @@ test('keeps working offline', async ({ page, context }) => {
   await expect(page.getByText('Court 1: Team A won')).toBeVisible()
 })
 
+test.describe('the End session dialog', () => {
+  async function withResults(page: Page, width: number) {
+    await page.setViewportSize({ width, height: 800 })
+    await startSession(page, { mode: 'Singles' })
+    await checkIn(page, ['Ann', 'Bob'])
+    await startGame(page)
+    await recordWin(page)
+    await page.getByRole('button', { name: 'End session' }).click()
+    const dialog = page.getByRole('dialog', { name: 'End this session?' })
+    await expect(dialog).toBeVisible()
+    return dialog
+  }
+
+  for (const width of [1280, 375]) {
+    test(`fits its content without anything overlapping at ${width}px wide`, async ({ page }) => {
+      const dialog = await withResults(page, width)
+      const box = (await dialog.boundingBox())!
+      if (width >= 640) expect(box.width).toBeGreaterThanOrEqual(480)
+
+      const names = ['Save and end session', 'Keep playing']
+      const boxes = []
+      for (const name of names) {
+        const button = dialog.getByRole('button', { name, exact: true })
+        await expect(button).toBeVisible()
+        boxes.push((await button.boundingBox())!)
+      }
+      for (const b of boxes) {
+        // Inside the dialog, never clipped at either side.
+        expect(b.x).toBeGreaterThanOrEqual(box.x)
+        expect(b.x + b.width).toBeLessThanOrEqual(box.x + box.width)
+      }
+      // Stacked in order, with no two buttons touching.
+      for (let i = 1; i < boxes.length; i++) {
+        expect(boxes[i].y).toBeGreaterThanOrEqual(boxes[i - 1].y + boxes[i - 1].height)
+      }
+
+      // The description and podium rows stay inside the dialog too.
+      const rows = dialog.getByRole('listitem')
+      await expect(rows).toHaveCount(2)
+      for (const row of await rows.all()) {
+        const r = (await row.boundingBox())!
+        expect(r.x + r.width).toBeLessThanOrEqual(box.x + box.width)
+        await expect(row.getByText(/^\dW \dL$/)).toBeVisible()
+      }
+    })
+  }
+
+  test('still ends the session from the stacked buttons', async ({ page }) => {
+    const dialog = await withResults(page, 1280)
+    await dialog.getByRole('button', { name: 'Save and end session' }).click()
+    await expect(page.getByText('Set up an open play session')).toBeVisible()
+  })
+})
+
 test('ends the session after confirming', async ({ page }) => {
   await startSession(page)
   await page.getByRole('button', { name: 'End session' }).click()
