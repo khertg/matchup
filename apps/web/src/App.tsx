@@ -7,6 +7,7 @@ import { startCloudSync } from '@/cloud/sync'
 import { AvatarProvider } from '@/components/AvatarProvider'
 import { LoginGate } from '@/components/LoginGate'
 import { RecoveryCodeHost } from '@/components/RecoveryCodeHost'
+import { ThemeSwitch } from '@/components/ThemeSwitch'
 import { Toaster } from '@/components/ui/sonner'
 import { VersionLabel } from '@/components/VersionLabel'
 import { SessionScreen } from '@/screens/SessionScreen'
@@ -33,6 +34,9 @@ export default function App() {
     // Extra bottom padding lets the last controls scroll clear of the toasts pinned to the screen bottom.
     <AvatarProvider viewerSlug={isViewerPath ? (viewerSlug ?? undefined) : undefined}>
     <main className="mx-auto max-w-5xl p-4 pb-32 sm:p-6 sm:pb-32">
+      <div className="mb-2 flex justify-end">
+        <ThemeSwitch />
+      </div>
       {isViewerPath ? (
         viewerSlug ? (
           <ViewerScreen slug={viewerSlug} />
