@@ -270,7 +270,7 @@ test.describe('ranking', () => {
     await enterScore(page, 11, 2, 'Court 2') // Cy +9
 
     await openStandings(page)
-    const rows = page.getByRole('row')
+    const rows = page.getByRole('table').first().getByRole('row')
     await expect(rows).toHaveCount(5)
     await expect(cell(rows.nth(1), 1)).toHaveText('Cy')
     await expect(cell(rows.nth(1), DIFF)).toHaveText('+9')
@@ -316,7 +316,7 @@ test.describe('ranking', () => {
       .click()
 
     await openStandings(page)
-    const rows = page.getByRole('row')
+    const rows = page.getByRole('table').first().getByRole('row')
     await expect(rows).toHaveCount(3)
     await expect(cell(rows.nth(1), 1)).toHaveText('Ann')
     await expect(cell(rows.nth(1), DIFF)).toHaveText('+2')

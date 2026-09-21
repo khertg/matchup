@@ -89,6 +89,15 @@ test.describe('live viewer', () => {
     await expect(page.getByRole('button', { name: /^Share card/ })).toHaveCount(0)
   })
 
+  test('does not show the partners and opponents card: the live page carries no game history', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
+    await page.getByRole('tab', { name: 'Standings' }).click()
+    await expect(page.getByRole('row').nth(1)).toContainText('Gold medal') // the standings themselves are there
+    await expect(page.getByRole('group', { name: 'Partners and opponents' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Partners and opponents of/ })).toHaveCount(0)
+  })
+
   test('shows the point differential and time played of each player', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.goto(`/club/${club.slug}`)

@@ -27,7 +27,7 @@ test('ranks players by wins and awards medals', async ({ page }) => {
   await singlesWithGames(page, 2)
   await openStandings(page)
 
-  const rows = page.getByRole('row')
+  const rows = page.getByRole('table').first().getByRole('row')
   await expect(rows).toHaveCount(3) // header + two players
   await expect(rows.nth(1)).toContainText('Ann')
   await expect(rows.nth(1)).toContainText('Gold medal')
