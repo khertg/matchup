@@ -5,15 +5,14 @@ import {
   isValidSlug,
   slugify,
 } from '@matchup/shared'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { toCloudError } from '@/cloud/api'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { parseFullBackup } from '@/cloud/snapshot'
-import { setPhotoSharing } from '@/cloud/sync'
 import { viewerUrl } from '@/cloud/url'
+import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
 import { RecoveryCodeDialog } from '@/components/RecoveryCodeDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { SyncBadge } from '@/components/SyncBadge'
@@ -29,7 +28,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getSharePhotos } from '@/db/settings'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -256,10 +254,6 @@ function SignedIn() {
   const signOut = useClubAuth((s) => s.signOut)
   const loadSession = useSessionStore((s) => s.loadSession)
   const [resumable, setResumable] = useState<{ location: string; session: SessionState } | null>(null)
-  const savedSharePhotos = useLiveQuery(getSharePhotos, [], false)
-  // Ticks at once; the saved setting catches up a moment later.
-  const [choice, setChoice] = useState<boolean | null>(null)
-  const sharePhotos = choice ?? savedSharePhotos
 
   // Look for a session running on another staff device that this one could take over.
   useEffect(() => {
@@ -296,25 +290,7 @@ function SignedIn() {
       <p className="text-sm text-muted-foreground">
         Live link: <span className="font-mono">{`/club/${club.slug}`}</span>
       </p>
-      <div className="flex items-start gap-2">
-        <input
-          id="share-photos"
-          type="checkbox"
-          className="mt-1 size-4 accent-primary"
-          checked={sharePhotos}
-          onChange={(e) => {
-            setChoice(e.target.checked)
-            void setPhotoSharing(e.target.checked).finally(() => setChoice(null))
-          }}
-        />
-        <div>
-          <Label htmlFor="share-photos">Show player photos on the live page</Label>
-          <p className="text-xs text-muted-foreground">
-            Off by default. When on, anyone with the live link can see the photos you set. Turning it off
-            removes them from the server. Emoji and initials avatars and the club logo are always shown.
-          </p>
-        </div>
-      </div>
+      <PhotoSharingToggle />
       {resumable && (
         <Button
           className="h-11 w-full"
