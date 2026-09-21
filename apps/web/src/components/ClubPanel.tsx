@@ -6,14 +6,12 @@ import {
   slugify,
 } from '@matchup/shared'
 import { useEffect, useState, type FormEvent } from 'react'
-import { toast } from 'sonner'
 import { toCloudError } from '@/cloud/api'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
+import { useRecoveryCode } from '@/cloud/recovery'
 import { parseFullBackup } from '@/cloud/snapshot'
-import { viewerUrl } from '@/cloud/url'
 import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
-import { RecoveryCodeDialog } from '@/components/RecoveryCodeDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { SyncBadge } from '@/components/SyncBadge'
 import { Button } from '@/components/ui/button'
@@ -31,13 +29,10 @@ import { Label } from '@/components/ui/label'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
-interface DialogProps {
-  /** Ask the panel to show a new recovery code (it is displayed once, outside this dialog). */
-  onRecoveryCode: (code: string) => void
-}
-
-function CreateClubDialog({ onRecoveryCode }: DialogProps) {
+/** Create a club and sign in to it. The recovery code is shown once, outside this dialog. */
+export function CreateClubDialog() {
   const signIn = useClubAuth((s) => s.signIn)
+  const showRecoveryCode = useRecoveryCode((s) => s.show)
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
@@ -55,7 +50,7 @@ function CreateClubDialog({ onRecoveryCode }: DialogProps) {
     try {
       const { token, recoveryCode } = await cloud.createClub(name.trim(), slug, password)
       signIn({ slug, name: name.trim(), token })
-      onRecoveryCode(recoveryCode)
+      showRecoveryCode(recoveryCode)
       setOpen(false)
       setName('')
       setPassword('')
@@ -122,8 +117,10 @@ function CreateClubDialog({ onRecoveryCode }: DialogProps) {
   )
 }
 
-function LoginDialog({ onRecoveryCode }: DialogProps) {
+/** Log in to a club, or reset its password with the recovery code. */
+export function LoginDialog() {
   const signIn = useClubAuth((s) => s.signIn)
+  const showRecoveryCode = useRecoveryCode((s) => s.show)
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<'login' | 'reset'>('login')
   const [slug, setSlug] = useState('')
@@ -161,7 +158,7 @@ function LoginDialog({ onRecoveryCode }: DialogProps) {
         const grant = await cloud.resetPassword(cleanSlug, recoveryCode.trim(), password)
         signIn({ slug: cleanSlug, name: grant.name, token: grant.token })
         // The old recovery code is now used up; show the replacement.
-        onRecoveryCode(grant.recoveryCode)
+        showRecoveryCode(grant.recoveryCode)
       } else {
         const { token, name } = await cloud.login(cleanSlug, password)
         signIn({ slug: cleanSlug, name, token })
@@ -309,39 +306,21 @@ function SignedIn() {
   )
 }
 
-/** Optional cloud club sign-in on the setup screen. Hidden when no API is configured. */
+/** The signed-in club on the setup screen. Hidden when no API is configured; logging in happens on the login screen. */
 export function ClubPanel() {
   const club = useClubAuth((s) => s.club)
-  // A new recovery code (after creating a club or resetting a password) is shown once, here,
-  // so it survives the dialog that produced it closing.
-  const [recoveryCode, setRecoveryCode] = useState<string | null>(null)
-  if (!cloud) return null
+  if (!cloud || !club) return null
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Cloud club</CardTitle>
         <CardDescription>
-          Optional. Let players follow the queue live on their phones and keep all-time stats across
-          devices.
+          Players follow the queue live on their phones, and all-time stats are kept across devices.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {club ? (
-          <SignedIn />
-        ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <CreateClubDialog onRecoveryCode={setRecoveryCode} />
-            <LoginDialog onRecoveryCode={setRecoveryCode} />
-          </div>
-        )}
-        <RecoveryCodeDialog
-          code={recoveryCode}
-          onDone={() => {
-            setRecoveryCode(null)
-            if (club) toast(`Players can follow along at ${viewerUrl(club.slug)}`)
-          }}
-        />
+        <SignedIn />
       </CardContent>
     </Card>
   )
