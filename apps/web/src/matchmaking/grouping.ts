@@ -5,7 +5,7 @@ import type { MatchmakingMode, SessionState, Teams } from '@/rotation/types'
  * into two teams.
  *
  * The queue is read as "units": a solo player, or a locked partner pair that
- * sits together at the earlier partner's spot. The first unit that can be
+ * sits together at the later partner's spot. The first unit that can be
  * completed into a group is the anchor, so first come, first served always
  * holds for the player at the front. The other spots are then filled by the
  * chosen mode, looking only a few units ahead so nobody far back jumps the line.
@@ -21,7 +21,7 @@ type Score = number[]
 
 interface Unit {
   ids: number[]
-  /** Sum of the members' queue indices; lower means they have waited longer. */
+  /** Sum of the members' queue indices (a pair counts its later spot twice); lower means they have waited longer. */
   cost: number
 }
 
@@ -43,16 +43,19 @@ function buildUnits(queue: number[], partners: Partners): Unit[] {
   const units: Unit[] = []
   queue.forEach((id, index) => {
     if (seen.has(id)) return
-    seen.add(id)
     const partner = partnerOf(partners, id)
     const partnerIndex = partner === undefined ? -1 : queue.indexOf(partner)
     if (partner === undefined || partnerIndex === -1) {
+      seen.add(id)
       units.push({ ids: [id], cost: index })
-    } else {
-      // A pair is only a unit while both partners are waiting.
+    } else if (partnerIndex < index) {
+      // A pair is only a unit while both partners are waiting, and it stands at the later
+      // partner's spot, so being locked never moves anyone ahead of people who were waiting.
+      seen.add(id)
       seen.add(partner)
-      units.push({ ids: [id, partner], cost: index + partnerIndex })
+      units.push({ ids: [partner, id], cost: index * 2 })
     }
+    // else: the partner is further back; the pair is added when the queue reaches them.
   })
   return units
 }

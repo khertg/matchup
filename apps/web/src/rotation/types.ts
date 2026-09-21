@@ -58,6 +58,13 @@ export interface MatchRecord {
   endedAt?: number
 }
 
+/** A partner lock that is not in force yet: it starts once both have finished a game after locking. */
+export interface PendingPartners {
+  pair: [number, number]
+  /** Which of the two have finished a game since the lock. */
+  done: number[]
+}
+
 export interface SessionState {
   mode: GameMode
   /** Assumed length of one game, used for wait estimates. */
@@ -75,6 +82,11 @@ export interface SessionState {
   queue: number[]
   /** Checked-out players (on a break); not in the queue. */
   onBreak: number[]
+  /**
+   * Locks made while a partner was on a court or on a break. They change nothing until both have
+   * finished a game, so a lock never moves anyone ahead of people who were waiting. Missing means none.
+   */
+  pendingPartners?: PendingPartners[]
   /**
    * The next group as staff chose it (see replaceNextUp), overriding the automatic pick while every
    * one of them is still waiting. Missing means automatic.

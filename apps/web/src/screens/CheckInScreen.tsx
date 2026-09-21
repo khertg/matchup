@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { RosterCheckIn } from '@/components/RosterCheckIn'
 import {
   Select,
@@ -19,7 +27,7 @@ import { MAX_PLAYER_NAME_LENGTH } from '@matchup/shared'
 import { db, type Gender, type SkillLevel } from '@/db/db'
 import { addOrGetPlayer } from '@/db/roster'
 import { DEFAULT_SKILL, SKILL_LEVELS, skillLabel } from '@/lib/skill'
-import { playingIds } from '@/rotation/engine'
+import { lockStatus, playingIds, type AwayPartner } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -37,18 +45,39 @@ function PartnersCard({ session }: { session: SessionState }) {
   const unlockPartners = useSessionStore((s) => s.unlockPartners)
   const [first, setFirst] = useState('')
   const [second, setSecond] = useState('')
-
-  const locked = new Set(session.partners.flat())
-  const available = Object.values(session.players).filter((p) => !locked.has(p.id))
   const canLock = first !== '' && second !== '' && first !== second
 
-  function handleLock() {
-    const a = Number(first)
-    const b = Number(second)
+  const [confirming, setConfirming] = useState(false)
+
+  const pending = session.pendingPartners ?? []
+  const locked = new Set([...session.partners.flat(), ...pending.flatMap(({ pair }) => pair)])
+  const available = Object.values(session.players).filter((p) => !locked.has(p.id))
+
+  const a = Number(first)
+  const b = Number(second)
+  // A lock made while a partner is on a court or a break waits until both have finished a game.
+  const status = canLock ? lockStatus(session, a, b) : null
+  const name = (id: number) => session.players[id].name
+
+  function whereIs({ id, courtName }: AwayPartner) {
+    return courtName ? `${name(id)} is playing on ${courtName}` : `${name(id)} is on a break`
+  }
+
+  function doLock() {
     lockPartners(a, b)
-    toast(`${session.players[a].name} and ${session.players[b].name} are now partners`)
+    toast(
+      status?.inForce === false
+        ? `${name(a)} and ${name(b)} will be partners once both have finished a game`
+        : `${name(a)} and ${name(b)} are now partners`,
+    )
     setFirst('')
     setSecond('')
+    setConfirming(false)
+  }
+
+  function handleLock() {
+    if (status?.inForce === false) setConfirming(true)
+    else doLock()
   }
 
   const pick = (id: string, label: string, value: string, onChange: (v: string) => void) => (
@@ -79,13 +108,18 @@ function PartnersCard({ session }: { session: SessionState }) {
           Locked partners always share a team and wait in the queue together.
         </p>
 
-        {session.partners.length > 0 && (
+        {(session.partners.length > 0 || pending.length > 0) && (
           <ul className="divide-y">
-            {session.partners.map(([a, b]) => (
+            {[...session.partners.map((pair) => ({ pair, waiting: false })), ...pending.map(({ pair }) => ({ pair, waiting: true }))].map(({ pair: [a, b], waiting }) => (
               <li key={`${a}-${b}`} className="flex items-center gap-3 py-2">
-                <Lock className="size-4 text-muted-foreground" aria-hidden />
+                <Lock className={`size-4 ${waiting ? 'text-muted-foreground/50' : 'text-muted-foreground'}`} aria-hidden />
                 <span className="flex-1">
                   {session.players[a].name} &amp; {session.players[b].name}
+                  {waiting && (
+                    <span className="block text-xs text-muted-foreground">
+                      Starts after both have played. Each keeps their own turn until then.
+                    </span>
+                  )}
                 </span>
                 <Button
                   variant="outline"
@@ -113,6 +147,30 @@ function PartnersCard({ session }: { session: SessionState }) {
             <Button className="h-11 w-full" disabled={!canLock} onClick={handleLock}>
               Lock partners
             </Button>
+            {status?.inForce === false && (
+              <Dialog open={confirming} onOpenChange={setConfirming}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      Lock {name(a)} and {name(b)}?
+                    </DialogTitle>
+                    <DialogDescription>
+                      {status.away.map(whereIs).join(' and ')}.{' '}
+                      {status.away.length === 1
+                        ? `${name(status.away[0].id === a ? b : a)} keeps their place in line.`
+                        : 'Each keeps their own place in line.'}{' '}
+                      The lock starts once both of them have finished a game.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setConfirming(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={doLock}>Lock anyway</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         )}
       </CardContent>

@@ -4,6 +4,7 @@ import type {
   Court,
   GameMode,
   MatchmakingMode,
+  PendingPartners,
   PlayerStats,
   RosterPlayer,
   SessionState,
@@ -274,9 +275,8 @@ export function replaceNextUp(state: SessionState, outId: number, inId: number):
     throw new Error('The replacement must be a waiting player who is not already in the next group')
   }
   return {
-    ...state,
+    ...withoutLocks(state, [outId, inId]),
     nextUpPick: group.players.map((id) => (id === outId ? inId : id)),
-    partners: state.partners.filter((pair) => !pair.includes(outId) && !pair.includes(inId)),
   }
 }
 
@@ -393,6 +393,26 @@ export function recordScore(
 }
 
 /**
+ * Players who have just finished a game count towards their waiting locks. A lock whose two
+ * partners have both finished a game since it was made comes into force.
+ */
+function settlePendingLocks(
+  state: SessionState,
+  finished: number[],
+): Pick<SessionState, 'partners' | 'pendingPartners'> {
+  const pending = state.pendingPartners ?? []
+  if (pending.length === 0) return { partners: state.partners, pendingPartners: state.pendingPartners }
+  const partners = [...state.partners]
+  const stillWaiting: PendingPartners[] = []
+  for (const { pair, done } of pending) {
+    const nowDone = [...new Set([...done, ...pair.filter((id) => finished.includes(id))])]
+    if (pair.every((id) => nowDone.includes(id))) partners.push(pair)
+    else stillWaiting.push({ pair, done: nowDone })
+  }
+  return { partners, pendingPartners: stillWaiting.length > 0 ? stillWaiting : undefined }
+}
+
+/**
  * Shared by recordResult and recordScore. The game's time is credited to whoever is on the court
  * when it ends: a substitute made mid-game gets all of it and the player who left gets none.
  */
@@ -432,11 +452,13 @@ function finishGame(
   }
   tally(winners, losers, true)
   tally(losers, winners, false)
+  const locks = settlePendingLocks(state, [...winners, ...losers])
   return {
     winners,
     losers,
     state: {
       ...state,
+      ...locks,
       courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
       queue: [...state.queue, ...winners, ...losers],
       lastResult: {
@@ -498,34 +520,90 @@ export function replacePlayer(
   const swap = (side: number[]) => side.map((id) => (id === outId ? inId : id))
   const waiting = state.queue.filter((id) => id !== inId)
   return {
-    ...withoutPickIncluding(state, inId),
+    // Whoever comes off is no longer bound to their partner, whether the lock is in force or waiting.
+    ...withoutLocks(withoutPickIncluding(state, inId), [outId]),
     courts: state.courts.map((c) =>
       c.id === courtId ? { ...c, teams: [swap(court.teams![0]), swap(court.teams![1])] } : c,
     ),
     queue: sendOnBreak ? waiting : [outId, ...waiting],
     onBreak: sendOnBreak ? [...state.onBreak, outId] : state.onBreak,
-    // Whoever leaves is no longer bound to their partner.
-    partners: state.partners.filter((pair) => !pair.includes(outId)),
+  }
+}
+
+/** Where a partner is, when they are not waiting: on a named court, or on a break. */
+export interface AwayPartner {
+  id: number
+  courtName?: string
+}
+
+/** Whether a lock would be in force at once, or wait for both partners to finish a game (and who is away). */
+export type LockStatus = { inForce: true } | { inForce: false; away: AwayPartner[] }
+
+function courtWithPlayer(state: SessionState, id: number): Court | undefined {
+  return state.courts.find((c) => c.teams?.flat().includes(id))
+}
+
+/**
+ * A lock is in force at once when both partners are waiting, or both are in the same game.
+ * Otherwise (one is on a court or a break) it waits: it would otherwise pull the partner who just
+ * finished ahead of everyone who was waiting. `away` says who is not waiting and where.
+ */
+export function lockStatus(state: SessionState, a: number, b: number): LockStatus {
+  const courtA = courtWithPlayer(state, a)
+  const courtB = courtWithPlayer(state, b)
+  if (state.queue.includes(a) && state.queue.includes(b)) return { inForce: true }
+  if (courtA && courtA === courtB) return { inForce: true }
+  const away = [a, b]
+    .filter((id) => !state.queue.includes(id))
+    .map((id): AwayPartner => ({ id, courtName: courtWithPlayer(state, id)?.name }))
+  return { inForce: false, away }
+}
+
+/** Any lock, in force or waiting, that includes this player. */
+const isLocked = (state: SessionState, id: number) =>
+  partnerOf(state.partners, id) !== undefined ||
+  (state.pendingPartners ?? []).some(({ pair }) => pair.includes(id))
+
+/** The state without the locks (in force or waiting) that include any of these players. */
+function withoutLocks(state: SessionState, ids: number[]): SessionState {
+  const { pendingPartners, ...rest } = state
+  const pending = (pendingPartners ?? []).filter(({ pair }) => !pair.some((id) => ids.includes(id)))
+  return {
+    ...rest,
+    partners: state.partners.filter((pair) => !pair.some((id) => ids.includes(id))),
+    ...(pending.length > 0 ? { pendingPartners: pending } : {}),
   }
 }
 
 /**
- * Lock two checked-in players as partners: they always share a team and wait
- * in the queue together. Doubles only; a player can have one partner.
+ * Lock two checked-in players as partners: they always share a team and wait in the queue
+ * together. Doubles only; a player can have one partner.
+ *
+ * When both are waiting the lock is in force at once and the later partner moves up right behind
+ * the earlier one. Otherwise it waits (see lockStatus): nothing changes in the queue or the
+ * groups until both have finished a game, so each keeps their own turn.
  */
 export function lockPartners(state: SessionState, a: number, b: number): SessionState {
   if (state.mode !== 'doubles') throw new Error('Partners can only be locked in doubles')
   if (a === b) throw new Error('A player cannot partner themselves')
   if (!state.players[a] || !state.players[b]) throw new Error('Both players must be checked in')
-  if (partnerOf(state.partners, a) !== undefined || partnerOf(state.partners, b) !== undefined) {
-    throw new Error('A player is already locked with a partner')
+  if (isLocked(state, a) || isLocked(state, b)) throw new Error('A player is already locked with a partner')
+
+  if (!lockStatus(state, a, b).inForce) {
+    return { ...state, pendingPartners: [...(state.pendingPartners ?? []), { pair: [a, b], done: [] }] }
   }
-  return { ...state, partners: [...state.partners, [a, b]] }
+  const locked = { ...state, partners: [...state.partners, [a, b] as [number, number]] }
+  if (!(state.queue.includes(a) && state.queue.includes(b))) return locked
+  // Both waiting: the later one moves up to sit right behind the earlier one.
+  const [first, second] = state.queue.indexOf(a) < state.queue.indexOf(b) ? [a, b] : [b, a]
+  const rest = state.queue.filter((id) => id !== second)
+  rest.splice(rest.indexOf(first) + 1, 0, second)
+  return { ...locked, queue: rest }
 }
 
-/** Dissolve the partner lock that includes this player (no-op if none). */
+/** Dissolve the partner lock, in force or waiting, that includes this player (no-op if none). */
 export function unlockPartners(state: SessionState, playerId: number): SessionState {
-  return { ...state, partners: state.partners.filter((pair) => !pair.includes(playerId)) }
+  return withoutLocks(state, [playerId])
 }
 
 /**
