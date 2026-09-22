@@ -286,7 +286,13 @@ describe('player avatars', () => {
   it('shows an unknown club as having no avatars, without revealing anything', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/clubs/no-such-club/avatars' })
     expect(response.statusCode).toBe(200)
-    expect(response.json()).toEqual({ avatars: {}, logo: null })
+    expect(response.json()).toEqual({ avatars: {}, logo: null, name: null })
     expect((await app.inject({ method: 'GET', url: '/api/clubs/NOT%20VALID/avatars' })).statusCode).toBe(404)
+  })
+
+  it('includes the club’s own name, for anyone', async () => {
+    const { slug } = await createClub(app, { name: 'Riverside Pickleball' })
+    const response = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })
+    expect(response.json().name).toBe('Riverside Pickleball')
   })
 })

@@ -128,10 +128,10 @@ export function registerMediaRoutes(api: FastifyInstance, { db, config }: RouteD
     '/clubs/:slug/avatars',
     { schema: { params: slugParams } },
     async (request, reply) => {
-      const { avatars, logo, etag } = await getAvatarIndex(db, publicSlug(request.params.slug))
+      const { avatars, logo, name, etag } = await getAvatarIndex(db, publicSlug(request.params.slug))
       reply.header('etag', etag).header('cache-control', 'no-cache')
       if (request.headers['if-none-match'] === etag) return reply.code(304).send()
-      return { avatars, logo }
+      return { avatars, logo, name }
     },
   )
 

@@ -136,7 +136,7 @@ export function LogoEditorDialog() {
         <DialogHeader>
           <DialogTitle>Club logo</DialogTitle>
           <DialogDescription>
-            Shown on the setup screen, the session header, the stats card and the players' live page.
+            Shown in the nav bar, the stats card and the players' live page.
           </DialogDescription>
         </DialogHeader>
 

@@ -58,7 +58,7 @@ test.describe('club sign-in', () => {
     await expect(recovery.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await confirmRecoveryCode(page)
 
-    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByRole('banner').getByText(club.name, { exact: true })).toBeVisible()
     await expect(page.getByText(`/club/${club.slug}`, { exact: true })).toBeVisible()
 
     // The club really exists on the server.
@@ -87,7 +87,7 @@ test.describe('club sign-in', () => {
     await page.goto('/')
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByRole('banner').getByText(club.name, { exact: true })).toBeVisible()
 
     await page.reload()
     await expectSignedIn(page)
@@ -164,7 +164,7 @@ test.describe('password recovery', () => {
     const newCode = await confirmRecoveryCode(page)
     expect(newCode).not.toBe(recoveryCode)
     await expectSignedIn(page)
-    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByRole('banner').getByText(club.name, { exact: true })).toBeVisible()
 
     const oldPassword = await request.post(`/api/clubs/${club.slug}/login`, { data: { password: club.password } })
     expect(oldPassword.status()).toBe(401)
