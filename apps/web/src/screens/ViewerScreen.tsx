@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { toCloudError, type LiveRow } from '@/cloud/api'
 import { cloud } from '@/cloud/client'
 import { parsePublicSnapshot, toViewerState, type PublicSnapshot } from '@/cloud/snapshot'
-import { ClubLogo } from '@/components/ClubLogo'
 import { CourtCard } from '@/components/CourtCard'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
@@ -118,20 +117,17 @@ export function ViewerScreen({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center gap-3">
-        <ClubLogo className="max-h-14 max-w-20 sm:max-w-40" />
-        <div className="min-w-0">
-          <h1 className="break-words text-2xl font-bold">{snapshot.location}</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <Badge>Live</Badge>
-            <Badge variant="secondary">{snapshot.mode === 'doubles' ? 'Doubles' : 'Singles'}</Badge>
-            {snapshot.mode === 'doubles' && (
-              <Badge variant="secondary">{matchmakingLabel(snapshot.matchmaking)}</Badge>
-            )}
-            <span className="text-sm text-muted-foreground">
-              {offline ? `Offline. Showing the update from ${updated}` : `Updated ${updated}`}
-            </span>
-          </div>
+      <header className="min-w-0">
+        <h1 className="break-words text-2xl font-bold">{snapshot.location}</h1>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <Badge>Live</Badge>
+          <Badge variant="secondary">{snapshot.mode === 'doubles' ? 'Doubles' : 'Singles'}</Badge>
+          {snapshot.mode === 'doubles' && (
+            <Badge variant="secondary">{matchmakingLabel(snapshot.matchmaking)}</Badge>
+          )}
+          <span className="text-sm text-muted-foreground">
+            {offline ? `Offline. Showing the update from ${updated}` : `Updated ${updated}`}
+          </span>
         </div>
       </header>
 

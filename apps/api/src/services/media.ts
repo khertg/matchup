@@ -142,7 +142,7 @@ export async function deleteAvatarPhotos(db: Queryable, slug: string): Promise<v
 export async function getAvatarIndex(
   db: Queryable,
   slug: string,
-): Promise<{ avatars: Record<string, AvatarInfo>; logo: { v: number } | null; etag: string }> {
+): Promise<{ avatars: Record<string, AvatarInfo>; logo: { v: number } | null; name: string | null; etag: string }> {
   const { rows } = await db.query<{
     name_key: string
     kind: AvatarInfo['kind']
@@ -164,8 +164,10 @@ export async function getAvatarIndex(
   }
   const logoRow = await db.query<{ updated_at: unknown }>('select updated_at from club_logos where club_slug = $1', [slug])
   const logo = logoRow.rows[0] ? { v: toEpoch(logoRow.rows[0].updated_at) } : null
-  const etag = `W/"${createHash('sha1').update(JSON.stringify({ avatars, logo })).digest('hex').slice(0, 20)}"`
-  return { avatars, logo, etag }
+  const clubRow = await db.query<{ name: string }>('select name from clubs where slug = $1', [slug])
+  const name = clubRow.rows[0]?.name ?? null
+  const etag = `W/"${createHash('sha1').update(JSON.stringify({ avatars, logo, name })).digest('hex').slice(0, 20)}"`
+  return { avatars, logo, name, etag }
 }
 
 export async function getAvatarPhoto(db: Queryable, slug: string, key: string): Promise<StoredImage | null> {

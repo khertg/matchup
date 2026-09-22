@@ -109,7 +109,7 @@ describe('which avatar is shown', () => {
   }
   const club = (avatars: Record<string, { kind: 'photo' | 'emoji' | 'initials'; emoji?: string; color?: string; v: number }>, logo: { v: number } | null = null) => ({
     slug: 'downtown',
-    index: { avatars, logo },
+    index: { avatars, logo, name: null },
   })
 
   it('prefers this device’s avatar, by id', () => {
@@ -161,7 +161,7 @@ describe('which avatar is shown', () => {
 
 describe('which logo is shown', () => {
   const urls: MediaUrls = { photo: () => '', logo: (slug, v) => `/api/clubs/${slug}/logo?v=${v}` }
-  const clubWithLogo = { slug: 'downtown', index: { avatars: {}, logo: { v: 7 } } }
+  const clubWithLogo = { slug: 'downtown', index: { avatars: {}, logo: { v: 7 }, name: null } }
 
   it('prefers this device’s logo, then the club’s', () => {
     expect(resolveLogo({ localLogo: 'data:image/png;base64,AAAA', club: clubWithLogo }, urls)).toBe('data:image/png;base64,AAAA')
@@ -174,7 +174,7 @@ describe('which logo is shown', () => {
 
   it('shows none when there is no logo anywhere, or no cloud', () => {
     expect(resolveLogo({ localLogo: undefined, club: null }, urls)).toBeNull()
-    expect(resolveLogo({ localLogo: undefined, club: { slug: 'downtown', index: { avatars: {}, logo: null } } }, urls)).toBeNull()
+    expect(resolveLogo({ localLogo: undefined, club: { slug: 'downtown', index: { avatars: {}, logo: null, name: null } } }, urls)).toBeNull()
     expect(resolveLogo({ localLogo: undefined, club: clubWithLogo }, null)).toBeNull()
   })
 })

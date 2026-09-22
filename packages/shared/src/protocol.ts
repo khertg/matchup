@@ -156,6 +156,8 @@ export interface AvatarIndex {
   avatars: Record<string, AvatarInfo>
   /** The logo's version for its URL, or null when the club has none. */
   logo: { v: number } | null
+  /** The club's display name, or null for an unknown slug (looks the same as any other unset field here). */
+  name: string | null
 }
 
 /** An image sent to the server as base64 text. The server decides its type from the bytes. */

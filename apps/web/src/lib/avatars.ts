@@ -85,3 +85,8 @@ export function useOwnAvatar(id: number | undefined): PlayerAvatar | null {
 export function useClubLogo(): string | null {
   return resolveLogo(useContext(AvatarContext))
 }
+
+/** The signed-in (or viewed) club's display name, else null. */
+export function useClubName(): string | null {
+  return useContext(AvatarContext).club?.index.name ?? null
+}
