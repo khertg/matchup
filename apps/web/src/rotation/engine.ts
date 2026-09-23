@@ -767,4 +767,24 @@ export function estimateWaitMinutes(
   const courtsToFree = Math.max(0, matchesAhead - freeCourts + 1)
   return Math.round((courtsToFree * avgGameMinutes) / state.courts.length)
 }
+
+/**
+ * Shift every wall-clock timestamp that measures something still in effect (a queued player's
+ * wait, an in-progress game's elapsed time) forward by `offsetMs`, so resuming a session after a
+ * gap continues those timers from where they stood when it ended, instead of counting the gap
+ * itself as wait/play time. Finished-match timestamps (MatchRecord.endedAt) and durations already
+ * banked (Court.waited, MatchRecord.seconds) are historical facts and are left alone.
+ */
+export function shiftSessionClock(session: SessionState, offsetMs: number): SessionState {
+  if (offsetMs <= 0) return session
+  return {
+    ...session,
+    ...(session.queuedAt
+      ? { queuedAt: Object.fromEntries(Object.entries(session.queuedAt).map(([id, t]) => [Number(id), t + offsetMs])) }
+      : {}),
+    courts: session.courts.map((c) =>
+      c.teams && c.startedAt !== undefined ? { ...c, startedAt: c.startedAt + offsetMs } : c,
+    ),
+  }
+}
 /** Change the assumed game length used for wait estimates. */

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { queueRow } from './avatarHelpers'
 import { checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
 /** Singles on one court: Ann is Team A, so "Team A won" gives Ann the win. */
@@ -127,6 +128,30 @@ test.describe('resuming a session', () => {
     await page.getByRole('tab', { name: 'Standings' }).click()
     await expect(page.getByRole('row').nth(1)).toContainText('Ann')
     await expect(page.getByRole('row').nth(1)).toContainText('Gold medal')
+  })
+
+  test('freezes the wait and elapsed game time across the gap, instead of counting it', async ({ page }) => {
+    await page.clock.install()
+    await startSession(page, { location: 'Frozen', mode: 'Singles', courts: 1 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy']) // Ann and Bob start; Cy waits
+    await startGame(page)
+    await page.clock.fastForward('05:00') // Cy has waited 5 min; the game has run 5 min
+
+    await openSessionMenu(page)
+    await page.getByRole('button', { name: 'End session' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
+    await expect(page.getByText('Set up an open play session')).toBeVisible()
+
+    await page.clock.fastForward('24:00:00') // a whole day passes while the session is ended
+
+    const list = await openPast(page)
+    await list.getByRole('button', { name: /Frozen/ }).click()
+    await page.getByRole('dialog', { name: 'Frozen' }).getByRole('button', { name: 'Resume this session' }).click()
+    await expect(page.getByRole('heading', { name: 'Frozen' })).toBeVisible()
+
+    // Still 5 minutes, not the day that passed while it sat ended.
+    await expect(queueRow(page, 'Cy')).toContainText('5 min')
+    await expect(page.getByRole('region', { name: 'Court 1' }).getByText('Playing 5 min')).toBeVisible()
   })
 
   test('is offered right after ending, in case it was a slip', async ({ page }) => {

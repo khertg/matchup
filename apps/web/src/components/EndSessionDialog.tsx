@@ -67,8 +67,9 @@ export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDial
     }
 
     const lifetimeCounted = useSessionStore.getState().lifetimeCounted
+    let record
     try {
-      await archiveSession({
+      record = await archiveSession({
         id: sessionId,
         location,
         startedAt,
@@ -94,7 +95,9 @@ export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDial
       action: {
         label: 'Resume',
         onClick: () =>
-          useSessionStore.getState().loadSession(location, session, { sessionId, startedAt, lifetimeCounted }),
+          useSessionStore
+            .getState()
+            .loadSession(location, session, { sessionId, startedAt, lifetimeCounted, endedAt: record?.endedAt }),
       },
     })
   }

@@ -20,6 +20,7 @@ import {
   setAvgGameMinutes as setAvgGameMinutesEngine,
   renamePlayer as renamePlayerEngine,
   setPlayerSkill as setPlayerSkillEngine,
+  shiftSessionClock,
   type MatchEdit,
   type NextGroupOptions,
   type ReplacePlayerOptions,
@@ -113,6 +114,14 @@ export interface ResumeMeta {
   sessionId: string
   startedAt: number
   lifetimeCounted: LifetimeCounts
+  /**
+   * When the session ended (ms since the epoch), if it did. Given only when resuming a session
+   * that was actually ended (the toast's "Resume", or Past sessions) — never for picking up a
+   * session another staff device is actively running, which never ended. When given, wait times
+   * and an in-progress game's elapsed time are frozen at what they were when it ended, instead of
+   * counting the gap until now as more waiting/playing.
+   */
+  endedAt?: number
 }
 
 const requireSession = (session: SessionState | null) => {
@@ -284,7 +293,7 @@ export const useSessionStore = create<SessionStore>()(
       loadSession: (location, session, meta) =>
         set({
           location,
-          session,
+          session: meta?.endedAt === undefined ? session : shiftSessionClock(session, Date.now() - meta.endedAt),
           previous: null,
           // Resuming keeps the session's identity, so ending it again updates its history entry.
           sessionId: meta?.sessionId ?? newBatchId(),

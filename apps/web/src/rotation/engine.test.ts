@@ -27,6 +27,7 @@ import {
   winnerScoreProblem,
   setAvgGameMinutes,
   setPlayerSkill,
+  shiftSessionClock,
   startGame,
   unlockPartners,
 } from './engine'
@@ -682,6 +683,49 @@ describe('queue wait time', () => {
     const r = replacePlayer(s, 1, 1, 5, { sendOnBreak: true, now: 20_000 })
     expect(r.courts[0].waited).toEqual({ 2: 8, 3: 7, 4: 6, 5: 15 })
     expect(r.queuedAt).toEqual({})
+  })
+})
+
+describe('shiftSessionClock', () => {
+  it('shifts every queued player\'s timestamp forward by the offset', () => {
+    let s = createSession('doubles', 1)
+    s = checkIn(s, player(1), 1000)
+    s = checkIn(s, player(2), 2000)
+    const shifted = shiftSessionClock(s, 5000)
+    expect(shifted.queuedAt).toEqual({ 1: 6000, 2: 7000 })
+  })
+
+  it('shifts an in-progress court\'s start time, but leaves an open court alone', () => {
+    let s = createSession('doubles', 2)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)
+    s = startGame(s, 1, { now: 10_000 })
+    const shifted = shiftSessionClock(s, 5000)
+    expect(shifted.courts[0].startedAt).toBe(15_000)
+    expect(shifted.courts[1].startedAt).toBeUndefined()
+  })
+
+  it('leaves a court with an untracked start time alone', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id))
+    s = startGame(s, 1) // no `now`, so no startedAt
+    const shifted = shiftSessionClock(s, 5000)
+    expect(shifted.courts[0].startedAt).toBeUndefined()
+  })
+
+  it('does nothing for a zero or negative offset', () => {
+    let s = createSession('doubles', 1)
+    s = checkIn(s, player(1), 1000)
+    expect(shiftSessionClock(s, 0)).toBe(s)
+    expect(shiftSessionClock(s, -100)).toBe(s)
+  })
+
+  it('never changes the state it was given', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)
+    s = startGame(s, 1, { now: 10_000 })
+    const snapshot = structuredClone(s)
+    shiftSessionClock(s, 5000)
+    expect(s).toEqual(snapshot)
   })
 })
 

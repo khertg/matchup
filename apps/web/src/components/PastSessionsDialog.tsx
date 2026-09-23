@@ -182,6 +182,7 @@ export function PastSessionsDialog() {
         sessionId: loaded.id,
         startedAt: loaded.startedAt,
         lifetimeCounted: loaded.lifetimeCounted,
+        endedAt: loaded.endedAt,
       })
       toast(`“${loaded.location}” is running again`)
     } catch {

@@ -189,6 +189,50 @@ describe('session store', () => {
     })
   })
 
+  describe('resuming after ending', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('freezes a queued player\'s wait, and an in-progress game\'s elapsed time, across the gap', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'))
+      store().startSession('One', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      // Checks in after the game starts, so still waiting when the session ends.
+      store().checkInPlayer(player(5))
+
+      vi.setSystemTime(new Date('2026-01-01T10:05:00Z')) // ended 5 minutes later
+      const session = store().session!
+      const endedAt = Date.now()
+
+      vi.setSystemTime(new Date('2026-01-02T10:05:00Z')) // resumed a full day later
+      store().loadSession('One', session, { sessionId: 'abc', startedAt: 0, lifetimeCounted: {}, endedAt })
+
+      // Waited 5 minutes when it ended; resuming a day later must not add that day to it.
+      expect(Date.now() - store().session!.queuedAt![5]).toBe(5 * 60 * 1000)
+      // The in-progress game had been going 5 minutes when it ended; same freeze.
+      expect(Date.now() - store().session!.courts[0].startedAt!).toBe(5 * 60 * 1000)
+    })
+
+    it('does not shift anything when resuming a session that never ended (no endedAt given)', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'))
+      store().startSession('One', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().checkInPlayer(player(5))
+      const session = store().session!
+      const queuedAtBefore = session.queuedAt![5]
+      const startedAtBefore = session.courts[0].startedAt!
+
+      vi.setSystemTime(new Date('2026-01-02T10:00:00Z'))
+      store().loadSession('One', session)
+
+      expect(store().session!.queuedAt![5]).toBe(queuedAtBefore)
+      expect(store().session!.courts[0].startedAt).toBe(startedAtBefore)
+    })
+  })
+
   describe('checking in several players', () => {
     it('queues them in the order given, without starting anything', () => {
       store().startSession('Club', 'doubles', 1)
