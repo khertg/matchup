@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Player } from '@/db/db'
 import { checkIn, createSession, EMPTY_STATS, recordResult, recordScore, startGame } from './engine'
 import { fillCourts } from './testing'
-import { rankLifetime, rankPlayers } from './standings'
+import { pageStandings, rankLifetime, rankPlayers } from './standings'
 import type { PlayerStats, RosterPlayer, SessionState } from './types'
 
 const player = (id: number, name: string, skill: RosterPlayer['skill'] = 3): RosterPlayer => ({
@@ -247,5 +247,28 @@ describe('rankLifetime', () => {
 
   it('never includes players with no games, even at a minimum of 0', () => {
     expect(rankLifetime(roster, 0).map((r) => r.name)).not.toContain('Dee')
+  })
+})
+
+describe('pageStandings', () => {
+  const standingsOf = (count: number) =>
+    rankPlayers(withStats(Array.from({ length: count }, (_, i) => [i + 1, `P${i + 1}`, { games: 1, wins: 1 }])))
+
+  it('keeps everyone on one page when there are 10 or fewer', () => {
+    expect(pageStandings(standingsOf(7))).toHaveLength(1)
+    const onExactlyTen = pageStandings(standingsOf(10))
+    expect(onExactlyTen).toHaveLength(1)
+    expect(onExactlyTen[0]).toHaveLength(10)
+  })
+
+  it('splits into pages of up to 10, preserving rank order', () => {
+    const standings = standingsOf(25)
+    const pages = pageStandings(standings)
+    expect(pages.map((p) => p.length)).toEqual([10, 10, 5])
+    expect(pages.flat()).toEqual(standings)
+  })
+
+  it('has no pages for an empty list', () => {
+    expect(pageStandings([])).toEqual([])
   })
 })

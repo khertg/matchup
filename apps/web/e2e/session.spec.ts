@@ -60,7 +60,7 @@ test('starts the next four on the court and queues the extra player', async ({ p
   await expect(court.getByText('Eve')).toHaveCount(0)
   await expect(page.getByText('Queue (1)')).toBeVisible()
   // The only court is busy, so the waiting player sees how long they have been waiting.
-  await expect(queueRow(page, 'Eve')).toContainText('under 1 min')
+  await expect(queueRow(page, 'Eve')).toContainText(/\d+s/)
   // Only Eve is left, so nobody is next up until someone else checks in.
   await expect(page.getByRole('group', { name: 'Next up' }).getByText('Waiting for 3 more players.')).toBeVisible()
 })

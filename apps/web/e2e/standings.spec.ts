@@ -102,3 +102,91 @@ test('downloads a stats card image', async ({ page }) => {
   expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47])
   expect(bytes.length).toBeGreaterThan(2000)
 })
+
+test('downloads the whole standings as one image', async ({ page }) => {
+  await singlesWithGames(page, 1)
+  await openStandings(page)
+  await page.getByRole('button', { name: 'Share standings' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Share standings' })
+  await expect(dialog.getByText('An image of the standings, ready for a group chat.')).toBeVisible()
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Download image' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('q2dink-standings.png')
+
+  const bytes = readFileSync(await download.path())
+  expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47])
+  expect(bytes.length).toBeGreaterThan(1000)
+})
+
+test('splits a large roster into several images of up to 10 players each', async ({ page }) => {
+  await singlesWithGames(page, 1)
+  // Simulate 25 more players having finished a game, so the whole roster is 27: too many for one image.
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('q2dink-session')!)
+    const session = saved.state.session
+    for (let i = 1; i <= 25; i++) {
+      const id = 1000 + i
+      session.players[id] = { id, name: `Extra${i}`, skill: 3 }
+      session.stats[id] = { games: 1, wins: 1, losses: 0, opponentSkill: 3, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0 }
+    }
+    localStorage.setItem('q2dink-session', JSON.stringify(saved))
+  })
+  await page.reload()
+  await openStandings(page)
+  await page.getByRole('button', { name: 'Share standings' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Share standings' })
+  await expect(dialog.getByText('3 images of up to 10 players each, ready for a group chat.')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Download 3 images' })).toBeVisible()
+})
+
+/** Simulate a device that supports the Web Share API for files, so the primary button shares. */
+async function fakeNativeShare(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'share', { value: async () => {}, configurable: true })
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+  })
+}
+
+test('offers a direct download of the whole standings even when the device could share', async ({ page }) => {
+  await fakeNativeShare(page)
+  await singlesWithGames(page, 1)
+  await openStandings(page)
+  await page.getByRole('button', { name: 'Share standings' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Share standings' })
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Download image instead' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('q2dink-standings.png')
+})
+
+test('offers a direct download of a stats card even when the device could share', async ({ page }) => {
+  await fakeNativeShare(page)
+  await singlesWithGames(page, 1)
+  await openStandings(page)
+  await page.getByRole('button', { name: 'Share card for Ann' }).click()
+
+  const dialog = page.getByRole('dialog')
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Download image instead' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('ann-q2dink-stats.png')
+})
+
+test('is also offered from Past sessions', async ({ page }) => {
+  await singlesWithGames(page, 1)
+  await openSessionMenu(page)
+  await page.getByRole('button', { name: 'End session' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
+
+  await page.getByRole('button', { name: 'Past sessions' }).click()
+  await page.getByRole('dialog', { name: 'Past sessions' }).getByRole('button', { name: /Test Club/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Test Club' }).getByRole('button', { name: 'Share standings' })).toBeVisible()
+})

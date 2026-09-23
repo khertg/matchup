@@ -1,6 +1,7 @@
 import { MedalBadge } from '@/components/MedalBadge'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { RepeatStats } from '@/components/RepeatStats'
+import { ShareStandingsDialog } from '@/components/ShareStandingsDialog'
 import { StatsCardDialog } from '@/components/StatsCardDialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -12,14 +13,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDuration } from '@/lib/time'
-import { rankPlayers, type Standing } from '@/rotation/standings'
+import { formatDiff, rankPlayers } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
-
-/** "+5", "-3" or "0"; "-" when no game had a score, so there is no differential to show. */
-function formatDiff({ diff, scoredGames }: Standing): string {
-  if (scoredGames === 0) return '-'
-  return diff > 0 ? `+${diff}` : String(diff)
-}
 
 interface Props {
   session: SessionState
@@ -28,9 +23,11 @@ interface Props {
   readOnly?: boolean
   /** Also show how often partners and opponents repeated. Needs the finished games, which the public live page does not have. */
   repeatStats?: boolean
+  /** Staff only: offer a "Share standings" image, independent of readOnly (Past sessions is read-only but still shareable). */
+  share?: boolean
 }
 
-export function StandingsScreen({ session, location, readOnly = false, repeatStats = false }: Props) {
+export function StandingsScreen({ session, location, readOnly = false, repeatStats = false, share = false }: Props) {
   const standings = rankPlayers(session)
   const date = new Date().toLocaleDateString()
 
@@ -38,7 +35,12 @@ export function StandingsScreen({ session, location, readOnly = false, repeatSta
     <div className="space-y-4">
     <Card>
       <CardHeader>
-        <CardTitle>Standings</CardTitle>
+        <CardTitle className="flex items-center justify-between gap-2">
+          <span>Standings</span>
+          {share && standings.length > 0 && (
+            <ShareStandingsDialog session={session} location={location} standings={standings} date={date} repeatStats={repeatStats} />
+          )}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {standings.length === 0 ? (

@@ -28,6 +28,22 @@ export interface Standing {
   medal: Medal | null
 }
 
+/** "+5", "-3" or "0"; "-" when no game had a score, so there is no differential to show. */
+export function formatDiff({ diff, scoredGames }: Pick<Standing, 'diff' | 'scoredGames'>): string {
+  if (scoredGames === 0) return '-'
+  return diff > 0 ? `+${diff}` : String(diff)
+}
+
+/** Players per share image; also how many row slots a multi-page StandingsCard reserves, so every image in the set is the same size. */
+export const STANDINGS_PAGE_SIZE = 10
+
+/** Split a ranked list into pages of up to `pageSize`, in order, for a share image per page. */
+export function pageStandings(standings: Standing[], pageSize = STANDINGS_PAGE_SIZE): Standing[][] {
+  const pages: Standing[][] = []
+  for (let i = 0; i < standings.length; i += pageSize) pages.push(standings.slice(i, i + pageSize))
+  return pages
+}
+
 const MEDALS: (Medal | null)[] = [null, 'gold', 'silver', 'bronze']
 const EPSILON = 1e-9
 const sameNumber = (a: number, b: number) => Math.abs(a - b) < EPSILON

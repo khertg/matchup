@@ -60,7 +60,7 @@ export function SessionScreen({ session }: { session: SessionState }) {
           <CheckInScreen session={session} />
         </TabsContent>
         <TabsContent value="standings">
-          <StandingsScreen session={session} location={location} repeatStats />
+          <StandingsScreen session={session} location={location} repeatStats share />
         </TabsContent>
       </Tabs>
     </div>

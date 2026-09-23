@@ -8,10 +8,11 @@ describe('formatDuration', () => {
     expect(formatDuration(60)).toBe('1 min')
   })
 
-  it('says "under 1 min" for less than a minute, and clamps negatives', () => {
-    expect(formatDuration(0)).toBe('under 1 min')
-    expect(formatDuration(59)).toBe('under 1 min')
-    expect(formatDuration(-30)).toBe('under 1 min')
+  it('shows whole seconds for less than a minute, and clamps negatives', () => {
+    expect(formatDuration(0)).toBe('0s')
+    expect(formatDuration(45)).toBe('45s')
+    expect(formatDuration(59)).toBe('59s')
+    expect(formatDuration(-30)).toBe('0s')
   })
 
   it('shows hours and padded minutes from an hour up', () => {

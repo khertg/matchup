@@ -382,7 +382,7 @@ test.describe('time played', () => {
   test('an in-play court shows how long the game has been going, and keeps counting', async ({ page }) => {
     await page.clock.install()
     await startSingles(page)
-    await expect(court(page).getByText(/^Playing (under 1|0) min/)).toBeVisible()
+    await expect(court(page).getByText('Playing 0s')).toBeVisible()
 
     await page.clock.fastForward('07:10')
     await expect(court(page).getByText('Playing 7 min')).toBeVisible()
@@ -436,8 +436,8 @@ test.describe('time played', () => {
     await enterScore(page, 11, 6)
 
     await openStandings(page)
-    // Only the second game counts, which lasted a moment: nowhere near the 20 minutes.
-    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText(/^(-|under 1 min)$/)
+    // Only the second game counts, which lasted no time at all: nowhere near the 20 minutes.
+    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText('-')
   })
 
   test('a game already running before the upgrade shows no timer and records no time', async ({ page }) => {
@@ -497,7 +497,7 @@ test.describe('queue wait time', () => {
     await startSession(page, { mode: 'Singles' })
     // Ann and Bob are next up (singles needs 2); Cy is left waiting with a ticking counter.
     await checkIn(page, ['Ann', 'Bob', 'Cy'])
-    await expect(queueRow(page, 'Cy')).toContainText('under 1 min')
+    await expect(queueRow(page, 'Cy')).toContainText('0s')
 
     await page.clock.fastForward('05:00')
     await expect(queueRow(page, 'Cy')).toContainText('5 min')
