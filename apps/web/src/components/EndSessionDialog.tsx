@@ -11,7 +11,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
@@ -25,7 +24,13 @@ import { rankPlayers } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
-export function EndSessionDialog({ session }: { session: SessionState }) {
+interface EndSessionDialogProps {
+  session: SessionState
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDialogProps) {
   const endSession = useSessionStore((s) => s.endSession)
   const [saving, setSaving] = useState(false)
   const podium = rankPlayers(session).filter((row) => row.medal)
@@ -95,10 +100,7 @@ export function EndSessionDialog({ session }: { session: SessionState }) {
   }
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline">End session</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>End this session?</DialogTitle>

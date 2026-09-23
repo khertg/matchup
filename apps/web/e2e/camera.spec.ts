@@ -31,20 +31,6 @@ test.describe('Take photo on a computer uses the camera', () => {
     await expect(avatarOf(queueRow(page, 'Ann'), 'Ann')).toHaveAttribute('data-avatar-kind', 'photo')
   })
 
-  test('the club logo: Take photo, Take picture, then its crop step', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /club logo$/ }).click()
-    await page.getByRole('dialog', { name: 'Club logo' }).getByRole('button', { name: 'Take photo' }).click()
-    await expect(page.getByRole('dialog', { name: 'Take a photo of the logo' })).toBeVisible()
-    await expectLive(page)
-    await page.getByRole('button', { name: 'Take picture' }).click()
-    const crop = page.getByRole('dialog', { name: 'Crop club logo' })
-    await expect(crop).toBeVisible()
-    await expectCameraOff(page)
-    await crop.getByRole('button', { name: 'Use whole picture' }).click()
-    await expect(page.getByText('Club logo updated')).toBeVisible()
-  })
-
   test('Cancel goes back to the editor and switches the camera off', async ({ page }) => {
     const editor = await avatarEditor(page)
     await editor.getByRole('button', { name: 'Take photo' }).click()

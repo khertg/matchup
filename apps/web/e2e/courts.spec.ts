@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addCourt, checkIn, startGame, startSession, recordWin } from './helpers'
+import { addCourt, checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
 const EIGHT = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal']
 
@@ -12,6 +12,7 @@ const courtOrder = (page: Page) =>
 
 /** Open the Manage courts dialog. */
 async function manage(page: Page) {
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'Manage courts' }).click()
   const dialog = page.getByRole('dialog', { name: 'Manage courts' })
   await expect(dialog).toBeVisible()

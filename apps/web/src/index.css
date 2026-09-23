@@ -130,3 +130,10 @@
     @apply font-sans;
     }
 }
+
+@layer utilities {
+  /* Keeps the fixed bottom tab bar clear of the home indicator on notched phones. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

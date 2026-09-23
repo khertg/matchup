@@ -1,3 +1,4 @@
+import { LayoutGridIcon, TrophyIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toCloudError, type LiveRow } from '@/cloud/api'
 import { cloud } from '@/cloud/client'
@@ -8,7 +9,9 @@ import { QueueList } from '@/components/QueueList'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useClubName } from '@/lib/avatars'
 import { matchmakingLabel } from '@/lib/matchmaking'
+import { cn } from '@/lib/utils'
 import { StandingsScreen } from './StandingsScreen'
 
 /** Fallback for networks that block the live stream. */
@@ -35,6 +38,7 @@ function Message({ title, children }: { title: string; children: React.ReactNode
 export function ViewerScreen({ slug }: { slug: string }) {
   const [view, setView] = useState<ViewState>({ kind: 'loading' })
   const [offline, setOffline] = useState(false)
+  const clubName = useClubName()
 
   useEffect(() => {
     if (!cloud) return
@@ -116,9 +120,13 @@ export function ViewerScreen({ slug }: { slug: string }) {
   const updated = new Date(updatedAt).toLocaleTimeString()
 
   return (
-    <div className="space-y-4">
+    // Bottom padding clears the fixed bottom tab bar (its height plus the home-indicator safe area).
+    <div className="space-y-4 pb-[calc(4rem+env(safe-area-inset-bottom))]">
       <header className="min-w-0">
-        <h1 className="break-words text-2xl font-bold">{snapshot.location}</h1>
+        {clubName && <p className="break-words text-2xl font-bold">{clubName}</p>}
+        <h1 className={cn('break-words', clubName ? 'text-sm text-muted-foreground' : 'text-2xl font-bold')}>
+          {snapshot.location}
+        </h1>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <Badge>Live</Badge>
           <Badge variant="secondary">{snapshot.mode === 'doubles' ? 'Doubles' : 'Singles'}</Badge>
@@ -132,11 +140,17 @@ export function ViewerScreen({ slug }: { slug: string }) {
       </header>
 
       <Tabs defaultValue="board">
-        <TabsList className="w-full">
-          <TabsTrigger value="board">Live board</TabsTrigger>
-          <TabsTrigger value="standings">Standings</TabsTrigger>
+        <TabsList variant="bottom-bar">
+          <TabsTrigger value="board">
+            <LayoutGridIcon aria-hidden="true" />
+            Live board
+          </TabsTrigger>
+          <TabsTrigger value="standings">
+            <TrophyIcon aria-hidden="true" />
+            Standings
+          </TabsTrigger>
         </TabsList>
-        <TabsContent value="board" className="mt-4 space-y-4">
+        <TabsContent value="board" className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {session.courts.map((court) => (
               <CourtCard
@@ -155,7 +169,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
           />
           <QueueList session={session} nextUp={snapshot.nextUp} />
         </TabsContent>
-        <TabsContent value="standings" className="mt-4">
+        <TabsContent value="standings">
           <StandingsScreen session={session} location={snapshot.location} readOnly />
         </TabsContent>
       </Tabs>

@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
-import { checkIn, startGame, recordWin, startSession } from './helpers'
+import { checkIn, openSessionMenu, startGame, recordWin, startSession } from './helpers'
 
 /**
  * The app used to be called Matchup and stored its data under `matchup...` names. A device that
@@ -82,6 +82,7 @@ test.describe('data from before the app was renamed', () => {
     await checkIn(page, ['Ann', 'Bob'])
     await startGame(page)
     await recordWin(page)
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()
@@ -111,6 +112,7 @@ test.describe('data from before the app was renamed', () => {
     await expect(roster.getByRole('checkbox', { name: 'Bob' })).toBeVisible()
 
     // Finished sessions came across too.
+    await openSessionMenu(fresh)
     await fresh.getByRole('button', { name: 'End session' }).click()
     await fresh.getByRole('dialog').getByRole('button', { name: /^(Save and end session|End session)$/ }).click()
     await expect(fresh.getByText('Set up an open play session')).toBeVisible()

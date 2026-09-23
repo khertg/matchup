@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame, startSession, recordWin } from './helpers'
+import { queueRow } from './avatarHelpers'
+import { checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
 const FIVE = ['Ann', 'Bob', 'Cy', 'Dee', 'Eve']
 
@@ -58,8 +59,8 @@ test('starts the next four on the court and queues the extra player', async ({ p
   await expect(court.getByText('Team B', { exact: true })).toBeVisible()
   await expect(court.getByText('Eve')).toHaveCount(0)
   await expect(page.getByText('Queue (1)')).toBeVisible()
-  // The only court is busy, so the waiting player sees a wait estimate (12 min average game, 1 court).
-  await expect(page.getByText('~12 min')).toBeVisible()
+  // The only court is busy, so the waiting player sees how long they have been waiting.
+  await expect(queueRow(page, 'Eve')).toContainText('under 1 min')
   // Only Eve is left, so nobody is next up until someone else checks in.
   await expect(page.getByRole('group', { name: 'Next up' }).getByText('Waiting for 3 more players.')).toBeVisible()
 })
@@ -88,7 +89,8 @@ test.describe('cancelling a game', () => {
     await checkIn(page, FIVE)
     await startGame(page)
     const court = page.getByRole('region', { name: 'Court 1', exact: true })
-    await court.getByRole('button', { name: 'Cancel game' }).click()
+    await court.getByRole('button', { name: 'Court menu' }).click()
+    await page.getByRole('button', { name: 'Cancel game' }).click()
     const dialog = page.getByRole('dialog', { name: 'Cancel this game?' })
     await expect(dialog).toBeVisible()
     return { court, dialog }
@@ -111,12 +113,14 @@ test.describe('cancelling a game', () => {
     await expect(dialog).toHaveCount(0)
     await expect(court.getByText('In play')).toBeVisible()
 
-    await court.getByRole('button', { name: 'Cancel game' }).click()
+    await court.getByRole('button', { name: 'Court menu' }).click()
+    await page.getByRole('button', { name: 'Cancel game' }).click()
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
     await expect(court.getByText('In play')).toBeVisible()
 
-    await court.getByRole('button', { name: 'Cancel game' }).click()
+    await court.getByRole('button', { name: 'Court menu' }).click()
+    await page.getByRole('button', { name: 'Cancel game' }).click()
     await page.locator('[data-slot="dialog-overlay"]').click({ position: { x: 4, y: 4 } })
     await expect(dialog).toHaveCount(0)
     await expect(court.getByText('In play')).toBeVisible()
@@ -204,6 +208,21 @@ test('lets a waiting player take a break and come back', async ({ page }) => {
   await expect(page.getByText('Waiting (1) · Playing (4)')).toBeVisible()
 })
 
+test('sends a waiting player on a break from the Board queue\'s menu', async ({ page }) => {
+  await startSession(page)
+  await checkIn(page, FIVE)
+  await startGame(page)
+
+  await expect(page.getByText('Queue (1)')).toBeVisible()
+  await page.getByRole('button', { name: 'Eve menu' }).click()
+  await page.getByRole('button', { name: 'Take a break' }).click()
+  await expect(page.getByText('Queue (0)')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Check-in' }).click()
+  await expect(page.getByText('On a break (1)')).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: 'Eve' }).getByRole('button', { name: 'Back to queue' })).toBeVisible()
+})
+
 test('saves the chosen skill level', async ({ page }) => {
   await startSession(page)
   await page.getByRole('tab', { name: 'Check-in' }).click()
@@ -265,10 +284,16 @@ test('uses the game length from setup and lets it be changed', async ({ page }) 
   await startSession(page, { gameMinutes: 20 })
   await checkIn(page, FIVE)
   await startGame(page)
-  await expect(page.getByText('~20 min')).toBeVisible()
 
+  await openSessionMenu(page)
+  await page.getByRole('button', { name: 'Manage courts' }).click()
+  await expect(page.getByLabel('Game length (min)')).toHaveValue('20')
   await page.getByLabel('Game length (min)').fill('30')
-  await expect(page.getByText('~30 min')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await openSessionMenu(page)
+  await page.getByRole('button', { name: 'Manage courts' }).click()
+  await expect(page.getByLabel('Game length (min)')).toHaveValue('30')
 })
 
 test('keeps the session after a reload', async ({ page }) => {
@@ -300,6 +325,7 @@ test.describe('the End session dialog', () => {
     await checkIn(page, ['Ann', 'Bob'])
     await startGame(page)
     await recordWin(page)
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     const dialog = page.getByRole('dialog', { name: 'End this session?' })
     await expect(dialog).toBeVisible()
@@ -349,6 +375,7 @@ test.describe('the End session dialog', () => {
 
 test('ends the session after confirming', async ({ page }) => {
   await startSession(page)
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
 
   const dialog = page.getByRole('dialog')

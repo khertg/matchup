@@ -5,6 +5,7 @@ import {
   isValidSlug,
   slugify,
 } from '@q2dink/shared'
+import { QrCodeIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toCloudError } from '@/cloud/api'
 import { useClubAuth } from '@/cloud/auth'
@@ -13,7 +14,6 @@ import { useRecoveryCode } from '@/cloud/recovery'
 import { parseFullBackup } from '@/cloud/snapshot'
 import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
 import { SharePanel } from '@/components/SharePanel'
-import { SyncBadge } from '@/components/SyncBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -251,6 +251,7 @@ function SignedIn() {
   const signOut = useClubAuth((s) => s.signOut)
   const loadSession = useSessionStore((s) => s.loadSession)
   const [resumable, setResumable] = useState<{ location: string; session: SessionState } | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
 
   // Look for a session running on another staff device that this one could take over.
   useEffect(() => {
@@ -280,10 +281,7 @@ function SignedIn() {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{club.name}</span>
-        <SyncBadge />
-      </div>
+      <p className="font-medium">{club.name}</p>
       <p className="text-sm text-muted-foreground">
         Live link: <span className="font-mono">{`/club/${club.slug}`}</span>
       </p>
@@ -297,11 +295,14 @@ function SignedIn() {
         </Button>
       )}
       <div className="flex flex-wrap gap-2">
-        <SharePanel />
+        <Button type="button" variant="outline" onClick={() => setShareOpen(true)}>
+          <QrCodeIcon aria-hidden="true" /> Share live view
+        </Button>
         <Button variant="outline" onClick={handleLogOut}>
           Log out
         </Button>
       </div>
+      <SharePanel open={shareOpen} onOpenChange={setShareOpen} />
     </div>
   )
 }

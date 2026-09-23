@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startSession, type PlayerSpec } from './helpers'
+import { checkIn, openSessionMenu, startSession, type PlayerSpec } from './helpers'
 
 /**
  * Save players on the roster by checking them in once, then end that session without
@@ -12,6 +12,7 @@ async function withRoster(
 ) {
   await startSession(page)
   await checkIn(page, players)
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()

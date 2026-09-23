@@ -9,7 +9,6 @@ import { LoginGate } from '@/components/LoginGate'
 import { NavBar } from '@/components/NavBar'
 import { RecoveryCodeHost } from '@/components/RecoveryCodeHost'
 import { Toaster } from '@/components/ui/sonner'
-import { VersionLabel } from '@/components/VersionLabel'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { SetupScreen } from '@/screens/SetupScreen'
 import { ViewerScreen } from '@/screens/ViewerScreen'
@@ -32,9 +31,10 @@ export default function App() {
 
   return (
     // Extra bottom padding lets the last controls scroll clear of the toasts pinned to the screen bottom.
+    // Screens with their own fixed bottom tab bar (SessionScreen, ViewerScreen) add further clearance themselves.
     <AvatarProvider viewerSlug={isViewerPath ? (viewerSlug ?? undefined) : undefined}>
     <NavBar />
-    <main className="mx-auto max-w-5xl p-4 pb-32 sm:p-6 sm:pb-32">
+    <main className="mx-auto max-w-5xl p-4 pb-24 sm:p-6 sm:pb-24">
       {isViewerPath ? (
         viewerSlug ? (
           <ViewerScreen slug={viewerSlug} />
@@ -50,7 +50,6 @@ export default function App() {
       ) : (
         <SetupScreen />
       )}
-      <VersionLabel />
       <RecoveryCodeHost />
       <Toaster />
     </main>

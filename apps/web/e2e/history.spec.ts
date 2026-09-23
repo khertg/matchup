@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame, startSession, recordWin } from './helpers'
+import { checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
 /** Singles on one court: Ann is Team A, so "Team A won" gives Ann the win. */
 async function playOneGame(page: Page, location = 'Sunset Club') {
@@ -11,6 +11,7 @@ async function playOneGame(page: Page, location = 'Sunset Club') {
 }
 
 async function endAndSave(page: Page) {
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()
@@ -60,6 +61,7 @@ test.describe('past sessions', () => {
 
   test('says so when there is nothing yet, and never saves a session nobody joined', async ({ page }) => {
     await startSession(page, { location: 'Empty Night' })
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()
@@ -104,6 +106,7 @@ test.describe('resuming a session', () => {
     await recordWin(page)
     await expect(page.getByText('Court 1: Team A won')).toBeVisible()
     await startGame(page, 'Court 2') // Cy v Dee is on court when it ends
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()

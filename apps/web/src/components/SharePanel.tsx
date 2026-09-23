@@ -1,4 +1,3 @@
-import { QrCode } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -12,13 +11,17 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 
-export function SharePanel({ photoToggle = false }: { photoToggle?: boolean }) {
+interface SharePanelProps {
+  photoToggle?: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function SharePanel({ photoToggle = false, open, onOpenChange }: SharePanelProps) {
   const club = useClubAuth((s) => s.club)
-  const [open, setOpen] = useState(false)
   const [qr, setQr] = useState<string | null>(null)
   const url = club ? viewerUrl(club.slug) : ''
 
@@ -49,12 +52,7 @@ export function SharePanel({ photoToggle = false }: { photoToggle?: boolean }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline">
-          <QrCode /> Share live view
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Share the live board</DialogTitle>

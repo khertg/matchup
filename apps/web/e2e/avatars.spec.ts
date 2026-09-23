@@ -1,10 +1,11 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { checkIn, recordWin, startGame, startSession } from './helpers'
+import { checkIn, openSessionMenu, recordWin, startGame, startSession } from './helpers'
 import { TINY_PNG, avatarOf, openAvatarEditor, queueRow, setEmojiAvatar, setPhotoAvatar, viewAvatar } from './avatarHelpers'
 
 const color = (locator: Locator) => locator.first().evaluate((el) => (el as HTMLElement).style.backgroundColor)
 
 async function endSession(page: import('@playwright/test').Page) {
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: /^(Save and end session|End session)$/ }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()
@@ -270,6 +271,7 @@ test.describe('where avatars are kept and shown', () => {
     await page.getByRole('tab', { name: 'Standings' }).click()
     await expect(avatarOf(page.getByRole('row').filter({ hasText: 'Ann' }), 'Ann')).toHaveAttribute('data-emoji', '🎾')
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     const end = page.getByRole('dialog', { name: 'End this session?' })
     await expect(avatarOf(end.getByRole('listitem').filter({ hasText: 'Ann' }), 'Ann')).toHaveAttribute('data-emoji', '🎾')

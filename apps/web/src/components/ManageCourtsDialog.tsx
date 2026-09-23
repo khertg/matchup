@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Plus, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -9,14 +9,51 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { MAX_COURTS, MAX_COURT_NAME_LENGTH, MIN_COURTS } from '@/rotation/engine'
+import { Label } from '@/components/ui/label'
+import {
+  isValidGameMinutes,
+  MAX_AVG_GAME_MINUTES,
+  MAX_COURTS,
+  MAX_COURT_NAME_LENGTH,
+  MIN_AVG_GAME_MINUTES,
+  MIN_COURTS,
+} from '@/rotation/engine'
 import type { Court, SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'Something went wrong')
+
+function GameLengthControl({ minutes }: { minutes: number }) {
+  const setAvgGameMinutes = useSessionStore((s) => s.setAvgGameMinutes)
+  const [text, setText] = useState(String(minutes))
+  const valid = isValidGameMinutes(Number(text))
+
+  function handleChange(value: string) {
+    setText(value)
+    if (isValidGameMinutes(Number(value))) setAvgGameMinutes(Number(value))
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor="board-game-minutes" className="whitespace-nowrap">
+        Game length (min)
+      </Label>
+      <Input
+        id="board-game-minutes"
+        type="number"
+        inputMode="numeric"
+        min={MIN_AVG_GAME_MINUTES}
+        max={MAX_AVG_GAME_MINUTES}
+        className="w-20"
+        value={text}
+        onChange={(e) => handleChange(e.target.value)}
+        aria-invalid={!valid}
+      />
+    </div>
+  )
+}
 
 interface RowProps {
   court: Court
@@ -155,14 +192,15 @@ function AddCourtButton({ session }: { session: SessionState }) {
   )
 }
 
-export function ManageCourtsDialog({ session }: { session: SessionState }) {
+interface ManageCourtsDialogProps {
+  session: SessionState
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function ManageCourtsDialog({ session, open, onOpenChange }: ManageCourtsDialogProps) {
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline">
-          <SlidersHorizontal /> Manage courts
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Manage courts</DialogTitle>
@@ -170,6 +208,8 @@ export function ManageCourtsDialog({ session }: { session: SessionState }) {
             Rename, reorder or close courts. New games go to the first open court in this order.
           </DialogDescription>
         </DialogHeader>
+
+        <GameLengthControl minutes={session.avgGameMinutes} />
 
         <ul className="space-y-3">
           {session.courts.map((court, index) => (

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { setEmojiAvatar, viewAvatar } from '../avatarHelpers'
 import { failOnCspViolations } from '../cspWatch'
-import { checkIn, recordWin, startGame, startSession } from '../helpers'
+import { checkIn, openSessionMenu, recordWin, startGame, startSession } from '../helpers'
 import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
 
 failOnCspViolations(test)
@@ -27,6 +27,7 @@ async function playAndSave(page: Page) {
   await setEmojiAvatar(page, 'Ann', '🎾')
   await startGame(page)
   await recordWin(page)
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()

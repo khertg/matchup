@@ -7,6 +7,7 @@ import {
   checkOut,
   closeCourt as closeCourtEngine,
   createSession,
+  editMatch as editMatchEngine,
   lockPartners as lockPartnersEngine,
   moveCourt as moveCourtEngine,
   playingIds,
@@ -19,6 +20,7 @@ import {
   setAvgGameMinutes as setAvgGameMinutesEngine,
   renamePlayer as renamePlayerEngine,
   setPlayerSkill as setPlayerSkillEngine,
+  type MatchEdit,
   type NextGroupOptions,
   type ReplacePlayerOptions,
   type SessionOptions,
@@ -65,6 +67,12 @@ interface SessionStore {
    * for equal or out-of-range scores. One change, undone exactly like recordResult.
    */
   recordScore: (courtId: number, scoreA: number, scoreB: number) => void
+  /**
+   * Correct an already-recorded match's score and/or which players were on each team. Recomputes
+   * every player's stats from the whole corrected match history. Throws a RangeError for an
+   * invalid score, or an Error for an out-of-range match index.
+   */
+  editMatch: (matchIndex: number, edit: MatchEdit) => void
   /** Restores the state from before the last result. Returns false if it is no longer safe. */
   undo: () => boolean
   cancelMatch: (courtId: number) => void
@@ -166,7 +174,7 @@ export const useSessionStore = create<SessionStore>()(
 
       checkInPlayer: (player) => {
         const session = requireSession(get().session)
-        const next = checkIn(session, player)
+        const next = checkIn(session, player, Date.now())
         if (next === session) return false
         set({ session: next, previous: null })
         return true
@@ -174,10 +182,11 @@ export const useSessionStore = create<SessionStore>()(
 
       checkInPlayers: (players) => {
         const session = requireSession(get().session)
+        const now = Date.now()
         let next = session
         let added = 0
         for (const player of players) {
-          const after = checkIn(next, player)
+          const after = checkIn(next, player, now)
           if (after !== next) added++
           next = after
         }
@@ -202,6 +211,11 @@ export const useSessionStore = create<SessionStore>()(
         set({ session: state, previous: session })
       },
 
+      editMatch: (matchIndex, edit) => {
+        const session = requireSession(get().session)
+        set({ session: editMatchEngine(session, matchIndex, edit), previous: null })
+      },
+
       undo: () => {
         const { previous } = get()
         if (!previous) return false
@@ -211,7 +225,7 @@ export const useSessionStore = create<SessionStore>()(
 
       cancelMatch: (courtId) => {
         const session = requireSession(get().session)
-        set({ session: cancelMatchEngine(session, courtId), previous: null })
+        set({ session: cancelMatchEngine(session, courtId, Date.now()), previous: null })
       },
 
       startGame: (courtId, options) => {
@@ -239,12 +253,12 @@ export const useSessionStore = create<SessionStore>()(
       closeCourt: (courtId) => {
         const session = requireSession(get().session)
         // A cancelled game's players wait at the front of the queue until staff start a game.
-        set({ session: closeCourtEngine(session, courtId), previous: null })
+        set({ session: closeCourtEngine(session, courtId, Date.now()), previous: null })
       },
 
       replacePlayer: (courtId, outId, inId, options) => {
         const session = requireSession(get().session)
-        set({ session: replacePlayerEngine(session, courtId, outId, inId, options), previous: null })
+        set({ session: replacePlayerEngine(session, courtId, outId, inId, { ...options, now: Date.now() }), previous: null })
       },
 
       replaceNextUp: (outId, inId) => {

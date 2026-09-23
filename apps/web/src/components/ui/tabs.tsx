@@ -28,6 +28,8 @@ const tabsListVariants = cva(
       variant: {
         default: "bg-muted",
         line: "gap-1 bg-transparent",
+        "bottom-bar":
+          "mx-auto flex h-16 w-full max-w-5xl justify-around gap-0 rounded-none bg-transparent p-0 group-data-horizontal/tabs:h-16",
       },
     },
     defaultVariants: {
@@ -42,14 +44,22 @@ function TabsList({
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.List> &
   VariantProps<typeof tabsListVariants>) {
-  return (
+  const list = (
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant={variant}
-      className={cn(tabsListVariants({ variant }), className)}
+      className={cn(tabsListVariants({ variant }), variant === "bottom-bar" ? undefined : className)}
       {...props}
     />
   )
+
+  // The bottom bar's background/border span the full viewport width, like the top nav bar's
+  // header; only the row of tabs inside is capped and centered with the rest of the app's content.
+  if (variant === "bottom-bar") {
+    return <div className={cn("fixed inset-x-0 bottom-0 z-40 border-t bg-card pb-safe", className)}>{list}</div>
+  }
+
+  return list
 }
 
 function TabsTrigger({
@@ -64,6 +74,7 @@ function TabsTrigger({
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
         "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
         "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        "group-data-[variant=bottom-bar]/tabs-list:h-full group-data-[variant=bottom-bar]/tabs-list:flex-col group-data-[variant=bottom-bar]/tabs-list:justify-center group-data-[variant=bottom-bar]/tabs-list:gap-0.5 group-data-[variant=bottom-bar]/tabs-list:rounded-none group-data-[variant=bottom-bar]/tabs-list:border-transparent group-data-[variant=bottom-bar]/tabs-list:bg-transparent group-data-[variant=bottom-bar]/tabs-list:text-[11px] group-data-[variant=bottom-bar]/tabs-list:text-muted-foreground group-data-[variant=bottom-bar]/tabs-list:after:hidden group-data-[variant=bottom-bar]/tabs-list:data-active:bg-transparent group-data-[variant=bottom-bar]/tabs-list:data-active:text-primary dark:group-data-[variant=bottom-bar]/tabs-list:data-active:bg-transparent dark:group-data-[variant=bottom-bar]/tabs-list:data-active:border-transparent",
         className
       )}
       {...props}

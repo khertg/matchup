@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
+import { formatDuration, useNow } from '@/lib/time'
 import type { RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -25,6 +26,8 @@ interface Props {
   onSkillChange?: (playerId: number, skill: SkillLevel) => void
   /** Staff only: tap a player's avatar to change it. */
   editable?: boolean
+  /** Staff only: ms since the epoch each player joined the queue, for a live "waited so far" line. */
+  queuedAt?: Record<number, number>
 }
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
@@ -33,7 +36,8 @@ const TEAM_NAMES = ['Team A', 'Team B'] as const
  * The group that will play next, already split into teams. Staff read it to call
  * people up before starting a game; the live board shows the same card to players.
  */
-export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset, onSkillChange, editable = false }: Props) {
+export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onReplace, picked = false, onReset, onSkillChange, editable = false, queuedAt }: Props) {
+  const now = useNow()
   const half = nextUp.length / 2
   const teams = [nextUp.slice(0, half), nextUp.slice(half)]
 
@@ -66,6 +70,11 @@ export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onRepl
                       <span className="flex min-w-0 items-center gap-2">
                         <PlayerAvatar id={id} name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
                         <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
+                        {queuedAt?.[id] !== undefined && (
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatDuration((now - queuedAt[id]) / 1000)}
+                          </span>
+                        )}
                       </span>
                       {players[id] && (
                         <SkillBadge

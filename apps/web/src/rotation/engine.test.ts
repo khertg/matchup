@@ -7,6 +7,7 @@ import {
   closeCourt,
   createSession,
   defaultCourtName,
+  editMatch,
   estimateWaitMinutes,
   lockPartners,
   lockStatus,
@@ -360,6 +361,50 @@ describe('recordScore', () => {
   })
 })
 
+describe('editMatch', () => {
+  it('corrects a score and re-derives the winner and stats from it', () => {
+    let s = startGame(withPlayers(createSession('singles', 1), 2), 1)
+    s = recordScore(s, 1, 11, 7).state // player 1 wins 11-7
+    expect(s.stats[1]).toMatchObject({ wins: 1, losses: 0, pointsFor: 11, pointsAgainst: 7 })
+    expect(s.stats[2]).toMatchObject({ wins: 0, losses: 1, pointsFor: 7, pointsAgainst: 11 })
+
+    s = editMatch(s, 0, { score: [8, 11] }) // actually player 2 won 11-8
+    expect(s.matches![0]).toMatchObject({ winner: 1, score: [8, 11] })
+    expect(s.stats[1]).toMatchObject({ wins: 0, losses: 1, pointsFor: 8, pointsAgainst: 11 })
+    expect(s.stats[2]).toMatchObject({ wins: 1, losses: 0, pointsFor: 11, pointsAgainst: 8 })
+  })
+
+  it('refuses an invalid score and changes nothing', () => {
+    let s = startGame(withPlayers(createSession('singles', 1), 2), 1)
+    s = recordScore(s, 1, 11, 7).state
+    const snapshot = structuredClone(s)
+    expect(() => editMatch(s, 0, { score: [7, 7] })).toThrow(RangeError)
+    expect(s).toEqual(snapshot)
+  })
+
+  it('reassigning a team moves stats from the old player to the new one', () => {
+    let s = startGame(withPlayers(createSession('singles', 1), 3), 1) // players 1 & 2 play, 3 waits
+    const teams = s.courts[0].teams!
+    s = recordScore(s, 1, 11, 7).state
+    const [a] = teams
+    expect(s.stats[a[0]].games).toBe(1)
+    expect(s.stats[3]).toBeUndefined()
+
+    s = editMatch(s, 0, { teams: [[3], teams[1]] }) // player 3 stands in for the winner
+    expect(s.matches![0].teams).toEqual([[3], teams[1]])
+    expect(s.stats[3]).toMatchObject({ games: 1, wins: 1 })
+    expect(s.stats[a[0]]).toBeUndefined()
+  })
+
+  it('throws for an out-of-range index and does not mutate the state it was given', () => {
+    let s = startGame(withPlayers(createSession('singles', 1), 2), 1)
+    s = recordScore(s, 1, 11, 7).state
+    const snapshot = structuredClone(s)
+    expect(() => editMatch(s, 5, { score: [11, 9] })).toThrow('No match at index 5')
+    expect(s).toEqual(snapshot)
+  })
+})
+
 describe('time played', () => {
   const T0 = 1_000_000
   const started = (mode: 'doubles' | 'singles' = 'doubles') =>
@@ -561,6 +606,82 @@ describe('replacePlayer', () => {
     const five = fillCourts(withPlayers(createSession('doubles', 1), 5))
     expect(() => replacePlayer(five, 1, 5, 5)).toThrow('not playing')
     expect(() => replacePlayer(five, 1, 1, 3)).toThrow('Substitute')
+  })
+})
+
+describe('queue wait time', () => {
+  it('checkIn stamps a newly queued player, and leaves an already-queued player alone', () => {
+    let s = createSession('doubles', 1)
+    s = checkIn(s, player(1), 1000)
+    expect(s.queuedAt).toEqual({ 1: 1000 })
+    s = checkIn(s, player(1), 2000)
+    expect(s.queuedAt).toEqual({ 1: 1000 })
+  })
+
+  it('records nothing when no `now` is given', () => {
+    const s = checkIn(createSession('doubles', 1), player(1))
+    expect(s.queuedAt).toBeUndefined()
+  })
+
+  it('checkOut clears the stamp', () => {
+    const s = checkOut(checkIn(createSession('doubles', 1), player(1), 1000), 1)
+    expect(s.queuedAt).toEqual({})
+  })
+
+  it('startGame records how long each starting player had waited, and stops tracking them as queued', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), id * 1000)
+    s = startGame(s, 1, { now: 10_000 })
+    expect(s.courts[0].waited).toEqual({ 1: 9, 2: 8, 3: 7, 4: 6 })
+    expect(s.queuedAt).toEqual({})
+  })
+
+  it('does not record a wait for a player whose queue-join time is unknown', () => {
+    const s = startGame(withPlayers(createSession('doubles', 1), 4), 1, { now: 10_000 })
+    expect(s.courts[0].waited).toBeUndefined()
+  })
+
+  it('carries the pre-game wait into the finished match, and restarts the wait for returning players', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)
+    s = startGame(s, 1, { now: 10_000 })
+    const { state } = recordResult(s, 1, 0, { now: 40_000 })
+    expect(state.matches![0].waited).toEqual({ 1: 10, 2: 10, 3: 10, 4: 10 })
+    expect(state.queuedAt).toEqual({ 1: 40_000, 2: 40_000, 3: 40_000, 4: 40_000 })
+  })
+
+  it('cancelMatch restarts the wait for the returning players', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)
+    s = startGame(s, 1, { now: 10_000 })
+    const cancelled = cancelMatch(s, 1, 20_000)
+    expect(cancelled.queuedAt).toEqual({ 1: 20_000, 2: 20_000, 3: 20_000, 4: 20_000 })
+  })
+
+  it('closeCourt restarts the wait for the players on a cancelled game', () => {
+    let s = createSession('doubles', 2)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)
+    s = startGame(s, 1, { now: 10_000 })
+    const closed = closeCourt(s, 1, 20_000)
+    expect(closed.queuedAt).toEqual({ 1: 20_000, 2: 20_000, 3: 20_000, 4: 20_000 })
+  })
+
+  it('replacePlayer records the substitute\'s own wait and restarts the leaver\'s', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 6; id++) s = checkIn(s, player(id), id * 1000)
+    s = startGame(s, 1, { now: 10_000 })
+    const r = replacePlayer(s, 1, 1, 5, { now: 20_000 })
+    expect(r.courts[0].waited).toEqual({ 2: 8, 3: 7, 4: 6, 5: 15 })
+    expect(r.queuedAt).toEqual({ 1: 20_000, 6: 6000 })
+  })
+
+  it('replacePlayer clears the leaver\'s wait entirely when they go on a break', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 5; id++) s = checkIn(s, player(id), id * 1000)
+    s = startGame(s, 1, { now: 10_000 })
+    const r = replacePlayer(s, 1, 1, 5, { sendOnBreak: true, now: 20_000 })
+    expect(r.courts[0].waited).toEqual({ 2: 8, 3: 7, 4: 6, 5: 15 })
+    expect(r.queuedAt).toEqual({})
   })
 })
 

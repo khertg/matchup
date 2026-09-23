@@ -10,15 +10,15 @@ test.describe('version number', () => {
     await expect(page.getByTestId('app-version')).toHaveText(VERSION)
   })
 
-  test('is shown while a session is running, and keeps to the bottom of the page', async ({ page }) => {
+  test('is shown while a session is running, in the header above the bottom tab bar', async ({ page }) => {
     await startSession(page)
     await checkIn(page, ['Ann', 'Bob'])
     const label = page.getByTestId('app-version')
     await expect(label).toHaveText(VERSION)
-    // Below the content, never on top of it.
+    // In the sticky header, never behind the fixed bottom tab bar.
     const box = (await label.boundingBox())!
     const tabs = (await page.getByRole('tablist').boundingBox())!
-    expect(box.y).toBeGreaterThan(tabs.y + tabs.height)
+    expect(box.y).toBeLessThan(tabs.y)
   })
 
   test('says which build it is when hovered, with the full details', async ({ page }) => {

@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 import { failOnCspViolations } from '../cspWatch'
-import { setLogo } from '../avatarHelpers'
 import { apiCreateClub, apiPublish, bearer, expectSignedIn, storedToken, uiCreateClub, uiLogin, uniqueClub } from './support'
 
 failOnCspViolations(test)
@@ -16,7 +15,7 @@ test.describe('the login gate', () => {
     await expect(page.getByRole('button', { name: 'Create a club' })).toBeVisible()
     // Nothing of the app behind it.
     await expect(page.getByRole('button', { name: 'Start session' })).toHaveCount(0)
-    await expect(page.getByLabel('Location')).toHaveCount(0)
+    await expect(page.getByLabel('Session name')).toHaveCount(0)
     await expect(page.getByText('Cloud club')).toHaveCount(0)
   })
 
@@ -45,7 +44,7 @@ test.describe('the login gate', () => {
     await expect(page.getByRole('alert')).toHaveText('Wrong club URL or password.')
     await page.keyboard.press('Escape')
     await expect(gate(page)).toBeVisible()
-    await expect(page.getByLabel('Location')).toHaveCount(0)
+    await expect(page.getByLabel('Session name')).toHaveCount(0)
   })
 
   test('logging in opens the setup screen, and a reload stays logged in without asking again', async ({ page, request }) => {
@@ -54,7 +53,7 @@ test.describe('the login gate', () => {
     await page.goto('/')
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await expect(page.getByLabel('Location')).toBeVisible()
+    await expect(page.getByLabel('Session name')).toBeVisible()
     await expect(gate(page)).toHaveCount(0)
 
     await page.reload()
@@ -68,7 +67,7 @@ test.describe('the login gate', () => {
     // The code is shown by the app, not by the login screen that is gone the moment the club exists.
     await uiCreateClub(page, club)
     await expectSignedIn(page)
-    await expect(page.getByLabel('Location')).toBeVisible()
+    await expect(page.getByLabel('Session name')).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(page.getByText('Players can follow along at').first()).toBeVisible()
 
@@ -90,16 +89,13 @@ test.describe('the login gate', () => {
     await page.goto('/')
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await setLogo(page)
-    await expect(page.getByTestId('club-logo')).toBeVisible()
 
     await page.getByRole('button', { name: 'Log out' }).click()
     await expect(gate(page)).toBeVisible()
-    await expect(page.getByLabel('Location')).toHaveCount(0)
+    await expect(page.getByLabel('Session name')).toHaveCount(0)
 
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await expect(page.getByTestId('club-logo')).toBeVisible()
   })
 
   test('a login that was ended on the server sends the device back to the login screen at launch', async ({ page, request }) => {
@@ -130,7 +126,7 @@ test.describe('the login gate', () => {
 
     await expect(gate(page)).toHaveCount(0)
     await expectSignedIn(page)
-    await page.getByLabel('Location').fill('No signal')
+    await page.getByLabel('Session name').fill('No signal')
     await page.getByRole('button', { name: 'Start session' }).click()
     await expect(page.getByRole('heading', { name: 'No signal' })).toBeVisible()
   })

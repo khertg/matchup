@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addCourt, checkIn, startGame, recordWin } from '../helpers'
+import { addCourt, checkIn, openSessionMenu, startGame, recordWin } from '../helpers'
 import {
   apiCreateClub,
   apiLive,
@@ -19,7 +19,7 @@ async function signInAndStart(page: Page, club: TestClub, location = 'Test Sessi
   await page.goto('/')
   await uiLogin(page, club)
   await expectSignedIn(page)
-  await page.getByLabel('Location').fill(location)
+  await page.getByLabel('Session name').fill(location)
   await page.getByRole('button', { name: 'Start session' }).click()
   await expect(page.getByRole('heading', { name: location })).toBeVisible()
 }
@@ -58,7 +58,7 @@ test.describe('club sign-in', () => {
     await expect(recovery.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await confirmRecoveryCode(page)
 
-    await expect(page.getByRole('banner').getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
     await expect(page.getByText(`/club/${club.slug}`, { exact: true })).toBeVisible()
 
     // The club really exists on the server.
@@ -87,7 +87,7 @@ test.describe('club sign-in', () => {
     await page.goto('/')
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await expect(page.getByRole('banner').getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
 
     await page.reload()
     await expectSignedIn(page)
@@ -164,7 +164,7 @@ test.describe('password recovery', () => {
     const newCode = await confirmRecoveryCode(page)
     expect(newCode).not.toBe(recoveryCode)
     await expectSignedIn(page)
-    await expect(page.getByRole('banner').getByText(club.name, { exact: true })).toBeVisible()
+    await expect(page.getByText(club.name, { exact: true })).toBeVisible()
 
     const oldPassword = await request.post(`/api/clubs/${club.slug}/login`, { data: { password: club.password } })
     expect(oldPassword.status()).toBe(401)
@@ -242,7 +242,7 @@ test.describe('publishing the live session', () => {
     // The private backup, only for staff, keeps everything.
     const backup = await request.get('/api/session', { headers: bearer(await storedToken(page)) })
     expect(await backup.text()).toContain('gender')
-    await expect(page.getByRole('status')).toHaveText('Live and synced')
+    await expect(page.getByTestId('sync-status')).toHaveText('Synced')
   })
 
   test('publishes a whole roster check-in as one update carrying everyone', async ({ page, request }) => {
@@ -250,9 +250,10 @@ test.describe('publishing the live session', () => {
     await apiCreateClub(request, club)
     await signInAndStart(page, club, 'Regulars')
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
-    await page.getByLabel('Location').fill('Regulars Again')
+    await page.getByLabel('Session name').fill('Regulars Again')
     await page.getByRole('button', { name: 'Start session' }).click()
     await expect(page.getByRole('heading', { name: 'Regulars Again' })).toBeVisible()
     await expect.poll(queueLength(request, club.slug)).toBe(0)
@@ -266,7 +267,7 @@ test.describe('publishing the live session', () => {
     await page.getByRole('button', { name: 'Check in 4 players' }).click()
 
     await expect.poll(queueLength(request, club.slug)).toBe(4)
-    await expect(page.getByRole('status')).toHaveText('Live and synced')
+    await expect(page.getByTestId('sync-status')).toHaveText('Synced')
     expect(publishes).toHaveLength(1)
   })
 
@@ -278,13 +279,13 @@ test.describe('publishing the live session', () => {
 
     await context.setOffline(true)
     await checkIn(page, ['Ann', 'Bob'])
-    await expect(page.getByRole('status')).toHaveText('Offline, will sync')
+    await expect(page.getByTestId('sync-status')).toHaveText('Offline, will sync')
     await page.waitForTimeout(1500)
     expect(await queueLength(request, club.slug)()).toBe(0) // the board has not changed yet
 
     await context.setOffline(false)
     await expect.poll(queueLength(request, club.slug)).toBe(2)
-    await expect(page.getByRole('status')).toHaveText('Live and synced')
+    await expect(page.getByTestId('sync-status')).toHaveText('Synced')
   })
 
   test('takes the board down when the session ends', async ({ page, request }) => {
@@ -293,6 +294,7 @@ test.describe('publishing the live session', () => {
     await signInAndStart(page, club)
     await expect.poll(async () => (await apiLive(request, club.slug)).status()).toBe(200)
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
     await expect.poll(async () => (await apiLive(request, club.slug)).status()).toBe(404)
@@ -332,6 +334,7 @@ test.describe('sharing', () => {
     await apiCreateClub(request, club)
     await signInAndStart(page, club)
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'Share live view' }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByLabel('Live board link')).toHaveValue(`http://localhost:4174/club/${club.slug}`)
@@ -375,6 +378,7 @@ test.describe('two browsers', () => {
     await viewer.getByRole('tab', { name: 'Standings' }).click()
     await expect(viewer.getByRole('row').nth(1)).toContainText('Gold medal', { timeout: 8000 })
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(viewer.getByText('No game in progress')).toBeVisible({ timeout: 8000 })
@@ -457,6 +461,7 @@ test.describe('managing courts', () => {
     await addCourt(page)
     await expectCourts(['Court 1', 'Court 2', 'Court 3', 'Court 4', 'Court 5'])
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'Manage courts' }).click()
     const dialog = page.getByRole('dialog', { name: 'Manage courts' })
     const field = dialog.getByLabel('Name of Court 1')
@@ -546,6 +551,7 @@ test.describe('club leaderboard', () => {
     await checkIn(page, ['Ann', 'Bob'])
     await startGame(page)
     await recordWin(page)
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   }

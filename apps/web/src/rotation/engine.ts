@@ -5,6 +5,7 @@ import type {
   Court,
   GameMode,
   MatchmakingMode,
+  MatchRecord,
   PendingPartners,
   PlayerStats,
   RosterPlayer,
@@ -152,15 +153,16 @@ export function moveCourt(state: SessionState, courtId: number, offset: -1 | 1):
  * Close a court. A game in progress is cancelled with no result and its players
  * go back to the front of the queue. A session always keeps at least one court.
  */
-export function closeCourt(state: SessionState, courtId: number): SessionState {
+export function closeCourt(state: SessionState, courtId: number, now?: number): SessionState {
   const court = findCourt(state, courtId)
   if (state.courts.length <= MIN_COURTS) throw new RangeError('A session needs at least one court')
-  return {
+  const base = {
     ...state,
     courts: state.courts.filter((c) => c.id !== courtId),
     // The cancelled game records no time.
     queue: court.teams ? [...court.teams.flat(), ...state.queue] : state.queue,
   }
+  return court.teams ? withQueuedAt(base, court.teams.flat(), now) : base
 }
 
 /**
@@ -219,14 +221,18 @@ const isPlaying = (state: SessionState, id: number) => playingIds(state).include
  * Check a player in (or back in from a break). They join the back of the
  * queue, so late arrivals never jump ahead. No-op if already queued or playing.
  */
-export function checkIn(state: SessionState, player: RosterPlayer): SessionState {
+export function checkIn(state: SessionState, player: RosterPlayer, now?: number): SessionState {
   if (state.queue.includes(player.id) || isPlaying(state, player.id)) return state
-  return {
-    ...state,
-    players: { ...state.players, [player.id]: player },
-    queue: [...state.queue, player.id],
-    onBreak: state.onBreak.filter((id) => id !== player.id),
-  }
+  return withQueuedAt(
+    {
+      ...state,
+      players: { ...state.players, [player.id]: player },
+      queue: [...state.queue, player.id],
+      onBreak: state.onBreak.filter((id) => id !== player.id),
+    },
+    [player.id],
+    now,
+  )
 }
 
 /** Move a waiting player to a break. Players on a court must be replaced instead. */
@@ -235,11 +241,14 @@ export function checkOut(state: SessionState, playerId: number): SessionState {
     throw new Error('Player is on a court; use replacePlayer first')
   }
   if (!state.queue.includes(playerId)) return state
-  return {
-    ...withoutPickIncluding(state, playerId),
-    queue: state.queue.filter((id) => id !== playerId),
-    onBreak: [...state.onBreak, playerId],
-  }
+  return withoutQueuedAt(
+    {
+      ...withoutPickIncluding(state, playerId),
+      queue: state.queue.filter((id) => id !== playerId),
+      onBreak: [...state.onBreak, playerId],
+    },
+    [playerId],
+  )
 }
 
 /** The group that would play next, already split into teams. */
@@ -341,15 +350,24 @@ export function startGame(state: SessionState, courtId: number, options: StartGa
   if (court.teams) throw new Error(`${court.name} already has a game in progress`)
   const group = nextGroup(state, options)
   if (!group) throw new Error('Not enough players are waiting to start a game')
-  return {
-    ...withoutPick(state),
-    courts: state.courts.map((c) =>
-      c.id === courtId
-        ? { ...c, teams: group.teams, ...(options.now === undefined ? {} : { startedAt: options.now }) }
-        : c,
-    ),
-    queue: state.queue.filter((id) => !group.players.includes(id)),
-  }
+  const waited = waitedSeconds(state.queuedAt, group.players, options.now)
+  return withoutQueuedAt(
+    {
+      ...withoutPick(state),
+      courts: state.courts.map((c) =>
+        c.id === courtId
+          ? {
+              ...c,
+              teams: group.teams,
+              ...(options.now === undefined ? {} : { startedAt: options.now }),
+              ...(waited ? { waited } : {}),
+            }
+          : c,
+      ),
+      queue: state.queue.filter((id) => !group.players.includes(id)),
+    },
+    group.players,
+  )
 }
 
 export interface GameResult {
@@ -452,6 +470,41 @@ function settlePendingLocks(
 }
 
 /**
+ * Every player's stats, recomputed from scratch by replaying the match list in order. Shared by
+ * finishGame (a new match appended) and editMatch (an existing one corrected) so both always agree.
+ */
+function computeStats(matches: MatchRecord[], players: Record<number, RosterPlayer>): Record<number, PlayerStats> {
+  const stats: Record<number, PlayerStats> = {}
+  const averageSkill = (ids: number[]) =>
+    ids.reduce((sum, id) => sum + (players[id]?.skill ?? 0), 0) / ids.length
+  for (const match of matches) {
+    const { teams, winner, score, seconds } = match
+    const loser = winner === 0 ? 1 : 0
+    const tally = (ids: number[], opponents: number[], won: boolean) => {
+      const opponentSkill = averageSkill(opponents)
+      const pointsFor = score?.[won ? winner : loser] ?? 0
+      const pointsAgainst = score?.[won ? loser : winner] ?? 0
+      for (const id of ids) {
+        const prev = stats[id] ?? EMPTY_STATS
+        stats[id] = {
+          games: prev.games + 1,
+          wins: prev.wins + (won ? 1 : 0),
+          losses: prev.losses + (won ? 0 : 1),
+          opponentSkill: prev.opponentSkill + opponentSkill,
+          pointsFor: prev.pointsFor + pointsFor,
+          pointsAgainst: prev.pointsAgainst + pointsAgainst,
+          scoredGames: prev.scoredGames + (score ? 1 : 0),
+          secondsPlayed: prev.secondsPlayed + seconds,
+        }
+      }
+    }
+    tally(teams[winner], teams[loser], true)
+    tally(teams[loser], teams[winner], false)
+  }
+  return stats
+}
+
+/**
  * Shared by recordResult and recordScore. The game's time is credited to whoever is on the court
  * when it ends: a substitute made mid-game gets all of it and the player who left gets none.
  */
@@ -468,73 +521,86 @@ function finishGame(
   const winners = court.teams[winner]
   const losers = court.teams[loser]
   const seconds = gameSeconds(court, now)
-  const stats = { ...state.stats }
-  const averageSkill = (ids: number[]) =>
-    ids.reduce((sum, id) => sum + state.players[id].skill, 0) / ids.length
-  const tally = (ids: number[], opponents: number[], won: boolean) => {
-    const opponentSkill = averageSkill(opponents)
-    const pointsFor = score?.[won ? winner : loser] ?? 0
-    const pointsAgainst = score?.[won ? loser : winner] ?? 0
-    for (const id of ids) {
-      const prev = stats[id] ?? EMPTY_STATS
-      stats[id] = {
-        games: prev.games + 1,
-        wins: prev.wins + (won ? 1 : 0),
-        losses: prev.losses + (won ? 0 : 1),
-        opponentSkill: prev.opponentSkill + opponentSkill,
-        pointsFor: prev.pointsFor + pointsFor,
-        pointsAgainst: prev.pointsAgainst + pointsAgainst,
-        scoredGames: prev.scoredGames + (score ? 1 : 0),
-        secondsPlayed: prev.secondsPlayed + seconds,
-      }
-    }
-  }
-  tally(winners, losers, true)
-  tally(losers, winners, false)
+  const matches = [
+    ...(state.matches ?? []),
+    {
+      courtName: court.name,
+      teams: court.teams,
+      winner,
+      ...(score ? { score } : {}),
+      seconds,
+      ...(now === undefined ? {} : { endedAt: now }),
+      ...(court.waited ? { waited: court.waited } : {}),
+    },
+  ]
   const locks = settlePendingLocks(state, [...winners, ...losers])
   return {
     winners,
     losers,
-    state: {
-      ...state,
-      ...locks,
-      courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
-      queue: [...state.queue, ...winners, ...losers],
-      lastResult: {
-        ...state.lastResult,
-        ...Object.fromEntries(winners.map((id) => [id, 'W' as const])),
-        ...Object.fromEntries(losers.map((id) => [id, 'L' as const])),
-      },
-      stats,
-      matches: [
-        ...(state.matches ?? []),
-        {
-          courtName: court.name,
-          teams: court.teams,
-          winner,
-          ...(score ? { score } : {}),
-          seconds,
-          ...(now === undefined ? {} : { endedAt: now }),
+    state: withQueuedAt(
+      {
+        ...state,
+        ...locks,
+        courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
+        queue: [...state.queue, ...winners, ...losers],
+        lastResult: {
+          ...state.lastResult,
+          ...Object.fromEntries(winners.map((id) => [id, 'W' as const])),
+          ...Object.fromEntries(losers.map((id) => [id, 'L' as const])),
         },
-      ],
-    },
+        stats: computeStats(matches, state.players),
+        matches,
+      },
+      [...winners, ...losers],
+      now,
+    ),
   }
 }
 
+export interface MatchEdit {
+  teams?: Teams
+  score?: [number, number]
+}
+
+/**
+ * Correct an already-recorded match's score and/or which players were on each team. Recomputes
+ * every player's stats from the whole corrected match history, since stats are otherwise only
+ * ever added to as games finish.
+ */
+export function editMatch(state: SessionState, matchIndex: number, edit: MatchEdit): SessionState {
+  const matches = state.matches ?? []
+  const existing = matches[matchIndex]
+  if (!existing) throw new Error(`No match at index ${matchIndex}`)
+  if (edit.score) {
+    const problem = scoreProblem(edit.score[0], edit.score[1])
+    if (problem) throw new RangeError(problem)
+  }
+  const winner = edit.score ? (edit.score[0] > edit.score[1] ? 0 : 1) : existing.winner
+  const updated: MatchRecord = { ...existing, ...edit, winner }
+  const newMatches = matches.map((m, i) => (i === matchIndex ? updated : m))
+  return { ...state, matches: newMatches, stats: computeStats(newMatches, state.players) }
+}
+
 /** Abandon a game without a result or a time. Its players return to the front of the queue. */
-export function cancelMatch(state: SessionState, courtId: number): SessionState {
+export function cancelMatch(state: SessionState, courtId: number, now?: number): SessionState {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams) throw new Error(`Court ${courtId} has no game in progress`)
-  return {
-    ...state,
-    courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
-    queue: [...court.teams.flat(), ...state.queue],
-  }
+  return withQueuedAt(
+    {
+      ...state,
+      courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
+      queue: [...court.teams.flat(), ...state.queue],
+    },
+    court.teams.flat(),
+    now,
+  )
 }
 
 export interface ReplacePlayerOptions {
   /** Send the player who comes off on a break. Otherwise they go to the front of the queue. */
   sendOnBreak?: boolean
+  /** When the substitution happened, so the incoming player's pre-game wait can be recorded. */
+  now?: number
 }
 
 /**
@@ -547,7 +613,7 @@ export function replacePlayer(
   courtId: number,
   outId: number,
   inId: number | undefined = state.queue[0],
-  { sendOnBreak = false }: ReplacePlayerOptions = {},
+  { sendOnBreak = false, now }: ReplacePlayerOptions = {},
 ): SessionState {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams?.flat().includes(outId)) {
@@ -558,15 +624,27 @@ export function replacePlayer(
   }
   const swap = (side: number[]) => side.map((id) => (id === outId ? inId : id))
   const waiting = state.queue.filter((id) => id !== inId)
-  return {
+  const incomingWaited = waitedSeconds(state.queuedAt, [inId], now)
+  const waited = { ...court.waited }
+  delete waited[outId]
+  if (incomingWaited) Object.assign(waited, incomingWaited)
+  const hasWaited = Object.keys(waited).length > 0
+  const base = {
     // Whoever comes off is no longer bound to their partner, whether the lock is in force or waiting.
     ...withoutLocks(withoutPickIncluding(state, inId), [outId]),
-    courts: state.courts.map((c) =>
-      c.id === courtId ? { ...c, teams: [swap(court.teams![0]), swap(court.teams![1])] } : c,
-    ),
+    courts: state.courts.map((c) => {
+      if (c.id !== courtId) return c
+      const { waited: _old, ...rest } = c
+      const teams: Teams = [swap(court.teams![0]), swap(court.teams![1])]
+      return { ...rest, teams, ...(hasWaited ? { waited } : {}) }
+    }),
     queue: sendOnBreak ? waiting : [outId, ...waiting],
     onBreak: sendOnBreak ? [...state.onBreak, outId] : state.onBreak,
   }
+  const withoutIncoming = withoutQueuedAt(base, [inId])
+  return sendOnBreak
+    ? withoutQueuedAt(withoutIncoming, [outId])
+    : withQueuedAt(withoutIncoming, [outId], now)
 }
 
 /** Where a partner is, when they are not waiting: on a named court, or on a break. */
@@ -612,6 +690,33 @@ function withoutLocks(state: SessionState, ids: number[]): SessionState {
     partners: state.partners.filter((pair) => !pair.some((id) => ids.includes(id))),
     ...(pending.length > 0 ? { pendingPartners: pending } : {}),
   }
+}
+
+/** The state with these players' queue-wait timestamps removed: they are no longer waiting. */
+function withoutQueuedAt(state: SessionState, ids: number[]): SessionState {
+  if (!state.queuedAt) return state
+  const queuedAt = Object.fromEntries(Object.entries(state.queuedAt).filter(([id]) => !ids.includes(Number(id))))
+  return { ...state, queuedAt }
+}
+
+/** The state with these players stamped as newly queued, when `now` is known. Clears any stale entry first. */
+function withQueuedAt(state: SessionState, ids: number[], now: number | undefined): SessionState {
+  const cleared = withoutQueuedAt(state, ids)
+  if (now === undefined) return cleared
+  return { ...cleared, queuedAt: { ...cleared.queuedAt, ...Object.fromEntries(ids.map((id) => [id, now])) } }
+}
+
+/** Whole seconds each of these players had waited, for those with a known queue-join time. Undefined if none. */
+function waitedSeconds(
+  queuedAt: Record<number, number> | undefined,
+  ids: number[],
+  now: number | undefined,
+): Record<number, number> | undefined {
+  if (!queuedAt || now === undefined) return undefined
+  const entries = ids
+    .filter((id) => queuedAt[id] !== undefined)
+    .map((id) => [id, Math.max(0, Math.floor((now - queuedAt[id]) / 1000))] as const)
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
 /**

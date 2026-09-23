@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { queueRow, viewAvatar } from './avatarHelpers'
-import { checkIn, recordWin, startGame, startSession } from './helpers'
+import { checkIn, openSessionMenu, recordWin, startGame, startSession } from './helpers'
 
 async function endSession(page: Page) {
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: /^(Save and end session|End session)$/ }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()

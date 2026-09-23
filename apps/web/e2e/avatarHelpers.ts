@@ -48,15 +48,3 @@ export async function setPhotoAvatar(page: Page, name: string, file = TINY_PNG) 
   await dialog.getByRole('button', { name: 'Save avatar' }).click()
   await expect(dialog).toHaveCount(0)
 }
-
-/** Give the club a logo from a picture file, through the setup screen. */
-export async function setLogo(page: Page, file = TINY_PNG) {
-  await page.getByRole('button', { name: /club logo$/ }).click()
-  const dialog = page.getByRole('dialog', { name: 'Club logo' })
-  await dialog.getByLabel('Choose a logo file').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: file })
-  // The optional crop step comes next: keep the whole picture.
-  await page.getByRole('dialog', { name: 'Crop club logo' }).getByRole('button', { name: 'Use whole picture' }).click()
-  await expect(page.getByText('Club logo updated')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-}

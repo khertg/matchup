@@ -1,8 +1,9 @@
-import { Lock } from 'lucide-react'
+import { Lock, MoreVerticalIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CancelGameDialog } from '@/components/CancelGameDialog'
 import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
 import { ScoreDialog } from '@/components/ScoreDialog'
@@ -69,14 +70,36 @@ export function CourtCard({
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate">{court.name}</span>
-          {court.teams ? <Badge>In play</Badge> : <Badge variant="outline">Open</Badge>}
+          <div className="flex shrink-0 items-center gap-2">
+            {court.teams && court.startedAt !== undefined && <Elapsed startedAt={court.startedAt} />}
+            {court.teams ? <Badge>In play</Badge> : <Badge variant="outline">Open</Badge>}
+            {court.teams && !readOnly && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Court menu">
+                    <MoreVerticalIcon aria-hidden="true" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-40 p-1">
+                  <PopoverClose asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full justify-start"
+                      onClick={() => setConfirmingCancel(true)}
+                    >
+                      Cancel game
+                    </Button>
+                  </PopoverClose>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {court.teams ? (
           <>
-            {/* A game from before start times were tracked has none, so no timer. */}
-            {court.startedAt !== undefined && <Elapsed startedAt={court.startedAt} />}
             {court.teams.map((team, i) => (
               <div
                 key={TEAM_NAMES[i]}
@@ -96,6 +119,11 @@ export function CourtCard({
                       <span className="flex min-w-0 flex-1 items-center gap-2">
                         {players[id] && <PlayerAvatar id={id} name={players[id].name} size="sm" editable={!readOnly} viewable />}
                         <span className="min-w-0 truncate">{players[id]?.name}</span>
+                        {court.waited?.[id] !== undefined && (
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            Waited {formatDuration(court.waited[id])}
+                          </span>
+                        )}
                       </span>
                       {players[id] && (
                         <SkillBadge
@@ -135,9 +163,6 @@ export function CourtCard({
                   onClose={() => setPendingWinner(null)}
                   onSubmit={(a, b) => onScore?.(a, b)}
                 />
-                <Button variant="ghost" className="w-full" onClick={() => setConfirmingCancel(true)}>
-                  Cancel game
-                </Button>
                 <CancelGameDialog
                   courtName={court.name}
                   players={court.teams.flat().length}

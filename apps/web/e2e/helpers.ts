@@ -26,7 +26,7 @@ export async function startSession(
   } = {},
 ) {
   await page.goto('/')
-  await page.getByLabel('Location').fill(location)
+  await page.getByLabel('Session name').fill(location)
   await page.getByLabel('Number of courts (1 to 15)').fill(String(courts))
   await page.getByRole('button', { name: mode }).click()
   if (matchmaking) await choose(page, 'Matchmaking', matchmaking)
@@ -89,15 +89,28 @@ export async function recordWin(
 export async function cancelGame(page: Page, courtName = 'Court 1') {
   await page
     .getByRole('region', { name: courtName, exact: true })
-    .getByRole('button', { name: 'Cancel game' })
+    .getByRole('button', { name: 'Court menu' })
     .click()
+  await page.getByRole('button', { name: 'Cancel game' }).click()
   const dialog = page.getByRole('dialog', { name: 'Cancel this game?' })
   await dialog.getByRole('button', { name: 'Cancel game' }).click()
   await expect(dialog).toHaveCount(0)
 }
 
+/** Open the session menu (Manage courts / Share live view / End session). */
+export async function openSessionMenu(page: Page) {
+  await page.getByRole('button', { name: 'Session menu' }).click()
+}
+
+/** Open the End session confirmation dialog. Leaves it open. */
+export async function openEndSessionDialog(page: Page) {
+  await openSessionMenu(page)
+  await page.getByRole('button', { name: 'End session' }).click()
+}
+
 /** Add a court the only way the app offers: through Manage courts. Leaves the dialog closed. */
 export async function addCourt(page: Page) {
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'Manage courts' }).click()
   const dialog = page.getByRole('dialog', { name: 'Manage courts' })
   await dialog.getByRole('button', { name: 'Add court' }).click()

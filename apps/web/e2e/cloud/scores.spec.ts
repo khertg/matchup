@@ -15,7 +15,7 @@ test.describe('scores on the live board', () => {
     await page.goto('/')
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await page.getByLabel('Location').fill('Scored Night')
+    await page.getByLabel('Session name').fill('Scored Night')
     await page.getByRole('button', { name: 'Singles' }).click()
     await page.getByRole('button', { name: 'Start session' }).click()
     await expect(page.getByRole('heading', { name: 'Scored Night' })).toBeVisible()

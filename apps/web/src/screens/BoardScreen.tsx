@@ -1,55 +1,15 @@
-import { useState } from 'react'
 import { toast } from 'sonner'
 import { CourtCard } from '@/components/CourtCard'
-import { ManageCourtsDialog } from '@/components/ManageCourtsDialog'
 import { MatchLog } from '@/components/MatchLog'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { waitingMessage } from '@/lib/nextUp'
 import { useSkillEditor } from '@/lib/useSkillEditor'
-import {
-  isValidGameMinutes,
-  MAX_AVG_GAME_MINUTES,
-  MIN_AVG_GAME_MINUTES,
-  isNextUpPicked,
-  nextGroup,
-} from '@/rotation/engine'
-import type { SessionState } from '@/rotation/types'
+import { isNextUpPicked, nextGroup } from '@/rotation/engine'
+import type { SessionState, Teams } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
 const TEAM_NAMES = ['Team A', 'Team B']
-
-function GameLengthControl({ minutes }: { minutes: number }) {
-  const setAvgGameMinutes = useSessionStore((s) => s.setAvgGameMinutes)
-  const [text, setText] = useState(String(minutes))
-  const valid = isValidGameMinutes(Number(text))
-
-  function handleChange(value: string) {
-    setText(value)
-    if (isValidGameMinutes(Number(value))) setAvgGameMinutes(Number(value))
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <Label htmlFor="board-game-minutes" className="whitespace-nowrap">
-        Game length (min)
-      </Label>
-      <Input
-        id="board-game-minutes"
-        type="number"
-        inputMode="numeric"
-        min={MIN_AVG_GAME_MINUTES}
-        max={MAX_AVG_GAME_MINUTES}
-        className="w-20"
-        value={text}
-        onChange={(e) => handleChange(e.target.value)}
-        aria-invalid={!valid}
-      />
-    </div>
-  )
-}
 
 export function BoardScreen({ session }: { session: SessionState }) {
   const recordScore = useSessionStore((s) => s.recordScore)
@@ -59,6 +19,8 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const replaceNextUp = useSessionStore((s) => s.replaceNextUp)
   const resetNextUp = useSessionStore((s) => s.resetNextUp)
   const startGame = useSessionStore((s) => s.startGame)
+  const checkOutPlayer = useSessionStore((s) => s.checkOutPlayer)
+  const editMatch = useSessionStore((s) => s.editMatch)
   const changeSkill = useSkillEditor()
 
   // Games never start by themselves. This is the group staff would start next, and what each
@@ -125,12 +87,18 @@ export function BoardScreen({ session }: { session: SessionState }) {
     )
   }
 
+  function handleEditScore(matchIndex: number, score: [number, number]) {
+    editMatch(matchIndex, { score })
+    toast(`Match ${matchIndex + 1}: score corrected`)
+  }
+
+  function handleEditPlayers(matchIndex: number, teams: Teams) {
+    editMatch(matchIndex, { teams })
+    toast(`Match ${matchIndex + 1}: players corrected`)
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <GameLengthControl minutes={session.avgGameMinutes} />
-        <ManageCourtsDialog session={session} />
-      </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {session.courts.map((court) => (
           <CourtCard
@@ -159,9 +127,21 @@ export function BoardScreen({ session }: { session: SessionState }) {
         onReset={resetNextUp}
         onSkillChange={changeSkill}
         editable
+        queuedAt={session.queuedAt}
       />
-      <QueueList session={session} nextUp={group?.players} onSkillChange={changeSkill} editable />
-      <MatchLog matches={session.matches ?? []} players={session.players} />
+      <QueueList
+        session={session}
+        nextUp={group?.players}
+        onSkillChange={changeSkill}
+        onTakeBreak={checkOutPlayer}
+        editable
+      />
+      <MatchLog
+        matches={session.matches ?? []}
+        players={session.players}
+        onEditScore={handleEditScore}
+        onEditPlayers={handleEditPlayers}
+      />
     </div>
   )
 }

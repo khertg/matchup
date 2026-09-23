@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { checkIn, startGame, recordWin } from '../helpers'
+import { checkIn, openSessionMenu, startGame, recordWin } from '../helpers'
 import {
   apiCreateClub,
   bearer,
@@ -15,7 +15,7 @@ async function signInAndPlay(page: Page, club: TestClub, location: string) {
   await page.goto('/')
   await uiLogin(page, club)
   await expectSignedIn(page)
-  await page.getByLabel('Location').fill(location)
+  await page.getByLabel('Session name').fill(location)
   await page.getByRole('button', { name: 'Singles' }).click()
   await page.getByRole('button', { name: 'Start session' }).click()
   await expect(page.getByRole('heading', { name: location })).toBeVisible()
@@ -26,6 +26,7 @@ async function signInAndPlay(page: Page, club: TestClub, location: string) {
 }
 
 async function end(page: Page) {
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
   await expect(page.getByText('Set up an open play session')).toBeVisible()

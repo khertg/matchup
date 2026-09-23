@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, recordWin, startGame, startSession } from './helpers'
+import { checkIn, openSessionMenu, recordWin, startGame, startSession } from './helpers'
 
 const EXPERT = '6 · Expert (5.0+)'
 const BEGINNER = '1 · Beginner (1.0)'
@@ -144,6 +144,7 @@ test.describe('editing a level on the saved roster', () => {
   async function withSavedZed(page: Page) {
     await startSession(page)
     await checkIn(page, [{ name: 'Zed', skill: '2 · Novice (2.0-2.5)' }])
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()
@@ -175,6 +176,7 @@ test.describe('editing a level on the saved roster', () => {
     await levelButton(page.getByRole('listitem').filter({ hasText: 'Zed' }), 'Zed').click()
     await pickLevel(page, 'Zed', '5 · Advanced (4.0-4.5)')
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'End session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()

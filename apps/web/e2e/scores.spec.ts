@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { cancelGame, checkIn, recordWin, startGame, startSession } from './helpers'
+import { queueRow } from './avatarHelpers'
+import { cancelGame, checkIn, openSessionMenu, recordWin, startGame, startSession } from './helpers'
 
 // Standings columns: 0 rank, 1 player, 2 GP, 3 W, 4 L, 5 Win %, 6 +/-, 7 Opp., 8 Time, 9 share.
 const DIFF = 6
@@ -39,8 +40,10 @@ test.describe('match log', () => {
     await enterScore(page, 4, 11)
     await expect(matches).toContainText('Matches (1)')
     await expect(matches).toContainText('Court 1')
-    await expect(matches).toContainText('Bob beat Ann')
-    await expect(matches).toContainText('11–4')
+    await expect(matches).toContainText('Bob')
+    await expect(matches).toContainText('Ann')
+    await expect(matches).toContainText('11')
+    await expect(matches).toContainText('4')
 
     // It sits at the very bottom of the Board, after the Queue.
     const queueY = (await page.getByText('Queue (2)').boundingBox())!.y
@@ -48,6 +51,58 @@ test.describe('match log', () => {
 
     await page.getByRole('button', { name: 'Undo' }).click()
     await expect(matches).toContainText('Matches (0)')
+  })
+
+  test('editing a match\'s score corrects the log and the standings', async ({ page }) => {
+    await startSingles(page)
+    await enterScore(page, 11, 4) // Ann beats Bob 11-4
+    const matches = page.getByRole('group', { name: 'Matches' })
+
+    await page.getByRole('button', { name: 'Match 1 menu' }).click()
+    await page.getByRole('button', { name: 'Edit score' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Edit score' })
+    await dialog.getByLabel('Team A score').fill('8')
+    await dialog.getByLabel('Team B score').fill('11')
+    await dialog.getByRole('button', { name: 'Save score' }).click()
+    await expect(dialog).toHaveCount(0)
+
+    await expect(matches).toContainText('8')
+    await expect(matches).toContainText('11')
+
+    await openStandings(page)
+    const rows = page.getByRole('table').first().getByRole('row')
+    await expect(rows.nth(1)).toContainText('Bob')
+    await expect(rows.nth(1)).toContainText('Gold medal')
+    await expect(cell(rows.nth(1), DIFF)).toHaveText('+3')
+    await expect(rows.nth(2)).toContainText('Ann')
+    await expect(cell(rows.nth(2), DIFF)).toHaveText('-3')
+  })
+
+  test('editing a match\'s players moves the win\'s credit to the new player', async ({ page }) => {
+    await startSession(page, { mode: 'Doubles', courts: 1 })
+    await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
+    await startGame(page)
+    await recordWin(page) // Ann & Bob beat Cy & Dee, 11-5
+    const matches = page.getByRole('group', { name: 'Matches' })
+    await expect(matches).toContainText('Bob')
+
+    await page.getByRole('button', { name: 'Match 1 menu' }).click()
+    await page.getByRole('button', { name: 'Edit players' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Edit players' })
+    await dialog.getByRole('combobox').filter({ hasText: 'Bob' }).click()
+    await page.getByRole('option', { name: 'Eve' }).click()
+    await dialog.getByRole('button', { name: 'Save players' }).click()
+    await expect(dialog).toHaveCount(0)
+
+    await expect(matches).toContainText('Eve')
+    await expect(matches).not.toContainText('Bob')
+
+    await openStandings(page)
+    // Bob is no longer in the match at all, so he drops out of the standings entirely; Eve
+    // (who now stands in for him) picks up the win instead.
+    const rankings = page.getByRole('table').first().getByRole('row')
+    await expect(rankings.filter({ hasText: 'Eve' })).toContainText('Gold medal')
+    await expect(rankings.filter({ hasText: 'Bob' })).toHaveCount(0)
   })
 })
 
@@ -430,7 +485,36 @@ test.describe('time played', () => {
     await startGame(page)
     await enterScore(page, 11, 3)
     await openStandings(page)
-    await expect(cell(page.getByRole('row').nth(1), DIFF)).toHaveText('+8')
+    // Stats are rebuilt from the match log, not the (here, artificially stripped) stats cache, so the
+    // first game's 11-6 is recovered alongside the new 11-3: 22 points for, 9 against.
+    await expect(cell(page.getByRole('row').nth(1), DIFF)).toHaveText('+13')
+  })
+})
+
+test.describe('queue wait time', () => {
+  test('ticks while waiting, freezes once playing, and carries into Matches', async ({ page }) => {
+    await page.clock.install()
+    await startSession(page, { mode: 'Singles' })
+    // Ann and Bob are next up (singles needs 2); Cy is left waiting with a ticking counter.
+    await checkIn(page, ['Ann', 'Bob', 'Cy'])
+    await expect(queueRow(page, 'Cy')).toContainText('under 1 min')
+
+    await page.clock.fastForward('05:00')
+    await expect(queueRow(page, 'Cy')).toContainText('5 min')
+    const nextUp = page.getByRole('group', { name: 'Next up' })
+    await expect(nextUp).toContainText('5 min')
+
+    await startGame(page)
+    await page.clock.fastForward('02:00')
+    await expect(court(page).getByText('Waited 5 min')).toHaveCount(2)
+    // Playing time keeps ticking, but the frozen wait time does not.
+    await expect(court(page).getByText('Playing 2 min')).toBeVisible()
+    await expect(court(page).getByText('Waited 5 min')).toHaveCount(2)
+
+    await enterScore(page, 11, 6)
+    const matches = page.getByRole('group', { name: 'Matches' })
+    await expect(matches).toContainText('Ann (5 min)')
+    await expect(matches).toContainText('Bob (5 min)')
   })
 })
 
@@ -441,6 +525,7 @@ test.describe('past sessions', () => {
     await page.clock.fastForward('12:30')
     await enterScore(page, 11, 7)
 
+    await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
     await expect(page.getByText('Set up an open play session')).toBeVisible()
@@ -476,5 +561,21 @@ test.describe('on a phone', () => {
     // Everything is still reachable inside the table.
     await page.getByRole('columnheader', { name: 'Time' }).scrollIntoViewIfNeeded()
     await expect(page.getByRole('columnheader', { name: 'Time' })).toBeInViewport()
+  })
+
+  test('a long player name in the Matches list does not overflow the page', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 })
+    await startSession(page, { mode: 'Singles' })
+    await checkIn(page, ['Featherstonehaugh', 'Bob'])
+    await startGame(page)
+    await enterScore(page, 11, 4)
+
+    const matches = page.getByRole('group', { name: 'Matches' })
+    await expect(matches).toContainText('Featherstonehaugh')
+    await expect(matches).toContainText('Bob')
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 })

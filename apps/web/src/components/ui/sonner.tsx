@@ -11,6 +11,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // Clears the fixed bottom tab bar (SessionScreen/ViewerScreen) plus the home-indicator safe area,
+      // at every viewport width the tab bar can appear at (Sonner's own "mobile" breakpoint is narrower).
+      offset={{ bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)" }}
+      mobileOffset={{ bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)" }}
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />

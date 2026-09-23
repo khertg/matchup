@@ -1,11 +1,13 @@
-import { Lock } from 'lucide-react'
+import { Lock, MoreVerticalIcon } from 'lucide-react'
 import { partnerOf } from '@/matchmaking/grouping'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
-import { estimateWaitMinutes } from '@/rotation/engine'
+import { formatDuration, useNow } from '@/lib/time'
 import type { SessionState } from '@/rotation/types'
 
 interface Props {
@@ -14,11 +16,14 @@ interface Props {
   nextUp?: number[]
   /** Staff only: change a player's skill level from their badge. */
   onSkillChange?: (playerId: number, skill: SkillLevel) => void
+  /** Staff only: send a waiting player on a break, from the row's "⋮" menu. */
+  onTakeBreak?: (playerId: number) => void
   /** Staff only: tap a player's avatar to change it. */
   editable?: boolean
 }
 
-export function QueueList({ session, nextUp = [], onSkillChange, editable = false }: Props) {
+export function QueueList({ session, nextUp = [], onSkillChange, onTakeBreak, editable = false }: Props) {
+  const now = useNow()
   return (
     <Card>
       <CardHeader>
@@ -32,7 +37,7 @@ export function QueueList({ session, nextUp = [], onSkillChange, editable = fals
             {session.queue.map((id, index) => {
               const player = session.players[id]
               const partner = partnerOf(session.partners, id)
-              const wait = estimateWaitMinutes(session, id, session.avgGameMinutes)
+              const queuedAt = session.queuedAt?.[id]
               return (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="w-6 text-sm text-muted-foreground">{index + 1}</span>
@@ -53,12 +58,33 @@ export function QueueList({ session, nextUp = [], onSkillChange, editable = fals
                   <span className="w-20 text-right text-sm text-muted-foreground">
                     {nextUp.includes(id) ? (
                       <Badge>Next up</Badge>
-                    ) : wait ? (
-                      `~${wait} min`
+                    ) : queuedAt !== undefined ? (
+                      formatDuration((now - queuedAt) / 1000)
                     ) : (
                       'Waiting'
                     )}
                   </span>
+                  {onTakeBreak && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon-sm" aria-label={`${player.name} menu`}>
+                          <MoreVerticalIcon aria-hidden="true" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-40 p-1">
+                        <PopoverClose asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => onTakeBreak(id)}
+                          >
+                            Take a break
+                          </Button>
+                        </PopoverClose>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </li>
               )
             })}

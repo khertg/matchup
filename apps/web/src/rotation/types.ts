@@ -41,6 +41,11 @@ export interface Court {
    * Missing for a game started before this was tracked; such a game records no time.
    */
   startedAt?: number
+  /**
+   * Whole seconds each player on this court had waited before this game started. Missing per
+   * player when their queue-join time was not known.
+   */
+  waited?: Record<number, number>
 }
 
 /** A finished game, kept in the order it ended. Cancelled games are not recorded. */
@@ -56,6 +61,11 @@ export interface MatchRecord {
   seconds: number
   /** When the game ended (ms since the epoch), if known. */
   endedAt?: number
+  /**
+   * Whole seconds each player had waited before this match started, carried over from the
+   * court's `waited` when the game finished. Missing per player when not known.
+   */
+  waited?: Record<number, number>
 }
 
 /** A partner lock that is not in force yet: it starts once both have finished a game after locking. */
@@ -94,4 +104,9 @@ export interface SessionState {
   nextUpPick?: number[]
   /** Every game finished this session, oldest first. Missing in sessions saved before this was kept. */
   matches?: MatchRecord[]
+  /**
+   * ms since the epoch each currently-queued player most recently joined the queue. Missing per
+   * player (or entirely) when their wait was never tracked.
+   */
+  queuedAt?: Record<number, number>
 }

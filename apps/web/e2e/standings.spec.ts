@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { checkIn, startGame, startSession, recordWin } from './helpers'
+import { checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
 /** Singles on one court: Ann is always Team A, so "Team A won" makes Ann win every time. */
 async function singlesWithGames(page: Page, teamAWins: number) {
@@ -48,6 +48,7 @@ test('removes an undone result from the standings', async ({ page }) => {
 
 test('saves results to the lifetime leaderboard when ending the session', async ({ page }) => {
   await singlesWithGames(page, 2)
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
 
   const dialog = page.getByRole('dialog')
@@ -66,6 +67,7 @@ test('saves results to the lifetime leaderboard when ending the session', async 
 
 test('filters the lifetime leaderboard by minimum games and validates the input', async ({ page }) => {
   await singlesWithGames(page, 2)
+  await openSessionMenu(page)
   await page.getByRole('button', { name: 'End session' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Save and end session' }).click()
 
