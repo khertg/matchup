@@ -19,7 +19,7 @@ published ports and no route out. Caddy gets and renews the HTTPS certificate by
 ## First deployment
 
 ```bash
-git clone <your repository> q-2-dink && cd q-2-dink/deploy
+git clone <your repository> q2dink && cd q2dink/deploy
 cp .env.example .env
 nano .env        # set DOMAIN and a long random POSTGRES_PASSWORD (openssl rand -base64 24)
 GIT_SHA=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml up -d --build
@@ -44,7 +44,7 @@ The database schema is created automatically the first time the API starts.
 ## Updating
 
 ```bash
-cd q-2-dink && git pull
+cd q2dink && git pull
 cd deploy && GIT_SHA=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -74,13 +74,13 @@ together with the new `q2dink-<date>.sql.gz` files. Nothing else on the server d
 Run a backup by hand, or schedule it:
 
 ```bash
-cd q-2-dink/deploy && ./backup.sh              # writes ./backups/q2dink-<date>.sql.gz, keeps the newest 14
+cd q2dink/deploy && ./backup.sh              # writes ./backups/q2dink-<date>.sql.gz, keeps the newest 14
 ```
 
 Daily at 03:00 with cron (`crontab -e`):
 
 ```
-0 3 * * * cd /home/you/q-2-dink/deploy && ./backup.sh /home/you/q2dink-backups >> /home/you/backup.log 2>&1
+0 3 * * * cd /home/you/q2dink/deploy && ./backup.sh /home/you/q2dink-backups >> /home/you/backup.log 2>&1
 ```
 
 **Copy the backups off the server** (another machine, or object storage). A backup on the same disk does not
@@ -89,7 +89,7 @@ protect you from losing the disk.
 To restore into an empty database:
 
 ```bash
-cd q-2-dink/deploy
+cd q2dink/deploy
 gunzip -c backups/q2dink-<date>.sql.gz | docker compose -f docker-compose.prod.yml exec -T db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 ```
 

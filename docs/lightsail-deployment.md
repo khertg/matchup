@@ -64,7 +64,7 @@ Postgres regardless.
 ## 3. Deploy Q2Dink, tunnel-only
 
 ```bash
-git clone <your repository> q-2-dink && cd q-2-dink/deploy
+git clone <your repository> q2dink && cd q2dink/deploy
 cp .env.example .env
 ```
 
