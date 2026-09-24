@@ -120,8 +120,8 @@ export function CourtCard({
                         {players[id] && <PlayerAvatar id={id} name={players[id].name} size="sm" editable={!readOnly} viewable />}
                         <span className="min-w-0 truncate">{players[id]?.name}</span>
                         {court.waited?.[id] !== undefined && (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            Waited {formatDuration(court.waited[id])}
+                          <span className="shrink-0 text-xs text-muted-foreground small-caps">
+                            waited {formatDuration(court.waited[id])}
                           </span>
                         )}
                       </span>

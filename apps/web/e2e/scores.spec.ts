@@ -506,10 +506,10 @@ test.describe('queue wait time', () => {
 
     await startGame(page)
     await page.clock.fastForward('02:00')
-    await expect(court(page).getByText('Waited 5 min')).toHaveCount(2)
+    await expect(court(page).getByText('waited 5 min')).toHaveCount(2)
     // Playing time keeps ticking, but the frozen wait time does not.
     await expect(court(page).getByText('Playing 2 min')).toBeVisible()
-    await expect(court(page).getByText('Waited 5 min')).toHaveCount(2)
+    await expect(court(page).getByText('waited 5 min')).toHaveCount(2)
 
     await enterScore(page, 11, 6)
     const matches = page.getByRole('group', { name: 'Matches' })
