@@ -10,21 +10,25 @@ export interface BuildInfo {
 }
 
 /** 2026-09-21 as "21 Sep 2026", read as plain text so the time zone can never move the day. */
-function formatDate(iso: string): string | null {
+export function formatBuildDate(iso: string): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
   if (!match) return null
   const month = MONTHS[Number(match[2]) - 1]
   return month ? `${Number(match[3])} ${month} ${match[1]}` : null
 }
 
-/** "v0.1.0 · a1b2c3d · 21 Sep 2026", or just "v0.1.0 · dev" for a build with no known commit. */
-export function formatVersion({ version, commit, date }: BuildInfo): string {
-  const parts = [`v${version}`]
-  if (!commit || commit === 'dev') return [...parts, 'dev'].join(' · ')
-  parts.push(commit)
-  const day = formatDate(date)
-  if (day) parts.push(day)
-  return parts.join(' · ')
+/** The label itself: just the release, "v0.1.0". The commit and date are in `buildDetails`. */
+export function formatVersion({ version }: BuildInfo): string {
+  return `v${version}`
+}
+
+/**
+ * What the version popover lists: the commit and the build day ("21 Sep 2026", or null
+ * rather than a broken date), or null for a build with no known commit, shown as "dev".
+ */
+export function buildDetails({ commit, date }: BuildInfo): { commit: string; date: string | null } | null {
+  if (!commit || commit === 'dev') return null
+  return { commit, date: formatBuildDate(date) }
 }
 
 /** The build this app was made from. */

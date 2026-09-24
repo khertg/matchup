@@ -1,13 +1,38 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { checkIn, startSession } from './helpers'
 
-const VERSION = /^v\d+\.\d+\.\d+ · \S+/
+const VERSION = /^v\d+\.\d+\.\d+$/
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** Clicks the version and checks the popover lists this build's commit and date (read from the title). */
+async function expectBuildDetails(page: Page) {
+  const label = page.getByTestId('app-version')
+  const title = (await label.getAttribute('title'))!
+  const [, commit, year, month, day] = /commit (\S+), built (\d{4})-(\d{2})-(\d{2})$/.exec(title)!
+  await label.click()
+  const details = page.getByTestId('app-build-details')
+  await expect(details).toBeVisible()
+  if (commit === 'dev') {
+    await expect(details).toHaveText('dev')
+  } else {
+    await expect(details).toContainText(commit)
+    await expect(details).toContainText(`${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`)
+  }
+  await page.keyboard.press('Escape')
+  await expect(details).toBeHidden()
+}
 
 test.describe('version number', () => {
-  test('is shown on the setup screen', async ({ page }) => {
+  test('is shown on the setup screen, as the release only', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('Set up an open play session')).toBeVisible()
     await expect(page.getByTestId('app-version')).toHaveText(VERSION)
+  })
+
+  test('shows the commit and build date when clicked', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByTestId('app-build-details')).toHaveCount(0)
+    await expectBuildDetails(page)
   })
 
   test('is shown while a session is running, in the header above the bottom tab bar', async ({ page }) => {
@@ -19,6 +44,9 @@ test.describe('version number', () => {
     const box = (await label.boundingBox())!
     const tabs = (await page.getByRole('tablist').boundingBox())!
     expect(box.y).toBeLessThan(tabs.y)
+    // Fits the bar without spilling past the screen edge.
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+    await expectBuildDetails(page)
   })
 
   test('says which build it is when hovered, with the full details', async ({ page }) => {
