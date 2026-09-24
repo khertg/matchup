@@ -51,6 +51,9 @@ interface Loaded {
   fromClub: boolean
 }
 
+/** Sessions listed per page, so a long history stays short to scroll on a phone. */
+const PAGE_SIZE = 10
+
 const when = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -133,17 +136,21 @@ export function PastSessionsDialog() {
   const [viewing, setViewing] = useState<Loaded | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [page, setPage] = useState(0)
 
   const reload = useCallback(async () => {
     const result = await loadEntries()
     setEntries(result.entries)
     setClubError(result.clubError)
+    // A delete can empty the last page; step back to the one that is now last.
+    setPage((p) => Math.min(p, Math.max(0, Math.ceil(result.entries.length / PAGE_SIZE) - 1)))
   }, [])
 
   function handleOpenChange(next: boolean) {
-    // Always start from the list, never from the session that was open last time.
+    // Always start from the first page of the list, never from the session that was open last time.
     setViewing(null)
     setConfirmDelete(false)
+    setPage(0)
     setOpen(next)
     if (next) void reload()
   }
@@ -275,27 +282,54 @@ export function PastSessionsDialog() {
                 No past sessions yet. A session appears here when you end it.
               </p>
             ) : (
-              <ul className="divide-y rounded-lg border">
-                {entries.map((entry) => (
-                  <li key={entry.id}>
-                    <button
-                      type="button"
-                      className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent"
-                      disabled={busy}
-                      onClick={() => handleView(entry)}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{entry.location}</span>
-                        <span className="block text-sm text-muted-foreground">
-                          {when(entry.endedAt)} · {entry.mode === 'doubles' ? 'Doubles' : 'Singles'} ·{' '}
-                          {plural(entry.players, 'player')} · {plural(entry.games, 'game')}
+              <>
+                <ul className="divide-y rounded-lg border">
+                  {entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((entry) => (
+                    <li key={entry.id}>
+                      <button
+                        type="button"
+                        className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent"
+                        disabled={busy}
+                        onClick={() => handleView(entry)}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{entry.location}</span>
+                          <span className="block text-sm text-muted-foreground">
+                            {when(entry.endedAt)} · {entry.mode === 'doubles' ? 'Doubles' : 'Singles'} ·{' '}
+                            {plural(entry.players, 'player')} · {plural(entry.games, 'game')}
+                          </span>
                         </span>
-                      </span>
-                      {entry.clubOnly && <Badge variant="secondary">Club</Badge>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        {entry.clubOnly && <Badge variant="secondary">Club</Badge>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {entries.length > PAGE_SIZE && (
+                  <nav aria-label="Past sessions pages" className="flex items-center justify-between gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || page === 0}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      Previous
+                    </Button>
+                    <p aria-live="polite" className="text-sm text-muted-foreground">
+                      Page {page + 1} of {Math.ceil(entries.length / PAGE_SIZE)}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || (page + 1) * PAGE_SIZE >= entries.length}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      Next
+                    </Button>
+                  </nav>
+                )}
+              </>
             )}
           </>
         )}

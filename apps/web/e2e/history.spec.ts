@@ -58,6 +58,60 @@ test.describe('past sessions', () => {
     await expect(rows).toHaveCount(2)
     await expect(rows.nth(0)).toContainText('Second Night')
     await expect(rows.nth(1)).toContainText('First Night')
+    // Too few to need pages.
+    await expect(list.getByRole('navigation', { name: 'Past sessions pages' })).toHaveCount(0)
+  })
+
+  test('shows a long history ten sessions at a time', async ({ page }) => {
+    await playOneGame(page, 'Night 1')
+    await endAndSave(page)
+    // Copy that session ten more times straight into the device's history, each ending an hour later.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const open = indexedDB.open('q2dink')
+          open.onerror = () => reject(open.error)
+          open.onsuccess = () => {
+            const tx = open.result.transaction('history', 'readwrite')
+            const store = tx.objectStore('history')
+            const all = store.getAll()
+            all.onsuccess = () => {
+              const first = all.result[0]
+              for (let n = 2; n <= 11; n++) {
+                store.put({ ...first, id: crypto.randomUUID(), location: `Night ${n}`, endedAt: first.endedAt + n * 3_600_000 })
+              }
+            }
+            tx.oncomplete = () => resolve()
+            tx.onerror = () => reject(tx.error)
+          }
+        }),
+    )
+    // Also clears the "ended" toast, which on a phone covers the Past sessions button.
+    await page.reload()
+
+    const list = await openPast(page)
+    const rows = list.getByRole('listitem')
+    const pages = list.getByRole('navigation', { name: 'Past sessions pages' })
+    await expect(rows).toHaveCount(10)
+    await expect(rows.nth(0)).toContainText('Night 11')
+    await expect(pages).toContainText('Page 1 of 2')
+    await expect(pages.getByRole('button', { name: 'Previous' })).toBeDisabled()
+
+    await pages.getByRole('button', { name: 'Next' }).click()
+    await expect(rows).toHaveCount(1)
+    await expect(rows.nth(0)).toContainText('Night 1')
+    await expect(pages).toContainText('Page 2 of 2')
+    await expect(pages.getByRole('button', { name: 'Next' })).toBeDisabled()
+
+    // Back from a session returns to the same page.
+    await rows.nth(0).getByRole('button').click()
+    await page.getByRole('dialog', { name: 'Night 1' }).getByRole('button', { name: 'Back' }).click()
+    await expect(pages).toContainText('Page 2 of 2')
+
+    // Opening the list again starts from the newest.
+    await page.keyboard.press('Escape')
+    const again = await openPast(page)
+    await expect(again.getByRole('navigation', { name: 'Past sessions pages' })).toContainText('Page 1 of 2')
   })
 
   test('says so when there is nothing yet, and never saves a session nobody joined', async ({ page }) => {
