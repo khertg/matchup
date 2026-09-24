@@ -4,6 +4,7 @@ import { toCloudError, type LiveRow } from '@/cloud/api'
 import { cloud } from '@/cloud/client'
 import { parsePublicSnapshot, toViewerState, type PublicSnapshot } from '@/cloud/snapshot'
 import { CourtCard } from '@/components/CourtCard'
+import { CourtGrid } from '@/components/CourtGrid'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
 import { Badge } from '@/components/ui/badge'
@@ -151,7 +152,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="board" className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <CourtGrid>
             {session.courts.map((court) => (
               <CourtCard
                 key={court.id}
@@ -161,7 +162,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
                 readOnly
               />
             ))}
-          </div>
+          </CourtGrid>
           <NextUpCard
             nextUp={snapshot.nextUp}
             players={session.players}

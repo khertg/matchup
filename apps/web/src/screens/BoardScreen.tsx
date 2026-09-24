@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import { CourtCard } from '@/components/CourtCard'
+import { CourtGrid } from '@/components/CourtGrid'
 import { MatchLog } from '@/components/MatchLog'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
@@ -99,7 +100,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <CourtGrid>
         {session.courts.map((court) => (
           <CourtCard
             key={court.id}
@@ -116,7 +117,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
             onCancel={() => handleCancel(court.id)}
           />
         ))}
-      </div>
+      </CourtGrid>
       <NextUpCard
         nextUp={group?.players ?? []}
         players={session.players}

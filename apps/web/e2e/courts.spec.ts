@@ -247,3 +247,43 @@ test('keeps names and order after a reload', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Test Club' })).toBeVisible()
   expect(await courtOrder(page)).toEqual(['Center Court', 'Court 1', 'Court 2'])
 })
+
+test.describe('court layout', () => {
+  /** Each court's box, in board order. */
+  async function courtBoxes(page: Page, count: number) {
+    const boxes = []
+    for (let i = 1; i <= count; i++) boxes.push((await page.getByRole('region', { name: `Court ${i}`, exact: true }).boundingBox())!)
+    return boxes
+  }
+
+  for (const count of [1, 2, 4, 5]) {
+    test(`${count} court${count === 1 ? '' : 's'} fill the width in balanced rows, all the same size`, async ({ page }) => {
+      await startSession(page, { courts: count })
+      const boxes = await courtBoxes(page, count)
+      const left = Math.min(...boxes.map((b) => b.x))
+      const right = Math.max(...boxes.map((b) => b.x + b.width))
+      const rows = new Map<number, typeof boxes>()
+      for (const box of boxes) rows.set(Math.round(box.y), [...(rows.get(Math.round(box.y)) ?? []), box])
+      const widest = Math.max(...[...rows.values()].map((row) => row.length))
+      for (const row of rows.values()) {
+        // Every court is the same width, whichever row it is in.
+        for (const box of row) expect(box.width).toBeCloseTo(boxes[0].width, 0)
+        const rowLeft = Math.min(...row.map((b) => b.x))
+        const rowRight = Math.max(...row.map((b) => b.x + b.width))
+        if (row.length === widest) {
+          // A full row reaches from the board's left edge to its right edge.
+          expect(rowLeft).toBeCloseTo(left, 0)
+          expect(rowRight).toBeCloseTo(right, 0)
+        } else {
+          // A shorter row sits centred under it.
+          expect(rowLeft - left).toBeCloseTo(right - rowRight, 0)
+        }
+      }
+      const perRow = [...rows.values()].map((row) => row.length)
+      const wide = page.viewportSize()!.width >= 1024
+      if (count === 4 && wide) expect(perRow).toEqual([2, 2])
+      if (count === 5 && wide) expect(perRow).toEqual([3, 2])
+      if (!wide && page.viewportSize()!.width < 640) expect(perRow.every((n) => n === 1)).toBe(true)
+    })
+  }
+})
