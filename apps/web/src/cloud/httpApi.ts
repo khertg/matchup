@@ -7,6 +7,7 @@ import {
   type LiveRow,
   type LoginResponse,
   type ResetPasswordResponse,
+  type RosterResponse,
 } from '@q2dink/shared'
 import { CloudError, type CloudApi } from './api'
 
@@ -100,6 +101,15 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
 
     async renamePlayer(token, from, to) {
       await request('POST', '/players/rename', { token, body: { from, to } })
+    },
+
+    async putRoster(token, players) {
+      await request('PUT', '/roster', { token, body: { players } })
+    },
+
+    async fetchRoster(token) {
+      const result = await request<RosterResponse>('GET', '/roster', { token })
+      return result.players
     },
 
     async putHistory(token, id, entry, backup) {

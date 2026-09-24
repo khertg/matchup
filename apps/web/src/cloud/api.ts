@@ -1,6 +1,7 @@
 import type {
   AuthGrant,
   AvatarIndex,
+  ClubRosterPlayer,
   ErrorCode,
   HistorySummary,
   LifetimePlayer,
@@ -37,6 +38,11 @@ export interface CloudApi {
 
   /** A player was renamed: their leaderboard row and shared avatar move to the new name. Safe to repeat. */
   renamePlayer(token: string, from: string, to: string): Promise<void>
+
+  /** Add players to the club's saved roster, or update the ones it has under those names (ignoring case). */
+  putRoster(token: string, players: ClubRosterPlayer[]): Promise<void>
+  /** The club's saved roster, shared by all its staff devices. */
+  fetchRoster(token: string): Promise<ClubRosterPlayer[]>
 
   /** Keep an ended session in the club's history. Sending the same id again replaces it. */
   putHistory(token: string, id: string, entry: Omit<PutHistoryRequest, 'full'>, backup: FullBackup): Promise<void>

@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { requestRosterSync } from '@/cloud/sync'
 import type { SkillLevel } from '@/db/db'
 import { setRosterSkill } from '@/db/roster'
 import { skillLabel } from '@/lib/skill'
@@ -15,7 +16,7 @@ export function useSkillEditor() {
   return function changeSkill(playerId: number, skill: SkillLevel) {
     const name = session?.players[playerId]?.name ?? 'Player'
     setPlayerSkill(playerId, skill)
-    void setRosterSkill(playerId, skill)
+    void setRosterSkill(playerId, skill).then(() => requestRosterSync())
     toast(`${name} is now ${skillLabel(skill)}`)
   }
 }

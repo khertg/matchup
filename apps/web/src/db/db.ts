@@ -19,6 +19,14 @@ export interface Player {
   avatar?: PlayerAvatar
   /** The club's cloud copy is out of date (changed or removed here, not yet sent). */
   avatarDirty?: boolean
+  /**
+   * The club this player belongs to. Only that club's players are listed while it is logged in.
+   * Missing on players saved before a club took them (or in a build with no cloud): the first club
+   * to sync on this device takes them.
+   */
+  clubSlug?: string
+  /** Name, skill or gender changed here and the club's roster has not been sent it yet. */
+  rosterDirty?: boolean
   /** All-time totals across saved sessions. */
   games?: number
   wins?: number
@@ -62,6 +70,15 @@ db.version(2).stores({
 // Version 3 adds device settings (the club logo, photo sharing). Player avatars are plain extra fields.
 db.version(3).stores({
   players: '++id, name',
+  sessions: '++id, createdAt',
+  history: 'id, endedAt',
+  settings: 'key',
+})
+
+// Version 4 indexes each player's club, so a club only lists its own players. Nothing to upgrade: a player
+// without one is unclaimed until a club syncs.
+db.version(4).stores({
+  players: '++id, name, clubSlug',
   sessions: '++id, createdAt',
   history: 'id, endedAt',
   settings: 'key',

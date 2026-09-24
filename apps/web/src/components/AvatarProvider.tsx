@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { AvatarIndex } from '@q2dink/shared'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
-import { db, type Player } from '@/db/db'
+import type { Player } from '@/db/db'
+import { listRoster } from '@/db/roster'
 import { getLogoSetting, type LogoSetting } from '@/db/settings'
 import type { PlayerAvatar } from '@/lib/avatar'
 import { AvatarContext, type AvatarContextValue } from '@/lib/avatars'
@@ -19,7 +20,10 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
   const club = useClubAuth((s) => s.club)
   const slug = viewerSlug ?? club?.slug ?? null
 
-  const players = useLiveQuery(() => (viewerSlug ? Promise.resolve([] as Player[]) : db.players.toArray()), [viewerSlug])
+  const players = useLiveQuery(
+    () => (viewerSlug ? Promise.resolve([] as Player[]) : listRoster(club?.slug)),
+    [viewerSlug, club?.slug],
+  )
   const logo = useLiveQuery(() => (viewerSlug ? Promise.resolve(undefined as LogoSetting | undefined) : getLogoSetting()), [viewerSlug])
 
   const [remote, setRemote] = useState<{ slug: string; index: AvatarIndex } | null>(null)

@@ -2,7 +2,15 @@ import { toast } from 'sonner'
 import { create } from 'zustand'
 import { db } from '@/db/db'
 import { markHistorySynced, unsyncedHistory } from '@/db/history'
-import { clearAvatarDirty, markPhotosDirty } from '@/db/roster'
+import {
+  claimUnownedPlayers,
+  clearAvatarDirty,
+  dirtyRoster,
+  markPhotosDirty,
+  markRosterSent,
+  mergeClubRoster,
+} from '@/db/roster'
+import { MAX_ROSTER_BATCH } from '@q2dink/shared'
 import {
   addPendingRename,
   clearPendingRenames,
@@ -129,6 +137,8 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
  * Safe to call repeatedly.
  */
 export async function adoptClub(slug: string): Promise<void> {
+  // Saved players no club has taken yet (from before rosters were shared) belong to the first club to sync.
+  await claimUnownedPlayers(slug)
   const previous = await getSyncClub()
   if (previous === slug) return
   if (previous !== undefined) {
@@ -186,8 +196,61 @@ export async function queueClubRename(from: string, to: string, api: CloudApi | 
  * never uploaded under its old spelling by the passes that follow.
  */
 async function runSync(api: CloudApi): Promise<void> {
-  await flushRenames(api)
-  await Promise.all([flushPendingLifetime(api), syncHistory(api), syncMedia(api)])
+  const renamed = await flushRenames(api)
+  await Promise.all([
+    flushPendingLifetime(api),
+    syncHistory(api),
+    syncMedia(api),
+    renamed ? exchangeRoster(api) : Promise.resolve(false),
+  ])
+}
+
+/**
+ * Share the club's saved players between its staff devices: send the ones added or changed here, then
+ * bring in the ones other devices added or changed. Renames go first, so a renamed player is never
+ * brought back under the old name. Safe to call repeatedly. Returns true when everything went through.
+ */
+export async function syncRoster(api: CloudApi | null = cloud): Promise<boolean> {
+  if (!api || !(await flushRenames(api))) return false
+  return exchangeRoster(api)
+}
+
+/** The roster part of syncRoster, once renames are through. */
+async function exchangeRoster(api: CloudApi): Promise<boolean> {
+  const club = useClubAuth.getState().club
+  if (!club) return false
+  try {
+    const dirty = await dirtyRoster(club.slug)
+    for (let i = 0; i < dirty.length; i += MAX_ROSTER_BATCH) {
+      const batch = dirty.slice(i, i + MAX_ROSTER_BATCH)
+      await api.putRoster(
+        club.token,
+        batch.map((p) => ({ name: p.name, skill: p.skill, ...(p.gender ? { gender: p.gender } : {}) })),
+      )
+      await markRosterSent(batch)
+    }
+    // The club may have changed while this ran (another club logged in): never file its players under this one.
+    const players = await api.fetchRoster(club.token)
+    if (useClubAuth.getState().club?.slug === club.slug) await mergeClubRoster(club.slug, players)
+    return true
+  } catch (error) {
+    handleAuthError(error)
+    return false
+  }
+}
+
+const ROSTER_SYNC_DELAY_MS = 1000
+const ROSTER_POLL_MS = 30_000
+let rosterSyncTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * Sync the roster soon: after a player was added or changed here (a burst of check-ins goes up as one
+ * request), or when check-in opens. Does nothing with no cloud or no club.
+ */
+export function requestRosterSync(api: CloudApi | null = cloud): void {
+  if (!api || !useClubAuth.getState().club) return
+  clearTimeout(rosterSyncTimer)
+  rosterSyncTimer = setTimeout(() => void syncRoster(api), ROSTER_SYNC_DELAY_MS)
 }
 
 /** What the club is sent for an avatar: emoji and initials always, a photo only while photos are shared. */
@@ -229,7 +292,9 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
       await markLogoSynced()
     }
 
-    for (const player of await db.players.filter((p) => p.avatarDirty === true).toArray()) {
+    for (const player of await db.players
+      .filter((p) => p.avatarDirty === true && p.clubSlug === club.slug)
+      .toArray()) {
       const key = avatarKey(player.name)
       const sent = player.avatar
       await attempt(() =>
@@ -336,6 +401,10 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   }
   window.addEventListener('online', handleOnline)
   window.addEventListener('offline', handleOffline)
+  // Players added on the club's other devices show up here within about this long.
+  const rosterPoll = setInterval(() => {
+    if (signedIn() && navigator.onLine) void syncRoster(api)
+  }, ROSTER_POLL_MS)
 
   if (signedIn()) {
     void checkLogin(api)
@@ -349,5 +418,6 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     unsubscribeAuth()
     window.removeEventListener('online', handleOnline)
     window.removeEventListener('offline', handleOffline)
+    clearInterval(rosterPoll)
   }
 }

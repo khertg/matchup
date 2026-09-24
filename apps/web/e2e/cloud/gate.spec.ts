@@ -102,8 +102,12 @@ test.describe('the login gate', () => {
     const club = uniqueClub('Revoked')
     await apiCreateClub(request, club)
     await page.goto('/')
+    // Logging in syncs the club's roster; let that finish, so it cannot be the request that notices the
+    // login ended (and sign out before the reload this test is about).
+    const rosterSynced = page.waitForResponse((r) => r.url().endsWith('/api/roster') && r.request().method() === 'GET')
     await uiLogin(page, club)
     await expectSignedIn(page)
+    await rosterSynced
 
     // Another device or the 30-day expiry ends this login while the app is closed.
     await request.post('/api/logout', { headers: bearer(await storedToken(page)) })

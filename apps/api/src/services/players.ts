@@ -5,12 +5,12 @@ import { AppError } from '../errors'
 const validName = (name: string) => name.length >= 1 && name.length <= MAX_PLAYER_NAME_LENGTH
 
 /**
- * A player was renamed on a staff device: the club's leaderboard row and shared avatar move to the
- * new name (both are matched by lower-case name).
+ * A player was renamed on a staff device: the club's leaderboard row, saved-roster row and shared
+ * avatar move to the new name (all are matched by lower-case name).
  *
  * - If the new name already has a leaderboard row (another device, or a different person with that
- *   name), the two rows' games, wins and losses are added together. If it already has an avatar, that
- *   one is kept and the old one is dropped.
+ *   name), the two rows' games, wins and losses are added together. If it already has a roster row or
+ *   an avatar, that one is kept and the old one is dropped.
  * - Safe to repeat and to send late: a name the club has nothing under is a successful no-op, and a
  *   change of capitalisation only updates the name as displayed.
  */
@@ -24,7 +24,25 @@ export async function renamePlayer(db: Db, slug: string, fromInput: string, toIn
   await db.transaction(async (tx) => {
     if (fromKey === toKey) {
       await tx.query('update club_players set name = $3 where club_slug = $1 and name_key = $2', [slug, fromKey, to])
+      await tx.query('update club_roster set name = $3, updated_at = now() where club_slug = $1 and name_key = $2', [
+        slug,
+        fromKey,
+        to,
+      ])
       return
+    }
+
+    const saved = await tx.query('select 1 from club_roster where club_slug = $1 and name_key = $2', [slug, fromKey])
+    if (saved.rowCount) {
+      const target = await tx.query('select 1 from club_roster where club_slug = $1 and name_key = $2', [slug, toKey])
+      if (target.rowCount) {
+        await tx.query('delete from club_roster where club_slug = $1 and name_key = $2', [slug, fromKey])
+      } else {
+        await tx.query(
+          'update club_roster set name_key = $3, name = $4, updated_at = now() where club_slug = $1 and name_key = $2',
+          [slug, fromKey, toKey, to],
+        )
+      }
     }
 
     const { rows } = await tx.query<{ games: number; wins: number; losses: number }>(

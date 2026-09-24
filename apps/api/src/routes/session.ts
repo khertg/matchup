@@ -1,11 +1,14 @@
 import {
+  MAX_ROSTER_BATCH,
   SNAPSHOT_LIMITS,
   jsonBytes,
   parseFullBackupEnvelope,
   parsePublicSnapshot,
   type PutHistoryRequest,
+  type PutRosterRequest,
   type RecordLifetimeRequest,
   type RenamePlayerRequest,
+  type RosterResponse,
 } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
@@ -13,6 +16,7 @@ import { AppError } from '../errors'
 import { deleteHistory, getHistory, isHistoryId, listHistory, putHistory } from '../services/history'
 import { recordLifetime, MAX_PLAYERS_PER_BATCH } from '../services/lifetime'
 import { renamePlayer } from '../services/players'
+import { getRoster, putRoster } from '../services/roster'
 import { clearSession, getFullSession, publishSession } from '../services/sessions'
 import { authenticate } from './auth'
 
@@ -43,6 +47,28 @@ const renameBody = {
   properties: {
     from: { type: 'string', maxLength: 200 },
     to: { type: 'string', maxLength: 200 },
+  },
+} as const
+
+const rosterBody = {
+  type: 'object',
+  required: ['players'],
+  additionalProperties: false,
+  properties: {
+    players: {
+      type: 'array',
+      maxItems: MAX_ROSTER_BATCH,
+      items: {
+        type: 'object',
+        required: ['name', 'skill'],
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string', maxLength: 200 },
+          skill: { type: 'integer', minimum: 1, maximum: 6 },
+          gender: { type: 'string', enum: ['M', 'F'] },
+        },
+      },
+    },
   },
 } as const
 
@@ -132,6 +158,22 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
       return reply.code(204).send()
     },
   )
+
+  // The club's saved players, shared by all its staff devices. Private: it includes gender.
+  api.put<{ Body: PutRosterRequest }>(
+    '/roster',
+    { config: write, schema: { body: rosterBody } },
+    async (request, reply) => {
+      const { slug } = await authenticate(db, request)
+      await putRoster(db, slug, request.body.players)
+      return reply.code(204).send()
+    },
+  )
+
+  api.get('/roster', async (request): Promise<RosterResponse> => {
+    const { slug } = await authenticate(db, request)
+    return { players: await getRoster(db, slug) }
+  })
 
   // Ended sessions, kept so the club can look back at them and resume one from any staff device.
   api.put<{ Params: { id: string }; Body: PutHistoryRequest }>(

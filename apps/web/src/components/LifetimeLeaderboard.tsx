@@ -23,7 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { db, type Player } from '@/db/db'
+import type { Player } from '@/db/db'
+import { listRoster } from '@/db/roster'
 import { MAX_LIFETIME_GAMES, MIN_LIFETIME_GAMES, rankLifetime } from '@/rotation/standings'
 
 const MEDALS = [null, 'gold', 'silver', 'bronze'] as const
@@ -33,7 +34,7 @@ const fromClub = (rows: LifetimePlayer[]): Player[] =>
 
 export function LifetimeLeaderboard() {
   const club = useClubAuth((s) => s.club)
-  const localPlayers = useLiveQuery(() => db.players.toArray(), [])
+  const localPlayers = useLiveQuery(() => listRoster(club?.slug), [club?.slug])
   const [open, setOpen] = useState(false)
   const [text, setText] = useState(String(MIN_LIFETIME_GAMES))
   // The latest club fetch, tagged with its club so a stale result is never shown for another.

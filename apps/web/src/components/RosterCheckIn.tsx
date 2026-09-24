@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import type { Player } from '@/db/db'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
+import { requestRosterSync } from '@/cloud/sync'
 import { setRosterSkill } from '@/db/roster'
 import { skillLabel } from '@/lib/skill'
 import type { RosterPlayer, SessionState } from '@/rotation/types'
@@ -135,7 +136,7 @@ export function RosterCheckIn({ session, roster }: Props) {
                       <SkillBadge
                         player={p}
                         onChange={(skill) => {
-                          void setRosterSkill(id, skill)
+                          void setRosterSkill(id, skill).then(() => requestRosterSync())
                           toast(`${p.name} is now ${skillLabel(skill)}`)
                         }}
                       />

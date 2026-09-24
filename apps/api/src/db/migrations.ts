@@ -109,4 +109,20 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '004_club_roster',
+    sql: `
+      -- The club's saved players, shared by all its staff devices, by lower-case name (the same key as
+      -- the leaderboard and avatars). Only reachable with a staff token: gender is private.
+      create table club_roster (
+        club_slug  text not null references clubs (slug) on delete cascade,
+        name_key   text not null check (char_length(name_key) between 1 and 80),
+        name       text not null,
+        skill      smallint not null check (skill between 1 and 6),
+        gender     text check (gender in ('M', 'F')),
+        updated_at timestamptz not null default now(),
+        primary key (club_slug, name_key)
+      );
+    `,
+  },
 ]

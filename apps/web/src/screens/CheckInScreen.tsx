@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Lock } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,8 +23,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
-import { db, type Gender, type SkillLevel } from '@/db/db'
-import { addOrGetPlayer } from '@/db/roster'
+import type { Gender, SkillLevel } from '@/db/db'
+import { addOrGetPlayer, listRoster } from '@/db/roster'
+import { useClubAuth } from '@/cloud/auth'
+import { requestRosterSync } from '@/cloud/sync'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import { DEFAULT_SKILL, SKILL_LEVELS, skillOptionLabel } from '@/lib/skill'
@@ -184,7 +186,10 @@ export function CheckInScreen({ session }: { session: SessionState }) {
   const checkInPlayer = useSessionStore((s) => s.checkInPlayer)
   const checkOutPlayer = useSessionStore((s) => s.checkOutPlayer)
   const changeSkill = useSkillEditor()
-  const roster = useLiveQuery(() => db.players.orderBy('name').toArray(), [])
+  const clubSlug = useClubAuth((s) => s.club?.slug)
+  const roster = useLiveQuery(() => listRoster(clubSlug), [clubSlug])
+  // Bring in players the club's other devices saved, as soon as check-in opens.
+  useEffect(() => requestRosterSync(), [clubSlug])
 
   const [name, setName] = useState('')
   const [skill, setSkill] = useState<SkillLevel>(DEFAULT_SKILL)
@@ -206,7 +211,8 @@ export function CheckInScreen({ session }: { session: SessionState }) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!canSubmit) return
-    const player = await addOrGetPlayer(name, skill, gender === 'U' ? undefined : gender)
+    const player = await addOrGetPlayer(name, skill, gender === 'U' ? undefined : gender, clubSlug)
+    requestRosterSync()
     const added = checkInPlayer(player)
     toast(added ? `${player.name} checked in` : `${player.name} is already checked in`)
     if (added) {

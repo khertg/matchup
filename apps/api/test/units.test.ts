@@ -216,6 +216,7 @@ describe('migrations', () => {
       'club_avatars',
       'club_logos',
       'club_players',
+      'club_roster',
       'club_tokens',
       'clubs',
       'lifetime_batches',

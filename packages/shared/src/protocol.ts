@@ -89,6 +89,33 @@ export interface RenamePlayerRequest {
   to: string
 }
 
+// ---- club roster ---------------------------------------------------------------
+
+/** How many saved players a club keeps in the cloud. */
+export const MAX_ROSTER_PLAYERS = 1000
+/** Players sent in one PUT /roster. */
+export const MAX_ROSTER_BATCH = 200
+
+/**
+ * A saved player, shared by every staff device of a club. Matched by lower-case name (the same key
+ * as the leaderboard and avatars), because roster ids only mean something on the device that made them.
+ */
+export interface ClubRosterPlayer {
+  name: string
+  /** 1 to 6. */
+  skill: number
+  gender?: 'M' | 'F'
+}
+
+/** Adds players to the club's roster, or updates the ones it already has under those names. */
+export interface PutRosterRequest {
+  players: ClubRosterPlayer[]
+}
+
+export interface RosterResponse {
+  players: ClubRosterPlayer[]
+}
+
 /** A live session as viewers receive it. */
 export interface LiveRow {
   state: unknown
