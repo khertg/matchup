@@ -6,7 +6,7 @@ import { cloud } from '@/cloud/client'
 import type { Player } from '@/db/db'
 import { listRoster } from '@/db/roster'
 import { getLogoSetting, type LogoSetting } from '@/db/settings'
-import type { PlayerAvatar } from '@/lib/avatar'
+import { avatarKey, type PlayerAvatar } from '@/lib/avatar'
 import { AvatarContext, type AvatarContextValue } from '@/lib/avatars'
 
 /** How often the live page (and a signed-in staff device) checks for changed avatars. */
@@ -51,10 +51,16 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
   }, [slug])
 
   const value = useMemo<AvatarContextValue>(() => {
-    const local = new Map<number, PlayerAvatar>()
-    for (const p of players ?? []) if (p.id !== undefined && p.avatar) local.set(p.id, p.avatar)
+    const local = new Map<string, PlayerAvatar>()
+    const rosterIds = new Map<string, number>()
+    for (const p of players ?? []) {
+      if (p.id === undefined) continue
+      rosterIds.set(avatarKey(p.name), p.id)
+      if (p.avatar) local.set(avatarKey(p.name), p.avatar)
+    }
     return {
       local,
+      rosterIds,
       club: remote && remote.slug === slug ? remote : null,
       localLogo: logo === undefined ? undefined : logo.data,
     }

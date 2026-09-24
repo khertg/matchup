@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
 import { db } from '@/db/db'
-import { markHistorySynced, unsyncedHistory } from '@/db/history'
+import { archiveSession, markHistorySynced, unsyncedHistory } from '@/db/history'
 import {
   claimUnownedPlayers,
   clearAvatarDirty,
@@ -12,7 +12,7 @@ import {
   mergeClubRoster,
   setClubAvatar,
 } from '@/db/roster'
-import { MAX_ROSTER_BATCH, type StaffAvatar } from '@q2dink/shared'
+import { MAX_ROSTER_BATCH, type SessionStateRow, type StaffAvatar } from '@q2dink/shared'
 import {
   addPendingRename,
   clearPendingRenames,
@@ -35,16 +35,29 @@ import { CloudError, type CloudApi, type PutAvatarRequest } from './api'
 import { useClubAuth } from './auth'
 import { cloud } from './client'
 import { createPublisher, type SyncStatus } from './publisher'
-import { toFullBackup, toHistoryBackup, toPublicSnapshot } from './snapshot'
+import { newBatchId } from './id'
+import { parseFullBackup, toFullBackup, toHistoryBackup, toPublicSnapshot } from './snapshot'
 
 interface SyncStore {
   status: SyncStatus
   setStatus: (status: SyncStatus) => void
+  /** The session the club has running (from any staff device), or null. What "Join" offers. */
+  clubSession: SessionStateRow | null
+  /**
+   * The club is running a different session from this device's (another device started one): this
+   * device stops sending until staff choose to join it or to keep their own.
+   */
+  otherSession: SessionStateRow | null
+  /** Staff chose to keep this device's session over the other one: the next send replaces it. */
+  keepMine: boolean
 }
 
 export const useSyncStore = create<SyncStore>()((set) => ({
   status: 'off',
   setStatus: (status) => set({ status }),
+  clubSession: null,
+  otherSession: null,
+  keepMine: false,
 }))
 
 const isExpiredLogin = (error: unknown) => error instanceof CloudError && error.code === 'invalid_token'
@@ -248,6 +261,8 @@ async function exchangeRoster(api: CloudApi): Promise<boolean> {
 
 const ROSTER_SYNC_DELAY_MS = 1000
 const ROSTER_POLL_MS = 30_000
+/** How often a staff device checks the club's copy of the session, in case the live stream dropped. */
+const SESSION_POLL_MS = 15_000
 let rosterSyncTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
@@ -366,6 +381,97 @@ export async function setPhotoSharing(on: boolean, api: CloudApi | null = cloud)
  * Publishes the running session to the club's live viewer page while staff are
  * signed in to a club. Returns a function that stops syncing.
  */
+/** Say which of this device's changes another staff device's got there first for. */
+function reportDropped(dropped: { reason: string }[]) {
+  for (const { reason } of dropped) toast.warning(`Not applied, changed on another device: ${reason}`)
+}
+
+/**
+ * The club's copy of the session, as another staff device left it (or null when none is running).
+ * With this device running the same session, take it and apply this device's unsent changes on top;
+ * with none running here, remember it so staff can join; with a different one running here, say so.
+ */
+export async function adoptClubCopy(clubRow: SessionStateRow | null): Promise<void> {
+  const sync = useSyncStore.getState()
+  const store = useSessionStore.getState()
+  // A session that ended here but whose end has not reached the club yet is not running.
+  const row = clubRow && clubRow.sessionId !== null && clubRow.sessionId === store.endedSessionId ? null : clubRow
+  useSyncStore.setState({ clubSession: row })
+  if (!store.session) {
+    useSyncStore.setState({ otherSession: null })
+    return
+  }
+  // Not shared yet (just started, or never sent): the first send decides.
+  if (!store.base) return
+  if (!row) {
+    // It ended on another device, after this one had it: follow, keeping a copy here.
+    if (store.base.revision > 0) await endedElsewhere()
+    return
+  }
+  const sameSession = row.sessionId === null || row.sessionId === store.sessionId
+  if (!sameSession) {
+    if (!sync.keepMine) useSyncStore.setState({ otherSession: row })
+    return
+  }
+  useSyncStore.setState({ otherSession: null })
+  if (row.revision <= store.base.revision) return
+  const parsed = parseFullBackup(row.full)
+  if (!parsed) return
+  reportDropped(useSessionStore.getState().rebaseOnto(row.revision, parsed.session))
+}
+
+/** Another staff device ended the session: keep it in Past sessions here, and leave it. */
+async function endedElsewhere(): Promise<void> {
+  const store = useSessionStore.getState()
+  if (!store.session) return
+  const club = useClubAuth.getState().club
+  const unsent = store.pending.length
+  try {
+    const saved = await archiveSession({
+      id: store.sessionId,
+      location: store.location,
+      startedAt: store.startedAt,
+      session: store.session,
+      lifetimeCounted: store.lifetimeCounted,
+      clubSlug: club?.slug,
+    })
+    // The device that ended it sends the club its copy; this one only keeps its own.
+    if (saved) await markHistorySynced(saved.id, club?.slug)
+  } catch {
+    // Keeping a local copy is a courtesy; leaving the session is what matters.
+  }
+  useSessionStore.getState().endSession()
+  toast(
+    `“${store.location}” was ended on another device` +
+      (unsent > 0 ? `. ${unsent === 1 ? '1 change' : `${unsent} changes`} made here had not been sent.` : ''),
+  )
+}
+
+/** Join the session the club has running, alongside the device that started it. */
+export function joinClubSession(row: SessionStateRow): boolean {
+  const parsed = parseFullBackup(row.full)
+  if (!parsed) return false
+  useSessionStore.getState().joinShared(
+    parsed.location,
+    parsed.session,
+    {
+      sessionId: row.sessionId ?? newBatchId(),
+      startedAt: row.startedAt ? Date.parse(row.startedAt) : Date.now(),
+      lifetimeCounted: parsed.lifetimeCounted,
+    },
+    row.revision,
+  )
+  useSyncStore.setState({ otherSession: null, keepMine: false })
+  return true
+}
+
+/** Keep running this device's session: the next send replaces the other device's on the club. */
+export function keepMySession(): void {
+  useSyncStore.setState({ otherSession: null, keepMine: true })
+  // Sending again is what makes it stick; any change triggers it, so poke the store.
+  useSessionStore.setState((s) => ({ session: s.session && { ...s.session } }))
+}
+
 export function startCloudSync(api: CloudApi | null = cloud): () => void {
   if (!api) return () => {}
 
@@ -373,22 +479,74 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   const setStatus = (status: SyncStatus) => useSyncStore.getState().setStatus(status)
   setStatus(signedIn() ? 'idle' : 'off')
 
+  // Sends and fetches of the shared session never overlap, so a fetched copy is never mixed up with a
+  // send still on its way.
+  let queue: Promise<unknown> = Promise.resolve()
+  const serially = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = queue.then(task, task)
+    queue = run.catch(() => undefined)
+    return run
+  }
+  /**
+   * Tell the club a session that ended here has ended, if it has not been told yet (only that one, so a
+   * newer session another device started is never ended).
+   */
+  const sendEnd = async (token: string) => {
+    const ended = useSessionStore.getState().endedSessionId
+    if (!ended) return
+    await api.clear(token, ended)
+    useSessionStore.setState((s) => (s.endedSessionId === ended ? { endedSessionId: '' } : {}))
+  }
+
   const publisher = createPublisher({
-    publish: async (location, session) => {
-      const club = signedIn()
-      if (!club) return
-      try {
-        await api.publish(club.token, toPublicSnapshot(location, session), toFullBackup(location, session))
-      } catch (error) {
-        handleAuthError(error)
-        throw error
-      }
-    },
+    publish: () =>
+      serially(async () => {
+        const club = signedIn()
+        if (!club) return
+        useSessionStore.getState().shareSession()
+        const { base, pending, session, location, sessionId, startedAt } = useSessionStore.getState()
+        if (!session || !base) return
+        // A session that ended here just before this one began (or before a reload): its end may never
+        // have been sent, so end it on the club first, or this one would look like a clash with it.
+        try {
+          await sendEnd(club.token)
+        } catch (error) {
+          handleAuthError(error)
+          throw error
+        }
+        const { otherSession, keepMine } = useSyncStore.getState()
+        // Waiting for staff to choose between this session and another device's.
+        if (otherSession) return
+        // Nothing new here (the change came from another device): nothing to send.
+        if (pending.length === 0 && base.revision > 0 && !keepMine) return
+        try {
+          const outcome = await api.publish(
+            club.token,
+            toPublicSnapshot(location, session),
+            toFullBackup(location, session),
+            {
+              ...(keepMine ? {} : { baseRevision: base.revision }),
+              sessionId,
+              startedAt: new Date(startedAt).toISOString(),
+            },
+          )
+          if ('revision' in outcome) {
+            useSessionStore.getState().confirmPublished(pending.length, session, outcome.revision)
+            useSyncStore.setState({ keepMine: false })
+          } else {
+            // Moved on elsewhere: take the club's copy, apply this device's changes on top, send again.
+            await adoptClubCopy(outcome.conflict)
+          }
+        } catch (error) {
+          handleAuthError(error)
+          throw error
+        }
+      }),
     clear: async () => {
       const club = signedIn()
       if (!club) return
       try {
-        await api.clear(club.token)
+        await sendEnd(club.token)
       } catch (error) {
         handleAuthError(error)
         throw error
@@ -404,8 +562,10 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   // Only publish a session that exists. Sending "no session" on start-up would
   // wipe a session another staff device is running.
   const pushIfRunning = () => {
-    const { location, session } = useSessionStore.getState()
+    const { location, session, endedSessionId } = useSessionStore.getState()
     if (session) publisher.push(location, session)
+    // A session ended here, and the app closed before the club was told: tell it now.
+    else if (endedSessionId) publisher.push(location, null)
   }
 
   const unsubscribeSession = useSessionStore.subscribe((state, prev) => {
@@ -415,19 +575,51 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     }
   })
 
+  // Follow the club's copy: the live board's stream says when it changed; the private copy is then
+  // fetched with the staff login. A poll covers a stream that dropped.
+  const refresh = () =>
+    serially(async () => {
+      const club = signedIn()
+      if (!club || !navigator.onLine) return
+      try {
+        const row = await api.fetchSessionState(club.token)
+        if (signedIn()?.slug === club.slug) await adoptClubCopy(row)
+      } catch (error) {
+        handleAuthError(error)
+      }
+    })
+  let unsubscribeLive: () => void = () => {}
+  const follow = () => {
+    unsubscribeLive()
+    unsubscribeLive = () => {}
+    const club = signedIn()
+    if (!club) return
+    unsubscribeLive = api.subscribeLive(club.slug, (row) => {
+      const base = useSessionStore.getState().base
+      if (row && base && row.revision !== undefined && row.revision <= base.revision) return
+      void refresh()
+    })
+    void refresh()
+  }
+
   const unsubscribeAuth = useClubAuth.subscribe((state, prev) => {
     if (state.club && !prev.club) {
       setStatus('idle')
       pushIfRunning()
+      follow()
       void runSync(api)
     } else if (!state.club && prev.club) {
       setStatus('off')
+      unsubscribeLive()
+      unsubscribeLive = () => {}
+      useSyncStore.setState({ clubSession: null, otherSession: null, keepMine: false })
     }
   })
 
   const handleOnline = () => {
     void checkLogin(api)
     publisher.onOnline()
+    void refresh()
     void runSync(api)
   }
   const handleOffline = () => {
@@ -439,10 +631,12 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
   const rosterPoll = setInterval(() => {
     if (signedIn() && navigator.onLine) void syncRoster(api)
   }, ROSTER_POLL_MS)
+  const sessionPoll = setInterval(() => void refresh(), SESSION_POLL_MS)
 
   if (signedIn()) {
     void checkLogin(api)
     pushIfRunning()
+    follow()
     void runSync(api)
   }
 
@@ -450,6 +644,8 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     publisher.dispose()
     unsubscribeSession()
     unsubscribeAuth()
+    unsubscribeLive()
+    clearInterval(sessionPoll)
     window.removeEventListener('online', handleOnline)
     window.removeEventListener('offline', handleOffline)
     clearInterval(rosterPoll)

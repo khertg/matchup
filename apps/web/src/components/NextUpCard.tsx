@@ -68,7 +68,7 @@ export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onRepl
                   {team.map((id) => (
                     <li key={id} className="flex items-center justify-between gap-2 py-1">
                       <span className="flex min-w-0 items-center gap-2">
-                        <PlayerAvatar id={id} name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
+                        <PlayerAvatar name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
                         <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
                         {queuedAt?.[id] !== undefined && (
                           <span className="shrink-0 text-xs text-muted-foreground">

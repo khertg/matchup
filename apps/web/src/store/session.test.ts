@@ -234,18 +234,23 @@ describe('session store', () => {
   })
 
   describe('checking in several players', () => {
-    it('queues them in the order given, without starting anything', () => {
+    const queuedNames = () => store().session!.queue.map((id) => store().session!.players[id].name)
+
+    it('queues them in the order given, numbered by the session, without starting anything', () => {
       store().startSession('Club', 'doubles', 1)
       expect(store().checkInPlayers([player(3), player(1), player(2), player(4)])).toBe(4)
-      expect(store().session!.queue).toEqual([3, 1, 2, 4])
+      expect(queuedNames()).toEqual(['P3', 'P1', 'P2', 'P4'])
+      // The session's own ids, the same on every staff device: never this device's roster ids.
+      expect(store().session!.queue).toEqual([1, 2, 3, 4])
       expect(store().session!.courts[0].teams).toBeNull()
     })
 
-    it('skips anyone already checked in and says how many were new', () => {
+    it('skips anyone already checked in, matched by name, and says how many were new', () => {
       store().startSession('Club', 'doubles', 1)
       store().checkInPlayer(player(2))
       expect(store().checkInPlayers([player(1), player(2), player(3), player(3)])).toBe(2)
-      expect(store().session!.queue).toEqual([2, 1, 3])
+      expect(queuedNames()).toEqual(['P2', 'P1', 'P3'])
+      expect(store().checkInPlayer({ id: 99, name: ' p1 ', skill: 3 })).toBe(false)
     })
 
     it('clears the pending result undo once, and does nothing for an empty or repeated list', () => {

@@ -4,27 +4,37 @@ import {
   jsonBytes,
   parseFullBackupEnvelope,
   parsePublicSnapshot,
+  type ConflictBody,
+  type PublishMeta,
+  type PublishResponse,
   type PutHistoryRequest,
   type PutRosterRequest,
   type RecordLifetimeRequest,
   type RenamePlayerRequest,
   type RosterResponse,
+  type SessionStateRow,
 } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
-import { AppError } from '../errors'
+import { AppError, defaultMessage } from '../errors'
 import { deleteHistory, getHistory, isHistoryId, listHistory, putHistory } from '../services/history'
 import { recordLifetime, MAX_PLAYERS_PER_BATCH } from '../services/lifetime'
 import { renamePlayer } from '../services/players'
 import { getRoster, putRoster } from '../services/roster'
-import { clearSession, getFullSession, publishSession } from '../services/sessions'
+import { clearSession, getFullSession, getSessionState, publishSession } from '../services/sessions'
 import { authenticate } from './auth'
 
 const publishBody = {
   type: 'object',
   required: ['public', 'full'],
   additionalProperties: false,
-  properties: { public: { type: 'object' }, full: { type: 'object' } },
+  properties: {
+    public: { type: 'object' },
+    full: { type: 'object' },
+    baseRevision: { type: 'integer', minimum: 0 },
+    sessionId: { type: 'string', maxLength: 64 },
+    startedAt: { type: 'string', maxLength: 40 },
+  },
 } as const
 
 const historyBody = {
@@ -102,10 +112,10 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
     rateLimit: { max: config.rateLimit.write.max, timeWindow: config.rateLimit.write.windowMs },
   }
 
-  api.put<{ Body: { public: unknown; full: unknown } }>(
+  api.put<{ Body: { public: unknown; full: unknown } & PublishMeta }>(
     '/session',
     { config: write, schema: { body: publishBody } },
-    async (request) => {
+    async (request, reply) => {
       const { slug } = await authenticate(db, request)
 
       // parsePublicSnapshot returns a fresh copy with only the known public fields,
@@ -117,9 +127,18 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
         throw new AppError('payload_too_large')
       }
 
-      const row = await publishSession(db, slug, snapshot, backup)
-      hub.publish(slug, { type: 'update', row })
-      return { updatedAt: row.updatedAt }
+      const { baseRevision, sessionId, startedAt } = request.body
+      if (sessionId !== undefined && !isHistoryId(sessionId)) throw new AppError('invalid_request')
+      if (startedAt !== undefined && Number.isNaN(Date.parse(startedAt))) throw new AppError('invalid_request')
+      const result = await publishSession(db, slug, snapshot, backup, { baseRevision, sessionId, startedAt })
+      if ('conflict' in result) {
+        // Another staff device changed or ended the session: this one rebases on the club's copy.
+        const body: ConflictBody = { error: 'conflict', message: defaultMessage('conflict'), current: result.conflict }
+        return reply.code(409).send(body)
+      }
+      hub.publish(slug, { type: 'update', row: result.row })
+      const response: PublishResponse = { updatedAt: result.row.updatedAt, revision: result.revision }
+      return response
     },
   )
 
@@ -131,10 +150,20 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
     return backup
   })
 
-  api.delete('/session', { config: write }, async (request, reply) => {
+  // The private copy with its revision, for staff devices running the session together.
+  api.get('/session/state', async (request): Promise<SessionStateRow> => {
     const { slug } = await authenticate(db, request)
-    await clearSession(db, slug)
-    hub.publish(slug, { type: 'cleared' })
+    const state = await getSessionState(db, slug)
+    if (!state) throw new AppError('not_found')
+    return state
+  })
+
+  // With ?sessionId, only that session ends: a device cannot take down one started since elsewhere.
+  api.delete<{ Querystring: { sessionId?: string } }>('/session', { config: write }, async (request, reply) => {
+    const { slug } = await authenticate(db, request)
+    const { sessionId } = request.query
+    if (sessionId !== undefined && !isHistoryId(sessionId)) throw new AppError('invalid_request')
+    if (await clearSession(db, slug, sessionId)) hub.publish(slug, { type: 'cleared' })
     return reply.code(204).send()
   })
 

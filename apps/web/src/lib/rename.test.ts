@@ -76,8 +76,8 @@ describe('renameRosterPlayer', () => {
 describe('renamePlayer (roster and running session together)', () => {
   it('changes both, so the queue and future check-ins use the new name', async () => {
     const [ann] = await checkedIn('Ann', 'Bob')
-    await renamePlayer(ann.id, 'Anne')
-    expect(store().session!.players[ann.id].name).toBe('Anne')
+    await renamePlayer(ann.name, 'Anne')
+    expect(Object.values(store().session!.players).map((p) => p.name)).toEqual(['Anne', 'Bob'])
     expect((await db.players.get(ann.id))?.name).toBe('Anne')
   })
 
@@ -85,7 +85,7 @@ describe('renamePlayer (roster and running session together)', () => {
     await checkedIn('Bob')
     const cy = await addOrGetPlayer('Cy', 3)
     const before = store().session
-    await renamePlayer(cy.id, 'Cyrus')
+    await renamePlayer(cy.name, 'Cyrus')
     expect((await db.players.get(cy.id))?.name).toBe('Cyrus')
     expect(store().session).toBe(before)
   })
@@ -93,7 +93,7 @@ describe('renamePlayer (roster and running session together)', () => {
   it('changes nothing at all when the name is refused', async () => {
     const [ann] = await checkedIn('Ann', 'Bob')
     const before = store().session
-    await expect(renamePlayer(ann.id, 'bob')).rejects.toBeInstanceOf(RangeError)
+    await expect(renamePlayer(ann.name, 'bob')).rejects.toBeInstanceOf(RangeError)
     expect(store().session).toBe(before)
     expect((await db.players.get(ann.id))?.name).toBe('Ann')
   })
@@ -102,7 +102,7 @@ describe('renamePlayer (roster and running session together)', () => {
     const [ann] = await checkedIn('Ann', 'Bob')
     const session = store().session!
     await archiveSession({ id: 'old', location: 'Club', startedAt: 1, session, lifetimeCounted: {} })
-    await renamePlayer(ann.id, 'Anne')
-    expect((await getHistory('old'))?.session.players[ann.id].name).toBe('Ann')
+    await renamePlayer(ann.name, 'Anne')
+    expect(Object.values((await getHistory('old'))!.session.players).map((p) => p.name)).toEqual(['Ann', 'Bob'])
   })
 })

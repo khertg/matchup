@@ -6,12 +6,14 @@ import {
   slugify,
 } from '@q2dink/shared'
 import { QrCodeIcon } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
+import { toast } from 'sonner'
 import { toCloudError } from '@/cloud/api'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { useRecoveryCode } from '@/cloud/recovery'
 import { parseFullBackup } from '@/cloud/snapshot'
+import { joinClubSession, useSyncStore } from '@/cloud/sync'
 import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
 import { SharePanel } from '@/components/SharePanel'
 import { Button } from '@/components/ui/button'
@@ -26,8 +28,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { SessionState } from '@/rotation/types'
-import { useSessionStore } from '@/store/session'
 
 /** Create a club and sign in to it. The recovery code is shown once, outside this dialog. */
 export function CreateClubDialog() {
@@ -249,26 +249,10 @@ export function LoginDialog() {
 function SignedIn() {
   const club = useClubAuth((s) => s.club)
   const signOut = useClubAuth((s) => s.signOut)
-  const loadSession = useSessionStore((s) => s.loadSession)
-  const [resumable, setResumable] = useState<{ location: string; session: SessionState } | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
-
-  // Look for a session running on another staff device that this one could take over.
-  useEffect(() => {
-    if (!cloud || !club) return
-    let cancelled = false
-    cloud
-      .fetchFullSession(club.token)
-      .then((raw) => {
-        if (!cancelled) setResumable(parseFullBackup(raw))
-      })
-      .catch(() => {
-        if (!cancelled) setResumable(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [club])
+  // The session another staff device has running, kept current by the cloud sync as it changes.
+  const clubSession = useSyncStore((s) => s.clubSession)
+  const running = useMemo(() => (clubSession ? parseFullBackup(clubSession.full) : null), [clubSession])
 
   if (!club) return null
 
@@ -286,13 +270,20 @@ function SignedIn() {
         Live link: <span className="font-mono">{`/club/${club.slug}`}</span>
       </p>
       <PhotoSharingToggle />
-      {resumable && (
-        <Button
-          className="h-11 w-full"
-          onClick={() => loadSession(resumable.location, resumable.session)}
-        >
-          Resume “{resumable.location}” from the cloud
-        </Button>
+      {clubSession && running && (
+        <div className="space-y-1">
+          <Button
+            className="h-11 w-full"
+            onClick={() => {
+              if (!joinClubSession(clubSession)) toast.error('This session could not be opened.')
+            }}
+          >
+            Join “{running.location}”
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Running on another staff device. Join to run it together: changes on either show on both.
+          </p>
+        </div>
       )}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={() => setShareOpen(true)}>

@@ -112,27 +112,27 @@ describe('which avatar is shown', () => {
     index: { avatars, logo, name: null },
   })
 
-  it('prefers this device’s avatar, by id', () => {
-    const local = new Map([[1, { kind: 'emoji' as const, value: '🎾', color: '#123456' }]])
-    const shown = resolveAvatar({ local, club: club({ ann: { kind: 'emoji', emoji: '🏆', color: '#654321', v: 1 } }) }, 1, 'Ann', urls)
+  it('prefers this device’s avatar for that name, ignoring case', () => {
+    const local = new Map([['ann', { kind: 'emoji' as const, value: '🎾', color: '#123456' }]])
+    const shown = resolveAvatar({ local, club: club({ ann: { kind: 'emoji', emoji: '🏆', color: '#654321', v: 1 } }) }, 'Ann', urls)
     expect(shown).toEqual({ kind: 'emoji', value: '🎾', color: '#123456' })
   })
 
   it('shows a photo kept on this device as its data URL', () => {
-    const local = new Map([[2, { kind: 'photo' as const, data: 'data:image/webp;base64,AAAA' }]])
-    expect(resolveAvatar({ local, club: null }, 2, 'Bob', urls)).toEqual({ kind: 'photo', src: 'data:image/webp;base64,AAAA' })
+    const local = new Map([['bob', { kind: 'photo' as const, data: 'data:image/webp;base64,AAAA' }]])
+    expect(resolveAvatar({ local, club: null }, 'Bob', urls)).toEqual({ kind: 'photo', src: 'data:image/webp;base64,AAAA' })
   })
 
   it('falls back to the club’s avatar for that name, ignoring case', () => {
     const c = club({ 'ann lee': { kind: 'emoji', emoji: '🏆', color: '#654321', v: 5 } })
-    expect(resolveAvatar({ local: new Map(), club: c }, undefined, 'Ann LEE', urls)).toEqual({ kind: 'emoji', value: '🏆', color: '#654321' })
-    // Another device's roster id means nothing here: the name decides.
-    expect(resolveAvatar({ local: new Map([[9, { kind: 'initials' as const, color: '#000000' }]]), club: c }, 1, 'Ann Lee', urls).kind).toBe('emoji')
+    expect(resolveAvatar({ local: new Map(), club: c }, 'Ann LEE', urls)).toEqual({ kind: 'emoji', value: '🏆', color: '#654321' })
+    // Someone else's saved avatar here never stands in: the name decides.
+    expect(resolveAvatar({ local: new Map([['bob', { kind: 'initials' as const, color: '#000000' }]]), club: c }, 'Ann Lee', urls).kind).toBe('emoji')
   })
 
   it('points a club photo at its own URL, versioned', () => {
     const c = club({ ann: { kind: 'photo', v: 42 } })
-    expect(resolveAvatar({ local: new Map(), club: c }, undefined, 'Ann', urls)).toEqual({
+    expect(resolveAvatar({ local: new Map(), club: c }, 'Ann', urls)).toEqual({
       kind: 'photo',
       src: '/api/clubs/downtown/avatars/ann/photo?v=42',
     })
@@ -140,22 +140,22 @@ describe('which avatar is shown', () => {
 
   it('uses the club’s colour for initials, and the name’s own colour when it has none', () => {
     const c = club({ ann: { kind: 'initials', color: '#abcdef', v: 1 }, bob: { kind: 'emoji', emoji: '🎾', v: 1 } })
-    expect(resolveAvatar({ local: new Map(), club: c }, undefined, 'Ann', urls)).toEqual({ kind: 'initials', text: 'A', color: '#abcdef' })
-    expect(resolveAvatar({ local: new Map(), club: c }, undefined, 'Bob', urls)).toEqual({ kind: 'emoji', value: '🎾', color: colorFor('Bob') })
+    expect(resolveAvatar({ local: new Map(), club: c }, 'Ann', urls)).toEqual({ kind: 'initials', text: 'A', color: '#abcdef' })
+    expect(resolveAvatar({ local: new Map(), club: c }, 'Bob', urls)).toEqual({ kind: 'emoji', value: '🎾', color: colorFor('Bob') })
   })
 
   it('shows automatic initials when nobody has set anything', () => {
-    expect(resolveAvatar({ local: new Map(), club: null }, 3, 'Cy Dee', urls)).toEqual({
+    expect(resolveAvatar({ local: new Map(), club: null }, 'Cy Dee', urls)).toEqual({
       kind: 'initials',
       text: 'CD',
       color: colorFor('Cy Dee'),
     })
-    expect(resolveAvatar({ local: new Map(), club: club({}) }, undefined, 'Cy', urls).kind).toBe('initials')
+    expect(resolveAvatar({ local: new Map(), club: club({}) }, 'Cy', urls).kind).toBe('initials')
   })
 
   it('does not use the club’s avatars when there is no cloud', () => {
     const c = club({ ann: { kind: 'emoji', emoji: '🎾', color: '#123456', v: 1 } })
-    expect(resolveAvatar({ local: new Map(), club: c }, undefined, 'Ann', null).kind).toBe('initials')
+    expect(resolveAvatar({ local: new Map(), club: c }, 'Ann', null).kind).toBe('initials')
   })
 })
 

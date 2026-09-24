@@ -42,7 +42,7 @@ export function QueueList({ session, nextUp = [], onSkillChange, onTakeBreak, ed
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="w-6 text-sm text-muted-foreground">{index + 1}</span>
                   <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <PlayerAvatar id={id} name={player.name} size="sm" editable={editable} viewable />
+                    <PlayerAvatar name={player.name} size="sm" editable={editable} viewable />
                     <span className="min-w-0 truncate">{player.name}</span>
                     {partner !== undefined && (
                       <Lock

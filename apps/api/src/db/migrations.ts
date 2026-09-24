@@ -136,4 +136,15 @@ export const MIGRATIONS: Migration[] = [
         where slug in (select club_slug from club_avatars where kind = 'photo');
     `,
   },
+  {
+    id: '006_session_revision',
+    sql: `
+      -- Several staff devices run one session together. Each write moves the revision on; a device
+      -- writing on an older revision is refused and rebases on the club's copy first.
+      alter table session_backups
+        add column revision   bigint not null default 0,
+        add column session_id uuid,
+        add column started_at timestamptz;
+    `,
+  },
 ]

@@ -301,7 +301,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
               {session.queue.map((id) => (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <PlayerAvatar id={id} name={session.players[id].name} editable viewable />
+                    <PlayerAvatar name={session.players[id].name} editable viewable />
                     <span className="min-w-0 truncate">{session.players[id].name}</span>
                   </span>
                   <SkillBadge player={session.players[id]} display="name" onChange={(skill) => changeSkill(id, skill)} />
@@ -327,7 +327,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
               {session.onBreak.map((id) => (
                 <li key={id} className="flex items-center gap-3 py-2">
                   <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <PlayerAvatar id={id} name={session.players[id].name} editable />
+                    <PlayerAvatar name={session.players[id].name} editable />
                     <span className="min-w-0 truncate">{session.players[id].name}</span>
                   </span>
                   <SkillBadge player={session.players[id]} display="name" onChange={(skill) => changeSkill(id, skill)} />

@@ -92,7 +92,7 @@ export function ReplacePlayerDialog({ mode = 'court', player, waiting, onReplace
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <PlayerAvatar id={p.id} name={p.name} size="sm" />
+                      <PlayerAvatar name={p.name} size="sm" />
                       {p.name}
                       {!nextUp && index === 0 && (
                         <span className="ml-2 text-xs text-muted-foreground">next in line</span>

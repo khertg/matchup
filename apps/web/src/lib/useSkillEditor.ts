@@ -1,7 +1,8 @@
 import { toast } from 'sonner'
+import { useClubAuth } from '@/cloud/auth'
 import { requestRosterSync } from '@/cloud/sync'
 import type { SkillLevel } from '@/db/db'
-import { setRosterSkill } from '@/db/roster'
+import { findSavedPlayer, setRosterSkill } from '@/db/roster'
 import { skillLabel } from '@/lib/skill'
 import { useSessionStore } from '@/store/session'
 
@@ -16,7 +17,11 @@ export function useSkillEditor() {
   return function changeSkill(playerId: number, skill: SkillLevel) {
     const name = session?.players[playerId]?.name ?? 'Player'
     setPlayerSkill(playerId, skill)
-    void setRosterSkill(playerId, skill).then(() => requestRosterSync())
+    // The saved player goes by name: a session's ids are its own, not this device's roster ids.
+    void findSavedPlayer(useClubAuth.getState().club?.slug, name).then(async (saved) => {
+      if (saved) await setRosterSkill(saved.id, skill)
+      requestRosterSync()
+    })
     toast(`${name} is now ${skillLabel(skill)}`)
   }
 }

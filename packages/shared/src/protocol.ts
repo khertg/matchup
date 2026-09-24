@@ -18,6 +18,7 @@ export const ERROR_CODES = [
   'rate_limited',
   'payload_too_large',
   'internal_error',
+  'conflict',
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]
@@ -120,6 +121,46 @@ export interface RosterResponse {
 export interface LiveRow {
   state: unknown
   updatedAt: string
+  /**
+   * The club's copy of the session changed to this revision. Staff devices use it as a signal to fetch
+   * the private copy (`GET /session/state`); it tells viewers nothing. Missing from older servers.
+   */
+  revision?: number
+}
+
+/**
+ * `PUT /session` extras for several staff devices running one session. All optional, so an older app
+ * that sends none of them keeps today's last-write-wins.
+ */
+export interface PublishMeta {
+  /** The revision this device's change was made on. A stale one is refused with `conflict`. */
+  baseRevision?: number
+  /** The session this is (a UUID made on the device that started it). */
+  sessionId?: string
+  /** ISO time the session started. */
+  startedAt?: string
+}
+
+export interface PublishResponse {
+  updatedAt: string
+  revision: number
+}
+
+/** `GET /session/state` (staff): the club's private copy of the running session and its revision. */
+export interface SessionStateRow {
+  revision: number
+  sessionId: string | null
+  startedAt: string | null
+  /** A FullBackupEnvelope. */
+  full: unknown
+}
+
+/**
+ * The body of a 409 `conflict` from `PUT /session`: the club's copy moved on since `baseRevision`
+ * (another staff device changed it), or it ended (`current` null). The device rebases and tries again.
+ */
+export interface ConflictBody extends ErrorBody {
+  current: SessionStateRow | null
 }
 
 /** Server-Sent Events on /clubs/:slug/live/stream. */

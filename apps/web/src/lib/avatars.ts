@@ -10,8 +10,13 @@ export type ResolvedAvatar =
   | { kind: 'initials'; text: string; color: string }
 
 export interface AvatarContextValue {
-  /** This device's roster avatars, by player id. Empty on the live page. */
-  local: Map<number, PlayerAvatar>
+  /**
+   * This device's roster avatars for the signed-in club, by lower-case name (a session's player ids are
+   * the session's own, shared by every staff device, never this device's roster ids). Empty on the live page.
+   */
+  local: Map<string, PlayerAvatar>
+  /** This device's saved players of the club, by lower-case name: their roster id, for changing an avatar. */
+  rosterIds?: Map<string, number>
   /** The club's avatars by lower-case name and its logo version, or null with no club. */
   club: { slug: string; index: AvatarIndex } | null
   /** This device's logo: undefined = none set here, null = removed here, else a data URL. */
@@ -33,16 +38,15 @@ const cloudUrls: MediaUrls | null = api && {
 }
 
 /**
- * The avatar to draw for a player: this device's roster avatar (by id), else the club's for that
- * name, else the automatic initials on a colour taken from the name.
+ * The avatar to draw for a player: this device's saved avatar for that name, else the club's, else the
+ * automatic initials on a colour taken from the name.
  */
 export function resolveAvatar(
   { local, club }: Pick<AvatarContextValue, 'local' | 'club'>,
-  id: number | undefined,
   name: string,
   urls: MediaUrls | null = cloudUrls,
 ): ResolvedAvatar {
-  const own = id === undefined ? undefined : local.get(id)
+  const own = local.get(avatarKey(name))
   if (own) {
     if (own.kind === 'photo') return { kind: 'photo', src: own.data }
     if (own.kind === 'emoji') return { kind: 'emoji', value: own.value, color: own.color }
@@ -72,14 +76,18 @@ export function resolveLogo(
   return null
 }
 
-export function usePlayerAvatar(id: number | undefined, name: string): ResolvedAvatar {
-  return resolveAvatar(useContext(AvatarContext), id, name)
+export function usePlayerAvatar(name: string): ResolvedAvatar {
+  return resolveAvatar(useContext(AvatarContext), name)
 }
 
 /** This device's own avatar for a player, for the editor to start from. Null when none is set. */
-export function useOwnAvatar(id: number | undefined): PlayerAvatar | null {
-  const { local } = useContext(AvatarContext)
-  return (id !== undefined && local.get(id)) || null
+export function useOwnAvatar(name: string): PlayerAvatar | null {
+  return useContext(AvatarContext).local.get(avatarKey(name)) ?? null
+}
+
+/** This device's saved player of that name (its roster id), or undefined when it has none. */
+export function useRosterId(name: string): number | undefined {
+  return useContext(AvatarContext).rosterIds?.get(avatarKey(name))
 }
 
 export function useClubLogo(): string | null {

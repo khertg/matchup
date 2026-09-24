@@ -65,7 +65,7 @@ export function StandingsCard({ page, pageNumber, pageCount, location, date, top
             <div key={row.id} className="flex items-center gap-2 rounded-lg bg-white/15 px-2 py-1.5">
               <span className="w-5 shrink-0 text-center text-sm font-bold">{row.rank}</span>
               <MedalBadge medal={row.medal} />
-              <PlayerAvatar id={row.id} name={row.name} size="sm" />
+              <PlayerAvatar name={row.name} size="sm" />
               <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
               <span className="shrink-0 text-sm tabular-nums opacity-90">
                 {row.wins}-{row.losses}

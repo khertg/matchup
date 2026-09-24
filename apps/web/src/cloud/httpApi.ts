@@ -6,7 +6,10 @@ import {
   type LifetimePlayer,
   type LiveRow,
   type LoginResponse,
+  type ConflictBody,
+  type PublishResponse,
   type ResetPasswordResponse,
+  type SessionStateRow,
   type RosterResponse,
   type StaffAvatar,
   type StaffAvatarIndex,
@@ -29,7 +32,7 @@ interface RequestOptions {
 /** Turn an HTTP error reply into the matching CloudError. */
 function errorFrom(status: number, body: unknown): CloudError {
   const code = (body as { error?: unknown } | null)?.error
-  if (isErrorCode(code)) return new CloudError(code)
+  if (isErrorCode(code)) return new CloudError(code, undefined, body)
   // A proxy in front of the API answers 502/503/504 while it restarts: treat as unreachable.
   if (status === 502 || status === 503 || status === 504) return new CloudError('network')
   const message = (body as { message?: unknown } | null)?.message
@@ -87,14 +90,28 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
       await request('POST', '/logout', { token })
     },
 
-    async publish(token, snapshot, backup) {
-      await request('PUT', '/session', { token, body: { public: snapshot, full: backup } })
+    async publish(token, snapshot, backup, meta = {}) {
+      try {
+        const result = await request<PublishResponse>('PUT', '/session', {
+          token,
+          body: { public: snapshot, full: backup, ...meta },
+        })
+        return { revision: result.revision }
+      } catch (error) {
+        // Another staff device moved the session on: hand back the club's copy to rebase on.
+        if (error instanceof CloudError && error.code === 'conflict') {
+          return { conflict: (error.body as ConflictBody | undefined)?.current ?? null }
+        }
+        throw error
+      }
     },
 
     fetchFullSession: (token) => request<unknown>('GET', '/session', { token, nullOn404: true }),
 
-    async clear(token) {
-      await request('DELETE', '/session', { token })
+    fetchSessionState: (token) => request<SessionStateRow>('GET', '/session/state', { token, nullOn404: true }),
+
+    async clear(token, sessionId) {
+      await request('DELETE', sessionId ? `/session?sessionId=${encodeURIComponent(sessionId)}` : '/session', { token })
     },
 
     async recordLifetime(token, batchId, players) {

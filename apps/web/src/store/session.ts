@@ -1,22 +1,8 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
-  addCourt as addCourtEngine,
-  cancelMatch as cancelMatchEngine,
-  checkIn,
-  checkOut,
-  closeCourt as closeCourtEngine,
   createSession,
-  editMatch as editMatchEngine,
-  lockPartners as lockPartnersEngine,
-  moveCourt as moveCourtEngine,
   playingIds,
-  recordResult as recordResultEngine,
-  recordScore as recordScoreEngine,
-  renameCourt as renameCourtEngine,
-  replaceNextUp as replaceNextUpEngine,
-  replacePlayer as replacePlayerEngine,
-  resetNextUp as resetNextUpEngine,
   setAvgGameMinutes as setAvgGameMinutesEngine,
   renamePlayer as renamePlayerEngine,
   setPlayerSkill as setPlayerSkillEngine,
@@ -25,9 +11,8 @@ import {
   type NextGroupOptions,
   type ReplacePlayerOptions,
   type SessionOptions,
-  startGame as startGameEngine,
-  unlockPartners as unlockPartnersEngine,
 } from '@/rotation/engine'
+import { applyAction, rebase, type PendingAction, type Rebased, type SessionAction } from './actions'
 import type { SkillLevel } from '@/db/db'
 import type { GameMode, RosterPlayer, SessionState } from '@/rotation/types'
 import { newBatchId } from '@/cloud/id'
@@ -45,6 +30,19 @@ interface SessionStore {
   startedAt: number
   /** What this session has already added to the all-time totals. */
   lifetimeCounted: LifetimeCounts
+  /**
+   * While the session is shared with the club (several staff devices can run it): the club's copy as
+   * this device last had it, and its revision. `session` is always `base.session` with `pending` applied.
+   * Null when not shared (no cloud, or not sent yet).
+   */
+  base: { revision: number; session: SessionState } | null
+  /** This device's changes the club has not taken yet, oldest first. Empty while not shared. */
+  pending: PendingAction[]
+  /**
+   * A session that ended here whose end the club may not have been told yet (the app can close or
+   * reload right after), so the cloud sync ends exactly that one there first. Empty once it is told.
+   */
+  endedSessionId: string
 
   startSession: (
     location: string,
@@ -107,6 +105,18 @@ interface SessionStore {
   /** Remember what has been added to the all-time totals, so a resumed session adds only what is new. */
   markLifetimeCounted: (counted: LifetimeCounts) => void
   endSession: () => void
+
+  /** Start sharing the running session with the club: from now on changes are kept until it has them. */
+  shareSession: () => void
+  /** The club took this session, with the first `count` pending changes in it, at `revision`. */
+  confirmPublished: (count: number, sent: SessionState, revision: number) => void
+  /**
+   * Another staff device moved the club's copy on: take it, and apply this device's unsent changes on
+   * top. Returns the changes that no longer applied, and why.
+   */
+  rebaseOnto: (revision: number, session: SessionState) => Rebased['dropped']
+  /** Run the club's session here too, alongside the device that started it. */
+  joinShared: (location: string, session: SessionState, meta: ResumeMeta, revision: number) => void
 }
 
 /** What identifies a session across ending and resuming it. */
@@ -131,182 +141,199 @@ const requireSession = (session: SessionState | null) => {
 
 export const useSessionStore = create<SessionStore>()(
   persist(
-    (set, get) => ({
-      location: '',
-      session: null,
-      previous: null,
-      sessionId: '',
-      startedAt: 0,
-      lifetimeCounted: {},
-
-      startSession: (location, mode, courtCount, options) =>
-        set({
-          location,
-          session: createSession(mode, courtCount, options),
-          previous: null,
-          sessionId: newBatchId(),
-          startedAt: Date.now(),
-          lifetimeCounted: {},
-        }),
-
-      setAvgGameMinutes: (minutes) => {
+    (set, get) => {
+      /**
+       * Apply one change here and, while the session is shared with the club, keep it until the club has
+       * it, so it can be applied again on the club's copy if another staff device changed that meanwhile.
+       */
+      const dispatch = (action: SessionAction, previous: SessionState | null) => {
         const session = requireSession(get().session)
-        const { previous } = get()
-        // A setting, not a game event: keep the pending result undo, but carry the
-        // new value into its snapshot so undoing a result never reverts the setting.
+        const applied = applyAction(session, action)
+        const { base, pending } = get()
         set({
-          session: setAvgGameMinutesEngine(session, minutes),
-          previous: previous && setAvgGameMinutesEngine(previous, minutes),
+          session: applied.session,
+          previous,
+          ...(base ? { pending: [...pending, { action, ...(applied.ids ? { ids: applied.ids } : {}) }] } : {}),
         })
-      },
+      }
 
-      setPlayerSkill: (playerId, skill) => {
-        const session = requireSession(get().session)
-        const { previous } = get()
-        // Like the game length, a correction rather than a game event: keep the pending result undo,
-        // and carry the new level into its snapshot so undoing a result never reverts it.
-        set({
-          session: setPlayerSkillEngine(session, playerId, skill),
-          previous: previous?.players[playerId] ? setPlayerSkillEngine(previous, playerId, skill) : previous,
-        })
-      },
+      return {
+        location: '',
+        session: null,
+        previous: null,
+        sessionId: '',
+        startedAt: 0,
+        lifetimeCounted: {},
+        base: null,
+        pending: [],
+        endedSessionId: '',
 
-      renamePlayer: (playerId, name) => {
-        const session = requireSession(get().session)
-        const { previous } = get()
-        // A correction, like a skill change: undoing a result must never bring the old name back.
-        set({
-          session: renamePlayerEngine(session, playerId, name),
-          previous: previous?.players[playerId] ? renamePlayerEngine(previous, playerId, name) : previous,
-        })
-      },
+        startSession: (location, mode, courtCount, options) =>
+          set({
+            location,
+            session: createSession(mode, courtCount, options),
+            previous: null,
+            sessionId: newBatchId(),
+            startedAt: Date.now(),
+            lifetimeCounted: {},
+            base: null,
+            pending: [],
+          }),
 
-      checkInPlayer: (player) => {
-        const session = requireSession(get().session)
-        const next = checkIn(session, player, Date.now())
-        if (next === session) return false
-        set({ session: next, previous: null })
-        return true
-      },
+        setAvgGameMinutes: (minutes) => {
+          const { previous } = get()
+          // A setting, not a game event: keep the pending result undo, but carry the
+          // new value into its snapshot so undoing a result never reverts the setting.
+          dispatch({ type: 'setAvgGameMinutes', minutes }, previous && setAvgGameMinutesEngine(previous, minutes))
+        },
 
-      checkInPlayers: (players) => {
-        const session = requireSession(get().session)
-        const now = Date.now()
-        let next = session
-        let added = 0
-        for (const player of players) {
-          const after = checkIn(next, player, now)
-          if (after !== next) added++
-          next = after
-        }
-        if (added > 0) set({ session: next, previous: null })
-        return added
-      },
+        setPlayerSkill: (playerId, skill) => {
+          const { previous } = get()
+          // Like the game length, a correction rather than a game event: keep the pending result undo,
+          // and carry the new level into its snapshot so undoing a result never reverts it.
+          dispatch(
+            { type: 'setPlayerSkill', playerId, skill },
+            previous?.players[playerId] ? setPlayerSkillEngine(previous, playerId, skill) : previous,
+          )
+        },
 
-      checkOutPlayer: (playerId) => {
-        const session = requireSession(get().session)
-        set({ session: checkOut(session, playerId), previous: null })
-      },
+        renamePlayer: (playerId, name) => {
+          const { previous } = get()
+          // A correction, like a skill change: undoing a result must never bring the old name back.
+          dispatch(
+            { type: 'renamePlayer', playerId, name },
+            previous?.players[playerId] ? renamePlayerEngine(previous, playerId, name) : previous,
+          )
+        },
 
-      recordResult: (courtId, winner) => {
-        const session = requireSession(get().session)
-        const { state } = recordResultEngine(session, courtId, winner, { now: Date.now() })
-        set({ session: state, previous: session })
-      },
+        checkInPlayer: (player) => get().checkInPlayers([player]) === 1,
 
-      recordScore: (courtId, scoreA, scoreB) => {
-        const session = requireSession(get().session)
-        const { state } = recordScoreEngine(session, courtId, scoreA, scoreB, { now: Date.now() })
-        set({ session: state, previous: session })
-      },
+        checkInPlayers: (players) => {
+          const session = requireSession(get().session)
+          const action: SessionAction = {
+            type: 'checkIn',
+            players: players.map(({ name, skill, gender }) => ({ name, skill, ...(gender ? { gender } : {}) })),
+            now: Date.now(),
+          }
+          // Players already waiting or playing (matched by name) are not checked in again.
+          const waiting = new Set([...session.queue, ...playingIds(session)])
+          const { ids = [] } = applyAction(session, action)
+          const added = new Set(ids.filter((id) => !waiting.has(id))).size
+          if (added > 0) dispatch(action, null)
+          return added
+        },
 
-      editMatch: (matchIndex, edit) => {
-        const session = requireSession(get().session)
-        set({ session: editMatchEngine(session, matchIndex, edit), previous: null })
-      },
+        checkOutPlayer: (playerId) => dispatch({ type: 'checkOut', playerId }, null),
 
-      undo: () => {
-        const { previous } = get()
-        if (!previous) return false
-        set({ session: previous, previous: null })
-        return true
-      },
+        recordResult: (courtId, winner) =>
+          dispatch({ type: 'recordResult', courtId, winner, now: Date.now() }, requireSession(get().session)),
 
-      cancelMatch: (courtId) => {
-        const session = requireSession(get().session)
-        set({ session: cancelMatchEngine(session, courtId, Date.now()), previous: null })
-      },
+        recordScore: (courtId, scoreA, scoreB) =>
+          dispatch({ type: 'recordScore', courtId, scoreA, scoreB, now: Date.now() }, requireSession(get().session)),
 
-      startGame: (courtId, options) => {
-        const session = requireSession(get().session)
-        set({ session: startGameEngine(session, courtId, { ...options, now: Date.now() }), previous: null })
-      },
+        editMatch: (matchIndex, edit) => dispatch({ type: 'editMatch', matchIndex, edit }, null),
 
-      // Court changes clear the result undo: undoing a result would otherwise put players back
-      // on a court that has since been closed, or quietly reverse the change.
-      addCourt: (name) => {
-        const session = requireSession(get().session)
-        set({ session: addCourtEngine(session, name), previous: null })
-      },
+        undo: () => {
+          const { previous, session } = get()
+          if (!previous || !session) return false
+          dispatch({ type: 'restore', before: previous, after: session }, null)
+          return true
+        },
 
-      renameCourt: (courtId, name) => {
-        const session = requireSession(get().session)
-        set({ session: renameCourtEngine(session, courtId, name), previous: null })
-      },
+        cancelMatch: (courtId) => dispatch({ type: 'cancelMatch', courtId, now: Date.now() }, null),
 
-      moveCourt: (courtId, offset) => {
-        const session = requireSession(get().session)
-        set({ session: moveCourtEngine(session, courtId, offset), previous: null })
-      },
+        startGame: (courtId, options) =>
+          dispatch({ type: 'startGame', courtId, ...(options ? { options } : {}), now: Date.now() }, null),
 
-      closeCourt: (courtId) => {
-        const session = requireSession(get().session)
+        // Court changes clear the result undo: undoing a result would otherwise put players back
+        // on a court that has since been closed, or quietly reverse the change.
+        addCourt: (name) => dispatch({ type: 'addCourt', ...(name !== undefined ? { name } : {}) }, null),
+
+        renameCourt: (courtId, name) => dispatch({ type: 'renameCourt', courtId, name }, null),
+
+        moveCourt: (courtId, offset) => dispatch({ type: 'moveCourt', courtId, offset }, null),
+
         // A cancelled game's players wait at the front of the queue until staff start a game.
-        set({ session: closeCourtEngine(session, courtId, Date.now()), previous: null })
-      },
+        closeCourt: (courtId) => dispatch({ type: 'closeCourt', courtId, now: Date.now() }, null),
 
-      replacePlayer: (courtId, outId, inId, options) => {
-        const session = requireSession(get().session)
-        set({ session: replacePlayerEngine(session, courtId, outId, inId, { ...options, now: Date.now() }), previous: null })
-      },
+        replacePlayer: (courtId, outId, inId, options) =>
+          dispatch(
+            {
+              type: 'replacePlayer',
+              courtId,
+              outId,
+              ...(inId !== undefined ? { inId } : {}),
+              ...(options ? { options } : {}),
+              now: Date.now(),
+            },
+            null,
+          ),
 
-      replaceNextUp: (outId, inId) => {
-        const session = requireSession(get().session)
-        set({ session: replaceNextUpEngine(session, outId, inId), previous: null })
-      },
+        replaceNextUp: (outId, inId) => dispatch({ type: 'replaceNextUp', outId, inId }, null),
 
-      resetNextUp: () => {
-        const session = requireSession(get().session)
-        set({ session: resetNextUpEngine(session), previous: null })
-      },
+        resetNextUp: () => dispatch({ type: 'resetNextUp' }, null),
 
-      lockPartners: (a, b) => {
-        const session = requireSession(get().session)
-        set({ session: lockPartnersEngine(session, a, b), previous: null })
-      },
+        lockPartners: (a, b) => dispatch({ type: 'lockPartners', a, b }, null),
 
-      unlockPartners: (playerId) => {
-        const session = requireSession(get().session)
-        set({ session: unlockPartnersEngine(session, playerId), previous: null })
-      },
+        unlockPartners: (playerId) => dispatch({ type: 'unlockPartners', playerId }, null),
 
-      loadSession: (location, session, meta) =>
-        set({
-          location,
-          session: meta?.endedAt === undefined ? session : shiftSessionClock(session, Date.now() - meta.endedAt),
-          previous: null,
-          // Resuming keeps the session's identity, so ending it again updates its history entry.
-          sessionId: meta?.sessionId ?? newBatchId(),
-          startedAt: meta?.startedAt ?? Date.now(),
-          lifetimeCounted: meta?.lifetimeCounted ?? {},
-        }),
+        loadSession: (location, session, meta) =>
+          set({
+            location,
+            session: meta?.endedAt === undefined ? session : shiftSessionClock(session, Date.now() - meta.endedAt),
+            previous: null,
+            // Resuming keeps the session's identity, so ending it again updates its history entry.
+            sessionId: meta?.sessionId ?? newBatchId(),
+            startedAt: meta?.startedAt ?? Date.now(),
+            lifetimeCounted: meta?.lifetimeCounted ?? {},
+            base: null,
+            pending: [],
+          }),
 
-      /** Record which all-time totals this session has now contributed, after saving them. */
-      markLifetimeCounted: (counted) => set({ lifetimeCounted: counted }),
+        shareSession: () => {
+          const { session, base } = get()
+          if (session && !base) set({ base: { revision: 0, session }, pending: [] })
+        },
 
-      endSession: () =>
-        set({ location: '', session: null, previous: null, sessionId: '', startedAt: 0, lifetimeCounted: {} }),
-    }),
+        confirmPublished: (count, sent, revision) =>
+          set((state) => ({ base: { revision, session: sent }, pending: state.pending.slice(count) })),
+
+        rebaseOnto: (revision, clubSession) => {
+          if (!get().session) return []
+          const rebased = rebase(clubSession, get().pending)
+          set({ base: { revision, session: clubSession }, session: rebased.session, pending: rebased.pending, previous: null })
+          return rebased.dropped
+        },
+
+        joinShared: (location, session, meta, revision) =>
+          set({
+            location,
+            session,
+            previous: null,
+            sessionId: meta.sessionId,
+            startedAt: meta.startedAt,
+            lifetimeCounted: meta.lifetimeCounted,
+            base: { revision, session },
+            pending: [],
+          }),
+
+        /** Record which all-time totals this session has now contributed, after saving them. */
+        markLifetimeCounted: (counted) => set({ lifetimeCounted: counted }),
+
+        endSession: () =>
+          set((state) => ({
+            location: '',
+            session: null,
+            previous: null,
+            sessionId: '',
+            startedAt: 0,
+            lifetimeCounted: {},
+            base: null,
+            pending: [],
+            endedSessionId: state.session ? state.sessionId : state.endedSessionId,
+          })),
+      }
+    },
     {
       name: 'q2dink-session',
       version: SESSION_STORE_VERSION,
@@ -329,12 +356,16 @@ export const useSessionStore = create<SessionStore>()(
       },
       storage: createJSONStorage(() => localStorage),
       // The undo snapshot only makes sense for a few seconds, so never persist it.
-      partialize: ({ location, session, sessionId, startedAt, lifetimeCounted }) => ({
+      // `base` and `pending` are kept, so changes made offline still reach the club after a reload.
+      partialize: ({ location, session, sessionId, startedAt, lifetimeCounted, base, pending, endedSessionId }) => ({
         location,
         session,
         sessionId,
         startedAt,
         lifetimeCounted,
+        base,
+        pending,
+        endedSessionId,
       }),
     },
   ),

@@ -47,7 +47,7 @@ export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDial
 
     if (saveResults) {
       try {
-        await saveLifetimeStats(session, store.lifetimeCounted)
+        await saveLifetimeStats(session, store.lifetimeCounted, useClubAuth.getState().club?.slug)
 
         // Also add to the club leaderboard when signed in. It is queued first, so a
         // dropped connection never loses it; it is sent again when back online.
@@ -120,7 +120,7 @@ export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDial
               <li key={row.id} className="flex items-center gap-3 px-3 py-2">
                 <span className="w-6 text-sm text-muted-foreground">{row.rank}</span>
                 <span className="flex min-w-0 flex-1 items-center gap-2 font-medium">
-                  <PlayerAvatar id={row.id} name={row.name} size="sm" />
+                  <PlayerAvatar name={row.name} size="sm" />
                   <span className="min-w-0 truncate">{row.name}</span>
                   <MedalBadge medal={row.medal} />
                 </span>

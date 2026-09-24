@@ -85,7 +85,7 @@ export function StandingsScreen({ session, location, readOnly = false, repeatSta
                     </TableCell>
                     <TableCell className="font-medium">
                       <span className="flex items-center gap-2">
-                        <PlayerAvatar id={row.id} name={row.name} size="sm" editable={!readOnly} viewable />
+                        <PlayerAvatar name={row.name} size="sm" editable={!readOnly} viewable />
                         {row.name}
                       </span>
                     </TableCell>

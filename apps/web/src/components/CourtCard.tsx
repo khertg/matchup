@@ -117,7 +117,7 @@ export function CourtCard({
                   {team.map((id) => (
                     <li key={id} className="flex items-center gap-2 py-1">
                       <span className="flex min-w-0 flex-1 items-center gap-2">
-                        {players[id] && <PlayerAvatar id={id} name={players[id].name} size="sm" editable={!readOnly} viewable />}
+                        {players[id] && <PlayerAvatar name={players[id].name} size="sm" editable={!readOnly} viewable />}
                         <span className="min-w-0 truncate">{players[id]?.name}</span>
                         {court.waited?.[id] !== undefined && (
                           <span className="shrink-0 text-xs text-muted-foreground small-caps">

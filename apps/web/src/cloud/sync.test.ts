@@ -12,27 +12,84 @@ vi.hoisted(() => {
   })
 })
 
-import type { RosterPlayer } from '@/rotation/types'
+import type { LiveRow, PublishMeta, SessionStateRow } from '@q2dink/shared'
+import type { RosterPlayer, SessionState } from '@/rotation/types'
+import { applyAction } from '@/store/actions'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi } from './api'
 import { useClubAuth } from './auth'
-import { checkLogin, flushPendingLifetime, startCloudSync, syncMedia, useSyncStore } from './sync'
+import { toFullBackup } from './snapshot'
+import {
+  checkLogin,
+  flushPendingLifetime,
+  joinClubSession,
+  keepMySession,
+  startCloudSync,
+  syncMedia,
+  useSyncStore,
+} from './sync'
 
 const club = { slug: 'downtown', name: 'Downtown', token: 'tok-1' }
 
 type AsyncMock = ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>
 
+/**
+ * A club server holding one shared session, with revisions like the real one: a write made on an older
+ * revision is refused with the club's copy. `server` is what another staff device would change.
+ */
 function fakeApi(
   overrides: { publish?: AsyncMock; clear?: AsyncMock; recordLifetime?: AsyncMock; fetchFullSession?: AsyncMock } = {},
 ) {
+  const server: { row: SessionStateRow | null; live: Set<(row: LiveRow | null) => void> } = { row: null, live: new Set() }
+  const publish = async (_token: unknown, _snap: unknown, backup: unknown, meta: PublishMeta = {}) => {
+    const stored = server.row
+    if (meta.baseRevision !== undefined) {
+      if (!stored) {
+        if (meta.baseRevision > 0) return { conflict: null }
+      } else if (
+        (meta.sessionId && stored.sessionId && stored.sessionId !== meta.sessionId) ||
+        stored.revision !== meta.baseRevision
+      ) {
+        return { conflict: stored }
+      }
+    }
+    server.row = {
+      revision: (stored?.revision ?? 0) + 1,
+      sessionId: meta.sessionId ?? stored?.sessionId ?? null,
+      startedAt: meta.startedAt ?? null,
+      full: JSON.parse(JSON.stringify(backup)),
+    }
+    return { revision: server.row.revision }
+  }
   const api = {
-    publish: overrides.publish ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
-    clear: overrides.clear ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
+    publish: overrides.publish ?? vi.fn(publish),
+    clear:
+      overrides.clear ??
+      vi.fn(async () => {
+        server.row = null
+      }),
     recordLifetime:
       overrides.recordLifetime ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
     fetchFullSession: overrides.fetchFullSession ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
+    fetchSessionState: vi.fn(async () => server.row),
+    subscribeLive: vi.fn((_slug: string, onChange: (row: LiveRow | null) => void) => {
+      server.live.add(onChange)
+      return () => server.live.delete(onChange)
+    }),
   }
-  return { api, cloudApi: api as unknown as CloudApi }
+  /** Another staff device changes the club's copy, and the live stream says so. */
+  const otherDevice = (change: (session: SessionState) => SessionState, sessionId = server.row?.sessionId ?? null) => {
+    const current = server.row!
+    const full = current.full as { location: string; session: SessionState }
+    server.row = {
+      ...current,
+      sessionId,
+      revision: current.revision + 1,
+      full: toFullBackup(full.location, change(full.session)),
+    }
+    for (const listener of server.live) listener({ state: {}, updatedAt: '', revision: server.row.revision })
+  }
+  return { api, cloudApi: api as unknown as CloudApi, server, otherDevice }
 }
 
 const player = (id: number): RosterPlayer => ({ id, name: `P${id}`, skill: 3, gender: 'F' })
@@ -56,9 +113,9 @@ beforeEach(() => {
   const fire = (type: string) => listeners.get(type)?.forEach((fn) => fn())
   ;(globalThis as { fire?: (t: string) => void }).fire = fire
 
-  useSessionStore.setState({ location: '', session: null, previous: null })
+  useSessionStore.setState({ location: '', session: null, previous: null, base: null, pending: [] })
   useClubAuth.setState({ club: null, pendingLifetime: [] })
-  useSyncStore.setState({ status: 'off' })
+  useSyncStore.setState({ status: 'off', clubSession: null, otherSession: null, keepMine: false })
 })
 
 afterEach(() => {
@@ -253,9 +310,11 @@ describe('startCloudSync', () => {
     session().startSession('Club', 'doubles', 1)
     await vi.advanceTimersByTimeAsync(500)
 
+    const { sessionId } = session()
     session().endSession()
     await vi.advanceTimersByTimeAsync(500)
-    expect(api.clear).toHaveBeenCalledWith('tok-1')
+    // Only this session: never one another device has started since.
+    expect(api.clear).toHaveBeenCalledWith('tok-1', sessionId)
     stop()
   })
 
@@ -296,6 +355,143 @@ describe('startCloudSync', () => {
     const backup = api.publish.mock.calls[0][2] as unknown as { session: { queue: number[] } }
     expect(backup.session.queue).toEqual([1, 2])
     stop()
+  })
+
+  describe('with another staff device running the same session', () => {
+    const names = () => session().session!.queue.map((id) => session().session!.players[id].name)
+    const checkInOther = (name: string) => (s: SessionState) =>
+      applyAction(s, { type: 'checkIn', players: [{ name, skill: 3 }], now: 0 }).session
+
+    async function started(api: ReturnType<typeof fakeApi>) {
+      useClubAuth.setState({ club })
+      const stop = startCloudSync(api.cloudApi)
+      session().startSession('Shared', 'doubles', 1)
+      session().checkInPlayer(player(1))
+      await vi.advanceTimersByTimeAsync(500)
+      expect(api.server.row?.revision).toBe(1)
+      return stop
+    }
+
+    it('takes the other device’s changes and keeps its own unsent ones on top', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      session().checkInPlayer(player(3)) // not sent yet
+      fake.otherDevice(checkInOther('Bob'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(names()).toEqual(['P1', 'Bob', 'P3'])
+
+      await vi.advanceTimersByTimeAsync(500)
+      const club = fake.server.row!.full as { session: SessionState }
+      expect(Object.values(club.session.players).map((p) => p.name)).toEqual(['P1', 'Bob', 'P3'])
+      expect(session().pending).toEqual([])
+      stop()
+    })
+
+    it('when refused as out of date, applies its change on the club’s copy and sends again', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      // The other device's change arrives without the stream noticing.
+      fake.server.live.clear()
+      fake.otherDevice(checkInOther('Bob'))
+      session().checkInPlayer(player(3))
+      await vi.advanceTimersByTimeAsync(500)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(fake.server.row!.revision).toBe(3)
+      expect(names()).toEqual(['P1', 'Bob', 'P3'])
+      stop()
+    })
+
+    it('drops a change the other device already made, keeping theirs', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      for (const n of [2, 3, 4]) session().checkInPlayer(player(n))
+      await vi.advanceTimersByTimeAsync(500)
+      session().startGame(1)
+      await vi.advanceTimersByTimeAsync(500)
+
+      // Both finish Court 1: the other device first.
+      fake.server.live.clear()
+      fake.otherDevice((s) => applyAction(s, { type: 'recordScore', courtId: 1, scoreA: 11, scoreB: 3, now: 0 }).session)
+      session().recordScore(1, 5, 11)
+      await vi.advanceTimersByTimeAsync(1000)
+      const matches = session().session!.matches ?? []
+      expect(matches).toHaveLength(1)
+      expect(matches[0].score).toEqual([11, 3])
+      expect(session().pending).toEqual([])
+      stop()
+    })
+
+    it('leaves the session when another device ends it', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      fake.server.row = null
+      for (const listener of fake.server.live) listener(null)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(session().session).toBeNull()
+      stop()
+    })
+
+    it('stops sending when another device started a different session, until staff choose', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      fake.otherDevice((s) => s, '00000000-0000-4000-8000-0000000000ff')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(useSyncStore.getState().otherSession?.sessionId).toBe('00000000-0000-4000-8000-0000000000ff')
+      const sent = fake.api.publish.mock.calls.length
+      session().checkInPlayer(player(5))
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(fake.api.publish.mock.calls.length).toBe(sent)
+
+      // Keep this one: it replaces theirs.
+      keepMySession()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(fake.server.row!.sessionId).toBe(session().sessionId)
+      expect(useSyncStore.getState().otherSession).toBeNull()
+      stop()
+    })
+
+    it('joins the club’s running session, with its identity, and sends nothing until something changes', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      const row = fake.server.row!
+      session().endSession()
+      await vi.advanceTimersByTimeAsync(500)
+      fake.server.row = row // still running elsewhere
+
+      expect(joinClubSession(row)).toBe(true)
+      expect(session().sessionId).toBe(row.sessionId)
+      expect(session().base?.revision).toBe(1)
+      expect(names()).toEqual(['P1'])
+      const sent = fake.api.publish.mock.calls.length
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(fake.api.publish.mock.calls.length).toBe(sent)
+      stop()
+    })
+
+    it('ends the old session on the club before sending the next one started straight after', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      const first = session().sessionId
+      session().endSession()
+      session().startSession('Next', 'doubles', 1)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(fake.api.clear).toHaveBeenCalledWith('tok-1', first)
+      expect(fake.server.row?.sessionId).toBe(session().sessionId)
+      expect(useSyncStore.getState().otherSession).toBeNull()
+      expect(session().endedSessionId).toBe('')
+      stop()
+    })
+
+    it('keeps unsent changes across a reload', async () => {
+      const fake = fakeApi()
+      const stop = await started(fake)
+      online.value = false
+      session().checkInPlayer(player(7))
+      const saved = JSON.parse(localStorage.getItem('q2dink-session')!) as { state: { pending: unknown[]; base: unknown } }
+      expect(saved.state.pending).toHaveLength(1)
+      expect(saved.state.base).not.toBeNull()
+      stop()
+    })
   })
 
   it('stops publishing once stopped', async () => {

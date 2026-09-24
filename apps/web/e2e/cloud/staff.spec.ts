@@ -509,8 +509,8 @@ test.describe('managing courts', () => {
   })
 })
 
-test.describe('resuming on another device', () => {
-  test('offers the session another staff device was running and loads it', async ({ page, browser, request }) => {
+test.describe('joining from another device', () => {
+  test('offers the session another staff device is running and joins it', async ({ page, browser, request }) => {
     const club = uniqueClub('Resumable')
     await apiCreateClub(request, club)
     await signInAndStart(page, club, 'Saved Night')
@@ -522,7 +522,7 @@ test.describe('resuming on another device', () => {
     const other = await second.newPage()
     await other.goto('/')
     await uiLogin(other, club)
-    await other.getByRole('button', { name: /Resume .Saved Night. from the cloud/ }).click()
+    await other.getByRole('button', { name: /Join .Saved Night./ }).click()
 
     await expect(other.getByRole('heading', { name: 'Saved Night' })).toBeVisible()
     const court = other.getByRole('region', { name: 'Court 1' })
@@ -537,7 +537,7 @@ test.describe('resuming on another device', () => {
     await page.goto('/')
     await uiLogin(page, club)
     await expectSignedIn(page)
-    await expect(page.getByRole('button', { name: /^Resume/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Join/ })).toHaveCount(0)
   })
 })
 

@@ -37,7 +37,7 @@ export function StatsCard({ standing, location, date, ref }: Props) {
           {medal ? MEDAL_TEXT[medal] : `Rank #${rank}`}
         </p>
         <div className="mt-1 flex items-center gap-3">
-          <PlayerAvatar id={standing.id} name={name} size="lg" className="ring-2 ring-white/70" />
+          <PlayerAvatar name={name} size="lg" className="ring-2 ring-white/70" />
           <p className="min-w-0 break-words text-4xl leading-tight font-bold">{name}</p>
         </div>
         <p className="mt-1 text-lg opacity-90">

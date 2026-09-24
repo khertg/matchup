@@ -11,9 +11,17 @@ import type {
   PutAvatarRequest,
   PutHistoryRequest,
   ResetPasswordResponse,
+  PublishMeta,
+  SessionStateRow,
   StaffAvatar,
   StaffAvatarIndex,
 } from '@q2dink/shared'
+
+/**
+ * What became of a publish: taken at `revision`, or refused because the club's copy moved on (another
+ * staff device changed it) or ended (`current` null).
+ */
+export type PublishOutcome = { revision: number } | { conflict: SessionStateRow | null }
 import type { FullBackup } from './snapshot'
 
 export type { AvatarIndex, HistorySummary, LifetimePlayer, LiveRow, PutAvatarRequest, PutHistoryRequest }
@@ -29,12 +37,17 @@ export interface CloudApi {
   resetPassword(slug: string, recoveryCode: string, newPassword: string): Promise<ResetPasswordResponse>
   logout(token: string): Promise<void>
 
-  /** Publish the running session: the public board plus a private full backup. */
-  publish(token: string, snapshot: PublicSnapshot, backup: FullBackup): Promise<void>
+  /**
+   * Publish the running session: the public board plus a private full backup. With `meta.baseRevision`,
+   * the club refuses a change made on an older copy and says what it has now (`conflict`).
+   */
+  publish(token: string, snapshot: PublicSnapshot, backup: FullBackup, meta?: PublishMeta): Promise<PublishOutcome>
   /** The private backup for resuming on another device, or null if none is running. */
   fetchFullSession(token: string): Promise<unknown | null>
-  /** The session ended. */
-  clear(token: string): Promise<void>
+  /** The club's private copy with its revision and session id, or null if none is running. */
+  fetchSessionState(token: string): Promise<SessionStateRow | null>
+  /** The session ended. With `sessionId`, only if that is the one running. */
+  clear(token: string, sessionId?: string): Promise<void>
   /** Add a session's totals to the club leaderboard. Applied once per batch id. */
   recordLifetime(token: string, batchId: string, players: LifetimePlayer[]): Promise<void>
 
@@ -99,15 +112,19 @@ const MESSAGES: Record<Exclude<CloudErrorCode, 'unknown'>, string> = {
   rate_limited: 'Too many attempts. Please wait a few minutes and try again.',
   payload_too_large: 'This session is too large to sync.',
   internal_error: 'Something went wrong on the server. Please try again.',
+  conflict: 'The session changed on another staff device.',
   network: 'Cannot reach the server. Check your connection and try again.',
 }
 
 export class CloudError extends Error {
   readonly code: CloudErrorCode
-  constructor(code: CloudErrorCode, detail?: string) {
+  /** The server's answer, for errors that carry more than a code (a `conflict` holds the club's copy). */
+  readonly body: unknown
+  constructor(code: CloudErrorCode, detail?: string, body?: unknown) {
     super(code === 'unknown' ? (detail ?? 'Something went wrong.') : MESSAGES[code])
     this.name = 'CloudError'
     this.code = code
+    this.body = body
   }
 }
 

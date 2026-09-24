@@ -4,7 +4,7 @@ import { AvatarEditorDialog } from '@/components/AvatarEditorDialog'
 import { AvatarViewDialog } from '@/components/AvatarViewDialog'
 import { renamePlayer } from '@/lib/rename'
 import { cn } from '@/lib/utils'
-import { usePlayerAvatar, type ResolvedAvatar } from '@/lib/avatars'
+import { usePlayerAvatar, useRosterId, type ResolvedAvatar } from '@/lib/avatars'
 
 /** Emoji fill more of the badge than letters do. */
 const EMOJI_TEXT = { sm: 'text-xl', md: 'text-2xl', lg: 'text-4xl', xl: 'text-[8rem]' } as const
@@ -52,11 +52,10 @@ export function AvatarView({ avatar, name, size = 'md', className }: ViewProps) 
 }
 
 interface Props {
-  /** The roster id, which finds this device's own avatar and lets staff change it. */
-  id?: number
+  /** Whose avatar: matched by name to this device's saved player (and to the club's avatars). */
   name: string
   size?: keyof typeof SIZES
-  /** Staff only: tap the avatar to see it large, and change it from there. Needs `id`. */
+  /** Staff only: tap the avatar to see it large, and change it from there (for a player saved here). */
   editable?: boolean
   /** Anyone: tap the avatar to see it large (the players' live page, and Past sessions). */
   viewable?: boolean
@@ -67,8 +66,9 @@ interface Props {
  * A player's avatar. Tapping it (when `editable` or `viewable`) opens a large view of the picture;
  * staff can change it from there.
  */
-export function PlayerAvatar({ id, name, size = 'md', editable = false, viewable = false, className }: Props) {
-  const avatar = usePlayerAvatar(id, name)
+export function PlayerAvatar({ name, size = 'md', editable = false, viewable = false, className }: Props) {
+  const avatar = usePlayerAvatar(name)
+  const id = useRosterId(name)
   const [viewing, setViewing] = useState(false)
   const [editing, setEditing] = useState(false)
   const canEdit = editable && id !== undefined
@@ -99,7 +99,7 @@ export function PlayerAvatar({ id, name, size = 'md', editable = false, viewable
         avatar={avatar}
         open={viewing}
         onOpenChange={setViewing}
-        onRename={canEdit ? (next) => rename(id, next) : undefined}
+        onRename={canEdit ? (next) => rename(name, next) : undefined}
         onChange={
           canEdit
             ? () => {
@@ -109,15 +109,15 @@ export function PlayerAvatar({ id, name, size = 'md', editable = false, viewable
             : undefined
         }
       />
-      {canEdit && <AvatarEditorDialog playerId={id} name={name} open={editing} onOpenChange={setEditing} />}
+      {canEdit && id !== undefined && <AvatarEditorDialog playerId={id} name={name} open={editing} onOpenChange={setEditing} />}
     </>
   )
 }
 
 /** Rename from the large view: says why in plain words when the name is refused, and tells staff when it worked. */
-async function rename(id: number, name: string): Promise<string | null> {
+async function rename(current: string, name: string): Promise<string | null> {
   try {
-    const { from, to } = await renamePlayer(id, name)
+    const { from, to } = await renamePlayer(current, name)
     if (from !== to) toast(`${from} is now ${to}`)
     return null
   } catch (error) {

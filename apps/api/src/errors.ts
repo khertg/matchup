@@ -14,6 +14,7 @@ const STATUS: Record<ErrorCode, number> = {
   rate_limited: 429,
   payload_too_large: 413,
   internal_error: 500,
+  conflict: 409,
 }
 
 const MESSAGE: Record<ErrorCode, string> = {
@@ -30,6 +31,7 @@ const MESSAGE: Record<ErrorCode, string> = {
   rate_limited: 'Too many attempts. Please wait a while and try again.',
   payload_too_large: 'That request is too large.',
   internal_error: 'Something went wrong on the server.',
+  conflict: 'The session changed on another staff device.',
 }
 
 /** An expected failure that maps to a specific HTTP status and error code. */

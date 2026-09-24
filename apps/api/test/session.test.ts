@@ -327,3 +327,86 @@ describe('clearing a session', () => {
     expect((await app.inject({ method: 'DELETE', url: '/api/session' })).statusCode).toBe(401)
   })
 })
+
+describe('several staff devices running one session', () => {
+  const A = '00000000-0000-4000-8000-00000000000a'
+  const B = '00000000-0000-4000-8000-00000000000b'
+  const write = (token: string, meta: object, location = 'Sunset Courts') =>
+    put(token, { public: sampleSnapshot(location), full: sampleBackup(location), ...meta })
+  const state = (token: string | null) =>
+    app.inject({ method: 'GET', url: '/api/session/state', headers: token ? bearer(token) : {} })
+
+  it('moves the revision on with each write and keeps the session it belongs to', async () => {
+    const { token } = await createClub(app)
+    const first = await write(token, { baseRevision: 0, sessionId: A, startedAt: '2026-09-24T10:00:00.000Z' })
+    expect(first.statusCode).toBe(200)
+    expect(first.json().revision).toBe(1)
+    const second = await write(token, { baseRevision: 1, sessionId: A })
+    expect(second.json().revision).toBe(2)
+    expect((await state(token)).json()).toMatchObject({
+      revision: 2,
+      sessionId: A,
+      startedAt: '2026-09-24T10:00:00.000Z',
+      full: { location: 'Sunset Courts' },
+    })
+  })
+
+  it('refuses a change made on an older revision, and answers with the club’s copy', async () => {
+    const { token } = await createClub(app)
+    await write(token, { baseRevision: 0, sessionId: A })
+    await write(token, { baseRevision: 1, sessionId: A }, 'Moved On')
+    const stale = await write(token, { baseRevision: 1, sessionId: A }, 'Stale')
+    expect(stale.statusCode).toBe(409)
+    expect(stale.json()).toMatchObject({ error: 'conflict', current: { revision: 2, sessionId: A, full: { location: 'Moved On' } } })
+    expect((await state(token)).json().full.location).toBe('Moved On')
+  })
+
+  it('refuses to start over another running session, or to bring back one that ended', async () => {
+    const { token } = await createClub(app)
+    await write(token, { baseRevision: 0, sessionId: A })
+    const other = await write(token, { baseRevision: 0, sessionId: B })
+    expect(other.statusCode).toBe(409)
+    expect(other.json().current.sessionId).toBe(A)
+
+    await app.inject({ method: 'DELETE', url: `/api/session?sessionId=${A}`, headers: bearer(token) })
+    const revived = await write(token, { baseRevision: 3, sessionId: A })
+    expect(revived.statusCode).toBe(409)
+    expect(revived.json().current).toBeNull()
+  })
+
+  it('still takes a write from an older app that sends no revision', async () => {
+    const { token } = await createClub(app)
+    await write(token, { baseRevision: 0, sessionId: A })
+    const old = await publish(app, token, 'Older App')
+    expect(old.statusCode).toBe(200)
+    expect((await state(token)).json()).toMatchObject({ revision: 2, sessionId: A, full: { location: 'Older App' } })
+  })
+
+  it('ends only the session named, so a late end cannot take down a newer one', async () => {
+    const { token, slug } = await createClub(app)
+    await write(token, { baseRevision: 0, sessionId: B })
+    const late = await app.inject({ method: 'DELETE', url: `/api/session?sessionId=${A}`, headers: bearer(token) })
+    expect(late.statusCode).toBe(204)
+    expect((await live(slug)).statusCode).toBe(200)
+    await app.inject({ method: 'DELETE', url: `/api/session?sessionId=${B}`, headers: bearer(token) })
+    expect((await live(slug)).statusCode).toBe(404)
+    const bad = await app.inject({ method: 'DELETE', url: '/api/session?sessionId=nope', headers: bearer(token) })
+    expect(bad.statusCode).toBe(400)
+  })
+
+  it('tells viewers the revision, and keeps the private copy for staff', async () => {
+    const { token, slug } = await createClub(app)
+    await write(token, { baseRevision: 0, sessionId: A })
+    expect((await live(slug)).json().revision).toBe(1)
+    expect((await state(null)).statusCode).toBe(401)
+    const other = await createClub(app)
+    expect((await state(other.token)).statusCode).toBe(404)
+  })
+
+  it('refuses a malformed session id or start time', async () => {
+    const { token } = await createClub(app)
+    expect((await write(token, { baseRevision: 0, sessionId: 'nope' })).statusCode).toBe(400)
+    expect((await write(token, { baseRevision: 0, startedAt: 'someday' })).statusCode).toBe(400)
+    expect((await write(token, { baseRevision: -1 })).statusCode).toBe(400)
+  })
+})

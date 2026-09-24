@@ -31,8 +31,10 @@ export function RosterCheckIn({ session, roster }: Props) {
   const [selected, setSelected] = useState<number[]>([])
 
   const genderRequired = session.mode === 'doubles' && session.matchmaking === 'mixed'
-  // Anyone already in this session (waiting, playing or on a break) is handled elsewhere.
-  const available = (roster ?? []).filter((p) => p.id !== undefined && !session.players[p.id])
+  // Anyone already in this session (waiting, playing or on a break) is handled elsewhere. Matched by
+  // name: the session's ids are its own, shared by every staff device, not this device's roster ids.
+  const inSession = new Set(Object.values(session.players).map((p) => p.name.trim().toLowerCase()))
+  const available = (roster ?? []).filter((p) => p.id !== undefined && !inSession.has(p.name.trim().toLowerCase()))
   const needle = query.trim().toLowerCase()
   const shown = available.filter((p) => p.name.toLowerCase().includes(needle))
   const canTick = (p: Player) => !genderRequired || p.gender !== undefined
@@ -130,7 +132,7 @@ export function RosterCheckIn({ session, roster }: Props) {
                         disabled={blocked}
                         onChange={() => toggle(id)}
                       />
-                      <PlayerAvatar id={id} name={p.name} size="sm" editable viewable />
+                      <PlayerAvatar name={p.name} size="sm" editable viewable />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
                       {blocked && <span className="text-xs text-muted-foreground">Set gender first</span>}
                       <SkillBadge

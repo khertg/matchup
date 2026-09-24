@@ -64,6 +64,14 @@ const findByName = (clubSlug: string | undefined, name: string) => {
 }
 
 /**
+ * This device's saved player of the club with that name (ignoring case), or undefined. A session's
+ * players are matched to saved ones by name: the session's ids are shared by every staff device.
+ */
+export async function findSavedPlayer(clubSlug: string | undefined, name: string): Promise<RosterPlayer | undefined> {
+  return (await findByName(clubSlug, name)) as RosterPlayer | undefined
+}
+
+/**
  * The first club to sync on this device takes the players no club has yet, and they are marked to be
  * sent, so a device's existing roster reaches its club once. Returns how many were taken.
  */

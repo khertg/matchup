@@ -49,7 +49,7 @@ function preview(draft: PlayerAvatar | null, name: string): ResolvedAvatar {
  * is saved on the roster, so it shows everywhere the player does, and sent to the club when signed in.
  */
 export function AvatarEditorDialog({ playerId, name, open, onOpenChange }: Props) {
-  const own = useOwnAvatar(playerId)
+  const own = useOwnAvatar(name)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
