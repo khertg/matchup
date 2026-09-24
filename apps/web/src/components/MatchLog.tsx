@@ -19,17 +19,30 @@ interface Props {
 }
 
 /**
- * Team names as people read them: "Ann (4 min) & Bo (7 min)", each with how long they had waited
- * before this match started, when known. A player who has since left the session shows as "Unknown".
+ * One team's players, one per line: "Ann (4 min)", each with how long they had waited before this
+ * match started, when known and not zero. A player who has since left the session shows as "Unknown".
  */
-const teamNames = (ids: number[], players: Record<number, RosterPlayer>, waited?: Record<number, number>) =>
-  ids
-    .map((id) => {
-      const name = players[id]?.name ?? 'Unknown'
-      const seconds = waited?.[id]
-      return seconds !== undefined ? `${name} (${formatDuration(seconds)})` : name
-    })
-    .join(' & ')
+function TeamLines({
+  ids,
+  players,
+  waited,
+  className,
+}: {
+  ids: number[]
+  players: Record<number, RosterPlayer>
+  waited?: Record<number, number>
+  className: string
+}) {
+  return ids.map((id, i) => {
+    const name = players[id]?.name ?? 'Unknown'
+    const seconds = waited?.[id]
+    return (
+      <span key={`${id}-${i}`} className={`block break-words ${className}`}>
+        {seconds ? `${name} (${formatDuration(seconds)})` : name}
+      </span>
+    )
+  })
+}
 
 /** Every game finished this session, newest first, with who won and how it went. */
 export function MatchLog({ matches, players, onEditScore, onEditPlayers }: Props) {
@@ -46,13 +59,7 @@ export function MatchLog({ matches, players, onEditScore, onEditPlayers }: Props
         {matches.length === 0 ? (
           <p className="text-sm text-muted-foreground">No games finished yet</p>
         ) : (
-          <ol
-            className={`grid gap-x-3 divide-y ${
-              editable
-                ? 'grid-cols-[1.5rem_minmax(0,max-content)_2rem_1fr_auto]'
-                : 'grid-cols-[1.5rem_minmax(0,max-content)_2rem_1fr]'
-            }`}
-          >
+          <ol className="divide-y">
             {matches
               .map((match, index) => ({ match, index, number: index + 1 }))
               .reverse()
@@ -62,16 +69,40 @@ export function MatchLog({ matches, players, onEditScore, onEditPlayers }: Props
                   ? [match.score[match.winner], match.score[loser]]
                   : []
                 return (
-                  <li
-                    key={number}
-                    className="col-span-full grid grid-cols-subgrid items-center gap-x-3 gap-y-0.5 py-2 text-sm"
-                  >
-                    <span className="row-span-2 self-center text-muted-foreground">{number}</span>
-                    <span className="min-w-0 font-medium">{teamNames(match.teams[match.winner], players, match.waited)}</span>
-                    <span className="tabular-nums font-medium">{match.score ? winnerScore : '–'}</span>
-                    <Badge variant="secondary" className="justify-self-end">
-                      {match.courtName}
-                    </Badge>
+                  <li key={number} className="flex items-center gap-3 py-2 text-sm">
+                    <span className="min-w-7 shrink-0 tabular-nums text-muted-foreground">#{number}</span>
+
+                    {/* Players and scores share one grid, so each score and both dividers stay level with their team however its names wrap. */}
+                    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,20rem)_1.75rem] items-center gap-x-3">
+                      <div>
+                        <TeamLines
+                          ids={match.teams[match.winner]}
+                          players={players}
+                          waited={match.waited}
+                          className="font-medium"
+                        />
+                      </div>
+                      <span className="text-center font-medium tabular-nums">{match.score ? winnerScore : '–'}</span>
+                      <div className="my-1 border-t border-border" />
+                      <div className="my-1 border-t border-border" />
+                      <div>
+                        <TeamLines
+                          ids={match.teams[loser]}
+                          players={players}
+                          waited={match.waited}
+                          className="text-muted-foreground"
+                        />
+                      </div>
+                      <span className="text-center text-muted-foreground tabular-nums">{match.score ? loserScore : '–'}</span>
+                    </div>
+
+                    <div className="ml-auto flex shrink-0 flex-col items-end gap-1">
+                      <Badge variant="secondary">{match.courtName}</Badge>
+                      {match.seconds > 0 && (
+                        <span className="text-xs text-muted-foreground">{formatDuration(match.seconds)}</span>
+                      )}
+                    </div>
+
                     {editable && (
                       <Popover>
                         <PopoverTrigger asChild>
@@ -79,7 +110,7 @@ export function MatchLog({ matches, players, onEditScore, onEditPlayers }: Props
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            className="row-span-2 self-center justify-self-end"
+                            className="shrink-0"
                             aria-label={`Match ${number} menu`}
                           >
                             <MoreVerticalIcon aria-hidden="true" />
@@ -113,12 +144,6 @@ export function MatchLog({ matches, players, onEditScore, onEditPlayers }: Props
                         </PopoverContent>
                       </Popover>
                     )}
-
-                    <span className="min-w-0 text-muted-foreground">{teamNames(match.teams[loser], players, match.waited)}</span>
-                    <span className="tabular-nums text-muted-foreground">{match.score ? loserScore : '–'}</span>
-                    <span className="justify-self-end text-xs text-muted-foreground">
-                      {match.seconds > 0 ? formatDuration(match.seconds) : ''}
-                    </span>
                   </li>
                 )
               })}
