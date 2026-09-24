@@ -4,11 +4,11 @@ import { checkIn, startSession } from './helpers'
 const VERSION = /^v\d+\.\d+\.\d+$/
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-/** Clicks the version and checks the popover lists this build's commit and date (read from the title). */
+/** Clicks the version and checks the popover lists this build's commit and time (read from the title). */
 async function expectBuildDetails(page: Page) {
   const label = page.getByTestId('app-version')
   const title = (await label.getAttribute('title'))!
-  const [, commit, year, month, day] = /commit (\S+), built (\d{4})-(\d{2})-(\d{2})$/.exec(title)!
+  const [, commit, built] = /commit (\S+), built (\S+)$/.exec(title)!
   await label.click()
   const details = page.getByTestId('app-build-details')
   await expect(details).toBeVisible()
@@ -16,7 +16,11 @@ async function expectBuildDetails(page: Page) {
     await expect(details).toHaveText('dev')
   } else {
     await expect(details).toContainText(commit)
-    await expect(details).toContainText(`${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`)
+    // Shown in the browser's time zone, which is the one this test runs in.
+    const at = new Date(built)
+    const hours = at.getHours()
+    const time = `${hours % 12 || 12}:${String(at.getMinutes()).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`
+    await expect(details).toContainText(`${at.getDate()} ${MONTHS[at.getMonth()]} ${at.getFullYear()}, ${time}`)
   }
   await page.keyboard.press('Escape')
   await expect(details).toBeHidden()
@@ -51,7 +55,7 @@ test.describe('version number', () => {
 
   test('says which build it is when hovered, with the full details', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByTestId('app-version')).toHaveAttribute('title', /^Q2Dink \d+\.\d+\.\d+, commit \S+, built \d{4}-\d{2}-\d{2}$/)
+    await expect(page.getByTestId('app-version')).toHaveAttribute('title', /^Q2Dink \d+\.\d+\.\d+, commit \S+, built \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   })
 
   test('the same version is shown on every screen of one build', async ({ page }) => {

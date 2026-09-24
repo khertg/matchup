@@ -18,9 +18,17 @@ describe('formatBuildDate', () => {
     expect(formatBuildDate('2026-12-31')).toBe('31 Dec 2026')
   })
 
+  it('shows a build time in the viewer’s own time zone, on a 12-hour clock', () => {
+    // Made from local times, so the test reads the same in any time zone.
+    expect(formatBuildDate(new Date(2026, 8, 21, 14, 5).toISOString())).toBe('21 Sep 2026, 2:05 PM')
+    expect(formatBuildDate(new Date(2026, 0, 5, 0, 30).toISOString())).toBe('5 Jan 2026, 12:30 AM')
+    expect(formatBuildDate(new Date(2026, 11, 31, 12, 0).toISOString())).toBe('31 Dec 2026, 12:00 PM')
+  })
+
   it('gives nothing for a broken date', () => {
     expect(formatBuildDate('not a date')).toBeNull()
     expect(formatBuildDate('2026-13-01')).toBeNull()
+    expect(formatBuildDate('2026-09-21T99:99')).toBeNull()
   })
 })
 
@@ -43,7 +51,7 @@ describe('the build this app was made from', () => {
   it('has a release number, a commit and a date, and a label made from them', () => {
     expect(appBuild.version).toMatch(/^\d+\.\d+\.\d+/)
     expect(appBuild.commit.length).toBeGreaterThan(0)
-    expect(appBuild.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(appBuild.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
     expect(appVersion).toBe(`v${appBuild.version}`)
   })
 })

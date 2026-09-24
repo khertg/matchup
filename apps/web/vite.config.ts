@@ -33,7 +33,8 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(rootPackage.version),
     __APP_COMMIT__: JSON.stringify(gitCommit()),
-    __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    // The moment of the build, in UTC; the app shows it in the viewer's own time.
+    __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [
     react(),

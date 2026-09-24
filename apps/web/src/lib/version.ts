@@ -5,16 +5,28 @@ export interface BuildInfo {
   version: string
   /** The short git commit the build came from, or `dev` when it is not known. */
   commit: string
-  /** The build date as YYYY-MM-DD. */
+  /** When the build was made, as an ISO time in UTC (older builds: just the day, YYYY-MM-DD). */
   date: string
 }
 
-/** 2026-09-21 as "21 Sep 2026", read as plain text so the time zone can never move the day. */
+const day = (year: number, month: number, date: number) => {
+  const name = MONTHS[month - 1]
+  return name ? `${date} ${name} ${year}` : null
+}
+
+/**
+ * The build time as the viewer reads it: "21 Sep 2026, 2:05 PM" in their own time zone. A bare day
+ * ("2026-09-21") is read as plain text, so the time zone can never move it, and has no time.
+ */
 export function formatBuildDate(iso: string): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
-  if (!match) return null
-  const month = MONTHS[Number(match[2]) - 1]
-  return month ? `${Number(match[3])} ${month} ${match[1]}` : null
+  const dayOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (dayOnly) return day(Number(dayOnly[1]), Number(dayOnly[2]), Number(dayOnly[3]))
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) return null
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return null
+  const hours = at.getHours()
+  const time = `${hours % 12 || 12}:${String(at.getMinutes()).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`
+  return `${day(at.getFullYear(), at.getMonth() + 1, at.getDate())}, ${time}`
 }
 
 /** The label itself: just the release, "v0.1.0". The commit and date are in `buildDetails`. */
