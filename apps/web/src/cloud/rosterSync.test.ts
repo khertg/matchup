@@ -13,9 +13,17 @@ vi.hoisted(() => {
   })
 })
 
-import type { ClubRosterPlayer } from '@q2dink/shared'
+import type { ClubRosterPlayer, StaffAvatar } from '@q2dink/shared'
 import { db } from '@/db/db'
-import { addOrGetPlayer, listRoster, mergeClubRoster, renameRosterPlayer, setRosterSkill } from '@/db/roster'
+import {
+  addOrGetPlayer,
+  listRoster,
+  mergeClubRoster,
+  renameRosterPlayer,
+  setRosterAvatar,
+  setRosterSkill,
+} from '@/db/roster'
+import { getSharePhotos } from '@/db/settings'
 import { CloudError, type CloudApi } from './api'
 import { useClubAuth } from './auth'
 import { syncRoster } from './sync'
@@ -27,6 +35,10 @@ const uptown = { slug: 'uptown', name: 'Uptown', token: 'tok-2' }
 function fakeApi(options: { putRoster?: (players: ClubRosterPlayer[]) => Promise<void> } = {}) {
   const rosters = new Map<string, Map<string, ClubRosterPlayer>>()
   const club = (token: string) => rosters.get(token) ?? rosters.set(token, new Map()).get(token)!
+  /** Avatars by token, then by lower-case name. */
+  const avatars = new Map<string, Map<string, StaffAvatar>>()
+  const clubAvatars = (token: string) => avatars.get(token) ?? avatars.set(token, new Map()).get(token)!
+  const shared = { photos: false }
   const sent: ClubRosterPlayer[][] = []
   const api = {
     renamePlayer: vi.fn(async () => {}),
@@ -36,8 +48,15 @@ function fakeApi(options: { putRoster?: (players: ClubRosterPlayer[]) => Promise
       for (const p of players) club(token).set(p.name.toLowerCase(), p)
     }),
     fetchRoster: vi.fn(async (token: string) => [...club(token).values()]),
+    fetchStaffAvatars: vi.fn(async (token: string) => ({
+      avatars: Object.fromEntries([...clubAvatars(token)].map(([key, a]) => [key, { kind: a.kind, v: a.v }])),
+      logo: null,
+      name: 'Club',
+      sharePhotos: shared.photos,
+    })),
+    fetchStaffAvatar: vi.fn(async (token: string, key: string) => clubAvatars(token).get(key) ?? null),
   }
-  return { api, cloudApi: api as unknown as CloudApi, sent, club }
+  return { api, cloudApi: api as unknown as CloudApi, sent, club, clubAvatars, shared }
 }
 
 const names = async (slug: string | undefined) => (await listRoster(slug)).map((p) => p.name)
@@ -135,6 +154,53 @@ describe('syncRoster', () => {
     const { cloudApi } = fakeApi({ putRoster: () => setRosterSkill(ann.id, 6) })
     await syncRoster(cloudApi)
     expect(await db.players.get(ann.id)).toMatchObject({ skill: 6, rosterDirty: true })
+  })
+
+  it('brings in the photo another staff device set, and keeps it current', async () => {
+    const { cloudApi, api, club, clubAvatars, shared } = fakeApi()
+    club('tok-1').set('ann', { name: 'Ann', skill: 3 })
+    clubAvatars('tok-1').set('ann', { kind: 'photo', photo: { data: 'QUJD', type: 'image/jpeg' }, v: 1 })
+    await syncRoster(cloudApi)
+    const [ann] = await listRoster('downtown')
+    expect(ann).toMatchObject({ avatar: { kind: 'photo', data: 'data:image/jpeg;base64,QUJD' }, avatarVersion: 1 })
+    expect(ann.avatarDirty).toBeFalsy()
+    expect(await getSharePhotos()).toBe(false)
+
+    // Unchanged: not fetched again. Changed on the other device: taken.
+    await syncRoster(cloudApi)
+    expect(api.fetchStaffAvatar).toHaveBeenCalledTimes(1)
+    clubAvatars('tok-1').set('ann', { kind: 'emoji', emoji: '🎾', color: '#123456', v: 2 })
+    shared.photos = true
+    await syncRoster(cloudApi)
+    expect((await listRoster('downtown'))[0].avatar).toEqual({ kind: 'emoji', value: '🎾', color: '#123456' })
+    expect(await getSharePhotos()).toBe(true)
+
+    // Removed on the other device: removed here too.
+    clubAvatars('tok-1').delete('ann')
+    await syncRoster(cloudApi)
+    expect((await listRoster('downtown'))[0].avatar).toBeUndefined()
+  })
+
+  it('keeps an avatar changed here, and one set here that the club never had', async () => {
+    const { cloudApi, club, clubAvatars } = fakeApi()
+    const ann = await addOrGetPlayer('Ann', 3, undefined, 'downtown')
+    const bob = await addOrGetPlayer('Bob', 3, undefined, 'downtown')
+    await setRosterAvatar(ann.id, { kind: 'emoji', value: '🏓', color: '#654321' })
+    await setRosterAvatar(bob.id, { kind: 'initials', color: '#654321' })
+    await db.players.update(bob.id, { avatarDirty: false }) // sent earlier, club lost it since
+    club('tok-1').set('ann', { name: 'Ann', skill: 3 })
+    clubAvatars('tok-1').set('ann', { kind: 'photo', photo: { data: 'QUJD', type: 'image/png' }, v: 9 })
+    await syncRoster(cloudApi)
+    expect((await db.players.get(ann.id))?.avatar).toEqual({ kind: 'emoji', value: '🏓', color: '#654321' })
+    expect((await db.players.get(bob.id))?.avatar).toEqual({ kind: 'initials', color: '#654321' })
+  })
+
+  it('never gives one club’s players another club’s avatars', async () => {
+    const { cloudApi, clubAvatars } = fakeApi()
+    await addOrGetPlayer('Ann', 3, undefined, 'downtown')
+    clubAvatars('tok-2').set('ann', { kind: 'photo', photo: { data: 'QUJD', type: 'image/png' }, v: 1 })
+    await syncRoster(cloudApi)
+    expect((await listRoster('downtown'))[0].avatar).toBeUndefined()
   })
 
   it('keeps changes for later when the club cannot be reached', async () => {

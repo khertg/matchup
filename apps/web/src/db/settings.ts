@@ -27,7 +27,10 @@ export async function markLogoSynced(): Promise<void> {
   else await db.settings.put({ key: LOGO, value: { ...current, dirty: false } satisfies LogoSetting })
 }
 
-/** Whether player photos are also shown on the club's public live page. Off unless staff turn it on. */
+/**
+ * Whether player photos are also shown on the club's public live page. A club-wide setting: this is
+ * this device's copy, refreshed from the club on every sync. Off unless staff turn it on.
+ */
 export async function getSharePhotos(): Promise<boolean> {
   return (await db.settings.get(SHARE_PHOTOS))?.value === true
 }
@@ -36,15 +39,32 @@ export async function setSharePhotos(on: boolean): Promise<void> {
   await db.settings.put({ key: SHARE_PHOTOS, value: on })
 }
 
-const PURGE_PHOTOS = 'purgePhotos'
+const PHOTO_SHARING_PENDING = 'photoSharingPending'
 
-/** Photos were switched off while the club may still hold some: they are taken down when it is reachable. */
-export async function getPhotoPurgePending(): Promise<boolean> {
-  return (await db.settings.get(PURGE_PHOTOS))?.value === true
+/** The photo switch was changed here and the club has not been told yet. */
+export async function getPhotoSharingPending(): Promise<boolean> {
+  return (await db.settings.get(PHOTO_SHARING_PENDING))?.value === true
 }
 
-export async function setPhotoPurgePending(pending: boolean): Promise<void> {
-  await db.settings.put({ key: PURGE_PHOTOS, value: pending })
+export async function setPhotoSharingPending(pending: boolean): Promise<void> {
+  await db.settings.put({ key: PHOTO_SHARING_PENDING, value: pending })
+}
+
+const PHOTOS_SENT_FOR = 'photosSentFor'
+
+/**
+ * Clubs this device has sent all its players' photos to. Photos used to stay on the device while the
+ * club did not show them publicly; each club gets the ones it missed once.
+ */
+export async function photosSentFor(slug: string): Promise<boolean> {
+  const value = (await db.settings.get(PHOTOS_SENT_FOR))?.value
+  return Array.isArray(value) && value.includes(slug)
+}
+
+export async function markPhotosSentFor(slug: string): Promise<void> {
+  const value = (await db.settings.get(PHOTOS_SENT_FOR))?.value
+  const slugs = Array.isArray(value) ? (value as string[]) : []
+  if (!slugs.includes(slug)) await db.settings.put({ key: PHOTOS_SENT_FOR, value: [...slugs, slug] })
 }
 
 const SYNC_CLUB = 'syncClub'

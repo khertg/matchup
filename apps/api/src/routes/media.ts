@@ -1,17 +1,24 @@
-import type { PutAvatarRequest, PutLogoRequest } from '@q2dink/shared'
+import type {
+  PhotoSharingRequest,
+  PutAvatarRequest,
+  PutLogoRequest,
+  StaffAvatar,
+  StaffAvatarIndex,
+} from '@q2dink/shared'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError } from '../errors'
 import {
   checkKey,
   deleteAvatar,
-  deleteAvatarPhotos,
   deleteLogo,
   getAvatarIndex,
   getAvatarPhoto,
   getLogo,
+  getStaffAvatar,
   putAvatar,
   putLogo,
+  setPhotoSharing,
   type StoredImage,
 } from '../services/media'
 import { authenticate, publicSlug, slugParams } from './auth'
@@ -45,6 +52,13 @@ const logoBody = {
       properties: { data: { type: 'string', maxLength: 200 * 1024 } },
     },
   },
+} as const
+
+const photoSharingBody = {
+  type: 'object',
+  required: ['on'],
+  additionalProperties: false,
+  properties: { on: { type: 'boolean' } },
 } as const
 
 const keyParams = {
@@ -110,12 +124,42 @@ export function registerMediaRoutes(api: FastifyInstance, { db, config }: RouteD
     },
   )
 
-  // Sharing photos was switched off: take every photo down (emoji and initials avatars stay).
+  // Whether the public live page shows player photos. Staff devices get them either way.
+  api.put<{ Body: PhotoSharingRequest }>(
+    '/photo-sharing',
+    { config: write, schema: { body: photoSharingBody } },
+    async (request, reply) => {
+      const { slug } = await authenticate(db, request)
+      await setPhotoSharing(db, slug, request.body.on)
+      return reply.code(204).send()
+    },
+  )
+
+  // What older app versions send when their photo switch is turned off. Photos now also serve the
+  // club's staff devices, so this only stops showing them on the live page; nothing is deleted.
   api.delete('/avatars', { config: write }, async (request, reply) => {
     const { slug } = await authenticate(db, request)
-    await deleteAvatarPhotos(db, slug)
+    await setPhotoSharing(db, slug, false)
     return reply.code(204).send()
   })
+
+  // Staff devices: every avatar as it is, photos included, so each device can keep its own copy.
+  api.get('/avatars', async (request): Promise<StaffAvatarIndex> => {
+    const { slug } = await authenticate(db, request)
+    const { avatars, logo, name, sharePhotos } = await getAvatarIndex(db, slug, { staff: true })
+    return { avatars, logo, name, sharePhotos }
+  })
+
+  api.get<{ Params: { key: string } }>(
+    '/avatars/:key',
+    { schema: { params: keyParams } },
+    async (request): Promise<StaffAvatar> => {
+      const { slug } = await authenticate(db, request)
+      const avatar = await getStaffAvatar(db, slug, request.params.key)
+      if (!avatar) throw new AppError('not_found')
+      return avatar
+    },
+  )
 
   api.get<{ Params: { slug: string } }>('/clubs/:slug/logo', { schema: { params: slugParams } }, async (request, reply) => {
     const logo = await getLogo(db, publicSlug(request.params.slug))

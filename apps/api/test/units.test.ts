@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config'
 import { connectDb } from '../src/db'
 import { migrate } from '../src/db/migrate'
-import type { Migration } from '../src/db/migrations'
+import { MIGRATIONS, type Migration } from '../src/db/migrations'
 import { AppError, statusFor } from '../src/errors'
 import { LoginGuard } from '../src/services/loginGuard'
 import { dummyHash, hashPassword, verifyPassword } from '../src/services/password'
@@ -224,6 +224,24 @@ describe('migrations', () => {
       'schema_migrations',
       'session_backups',
       'session_history',
+    ])
+    await db.close()
+  })
+
+  it('keep a club that already shows player photos showing them after photo sharing became a club setting', async () => {
+    const db = await connectDb('pglite://memory')
+    const before = MIGRATIONS.findIndex((m) => m.id === '005_photo_sharing')
+    await migrate(db, MIGRATIONS.slice(0, before))
+    await db.exec(`
+      insert into clubs (slug, name, password_hash, recovery_hash) values ('with-photo', 'A', 'x', 'x'), ('no-photo', 'B', 'x', 'x');
+      insert into club_avatars (club_slug, name_key, kind, content_type, photo) values ('with-photo', 'ann', 'photo', 'image/png', 'AAAA');
+      insert into club_avatars (club_slug, name_key, kind, color) values ('no-photo', 'bob', 'initials', '#123456');
+    `)
+    await migrate(db)
+    const { rows } = await db.query<{ slug: string; share_photos: boolean }>('select slug, share_photos from clubs order by slug')
+    expect(rows).toEqual([
+      { slug: 'no-photo', share_photos: false },
+      { slug: 'with-photo', share_photos: true },
     ])
     await db.close()
   })

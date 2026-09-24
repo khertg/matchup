@@ -8,6 +8,8 @@ import {
   type LoginResponse,
   type ResetPasswordResponse,
   type RosterResponse,
+  type StaffAvatar,
+  type StaffAvatarIndex,
 } from '@q2dink/shared'
 import { CloudError, type CloudApi } from './api'
 
@@ -144,9 +146,14 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
       await request('DELETE', `/avatars/${encodeURIComponent(key)}`, { token })
     },
 
-    async deleteAvatarPhotos(token) {
-      await request('DELETE', '/avatars', { token })
+    async putPhotoSharing(token, on) {
+      await request('PUT', '/photo-sharing', { token, body: { on } })
     },
+
+    fetchStaffAvatars: (token) => request<StaffAvatarIndex>('GET', '/avatars', { token }),
+
+    fetchStaffAvatar: (token, key) =>
+      request<StaffAvatar>('GET', `/avatars/${encodeURIComponent(key)}`, { token, nullOn404: true }),
 
     fetchAvatarIndex: (slug) => request<AvatarIndex>('GET', `/clubs/${slugPath(slug)}/avatars`),
 

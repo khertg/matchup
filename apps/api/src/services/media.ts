@@ -1,4 +1,4 @@
-import { MEDIA_LIMITS, avatarKey, type AvatarInfo, type PutAvatarRequest } from '@q2dink/shared'
+import { MEDIA_LIMITS, avatarKey, type AvatarInfo, type PutAvatarRequest, type StaffAvatar } from '@q2dink/shared'
 import { createHash } from 'node:crypto'
 import type { Db, Queryable } from '../db'
 import { AppError } from '../errors'
@@ -133,16 +133,33 @@ export async function deleteAvatar(db: Queryable, slug: string, key: string): Pr
   await db.query('delete from club_avatars where club_slug = $1 and name_key = $2', [slug, checkKey(key)])
 }
 
-/** Remove every player photo (emoji and initials avatars stay): sharing photos was switched off. */
-export async function deleteAvatarPhotos(db: Queryable, slug: string): Promise<void> {
-  await db.query("delete from club_avatars where club_slug = $1 and kind = 'photo'", [slug])
+/** Whether the club's public live page shows player photos. Staff devices always get them. */
+export async function setPhotoSharing(db: Queryable, slug: string, on: boolean): Promise<void> {
+  await db.query('update clubs set share_photos = $2 where slug = $1', [slug, on])
 }
 
-/** Every avatar, without the photos themselves, and a validator that changes when any of them do. */
+const photosShared = async (db: Queryable, slug: string) =>
+  (await db.query<{ share_photos: boolean }>('select share_photos from clubs where slug = $1', [slug])).rows[0]
+    ?.share_photos === true
+
+/**
+ * Every avatar, without the photos themselves, and a validator that changes when any of them do.
+ * The public index (the live page) lists a photo as initials while the club does not share photos;
+ * the staff index lists them as they are, and says whether they are shared.
+ */
 export async function getAvatarIndex(
   db: Queryable,
   slug: string,
-): Promise<{ avatars: Record<string, AvatarInfo>; logo: { v: number } | null; name: string | null; etag: string }> {
+  { staff = false }: { staff?: boolean } = {},
+): Promise<{
+  avatars: Record<string, AvatarInfo>
+  logo: { v: number } | null
+  name: string | null
+  sharePhotos: boolean
+  etag: string
+}> {
+  const sharePhotos = await photosShared(db, slug)
+  const hidePhotos = !staff && !sharePhotos
   const { rows } = await db.query<{
     name_key: string
     kind: AvatarInfo['kind']
@@ -156,7 +173,7 @@ export async function getAvatarIndex(
   const avatars: Record<string, AvatarInfo> = {}
   for (const r of rows) {
     avatars[r.name_key] = {
-      kind: r.kind,
+      kind: hidePhotos && r.kind === 'photo' ? 'initials' : r.kind,
       ...(r.emoji ? { emoji: r.emoji } : {}),
       ...(r.color ? { color: r.color } : {}),
       v: toEpoch(r.updated_at),
@@ -166,15 +183,49 @@ export async function getAvatarIndex(
   const logo = logoRow.rows[0] ? { v: toEpoch(logoRow.rows[0].updated_at) } : null
   const clubRow = await db.query<{ name: string }>('select name from clubs where slug = $1', [slug])
   const name = clubRow.rows[0]?.name ?? null
-  const etag = `W/"${createHash('sha1').update(JSON.stringify({ avatars, logo, name })).digest('hex').slice(0, 20)}"`
-  return { avatars, logo, name, etag }
+  const etag = `W/"${createHash('sha1')
+    .update(JSON.stringify({ avatars, logo, name, sharePhotos, staff }))
+    .digest('hex')
+    .slice(0, 20)}"`
+  return { avatars, logo, name, sharePhotos, etag }
 }
 
-export async function getAvatarPhoto(db: Queryable, slug: string, key: string): Promise<StoredImage | null> {
+/** A player's photo, for the live page only while the club shares photos; staff always get it. */
+export async function getAvatarPhoto(
+  db: Queryable,
+  slug: string,
+  key: string,
+  { staff = false }: { staff?: boolean } = {},
+): Promise<StoredImage | null> {
+  if (!staff && !(await photosShared(db, slug))) return null
   const { rows } = await db.query<{ content_type: ImageType; photo: string; updated_at: unknown }>(
     "select content_type, photo, updated_at from club_avatars where club_slug = $1 and name_key = $2 and kind = 'photo'",
     [slug, key],
   )
   const row = rows[0]
   return row ? { type: row.content_type, bytes: Buffer.from(row.photo, 'base64'), version: toEpoch(row.updated_at) } : null
+}
+
+/** One avatar as it really is, photo included (staff only), or null when the player has none. */
+export async function getStaffAvatar(db: Queryable, slug: string, key: string): Promise<StaffAvatar | null> {
+  const { rows } = await db.query<{
+    kind: AvatarInfo['kind']
+    emoji: string | null
+    color: string | null
+    content_type: ImageType | null
+    photo: string | null
+    updated_at: unknown
+  }>(
+    'select kind, emoji, color, content_type, photo, updated_at from club_avatars where club_slug = $1 and name_key = $2',
+    [slug, checkKey(key)],
+  )
+  const r = rows[0]
+  if (!r) return null
+  return {
+    kind: r.kind,
+    ...(r.emoji ? { emoji: r.emoji } : {}),
+    ...(r.color ? { color: r.color } : {}),
+    ...(r.kind === 'photo' && r.photo && r.content_type ? { photo: { data: r.photo, type: r.content_type } } : {}),
+    v: toEpoch(r.updated_at),
+  }
 }

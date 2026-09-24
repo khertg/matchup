@@ -125,4 +125,15 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '005_photo_sharing',
+    sql: `
+      -- Player photos always reach the club's staff devices; this says whether the public live page
+      -- shows them too. Photos already on the server were only ever sent with sharing on, so those
+      -- clubs keep showing them.
+      alter table clubs add column share_photos boolean not null default false;
+      update clubs set share_photos = true
+        where slug in (select club_slug from club_avatars where kind = 'photo');
+    `,
+  },
 ]

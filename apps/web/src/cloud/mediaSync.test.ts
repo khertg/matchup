@@ -17,7 +17,7 @@ import { db } from '@/db/db'
 import { addOrGetPlayer, setRosterAvatar } from '@/db/roster'
 import {
   getLogoSetting,
-  getPhotoPurgePending,
+  getPhotoSharingPending,
   getSharePhotos,
   getSyncClub,
   setLogoSetting,
@@ -34,13 +34,13 @@ const INITIALS = { kind: 'initials' as const, color: '#abcdef' }
 
 type Fn = (...args: unknown[]) => Promise<void>
 
-function fakeApi(overrides: Partial<Record<'putLogo' | 'deleteLogo' | 'putAvatar' | 'deleteAvatar' | 'deleteAvatarPhotos', Fn>> = {}) {
+function fakeApi(overrides: Partial<Record<'putLogo' | 'deleteLogo' | 'putAvatar' | 'deleteAvatar' | 'putPhotoSharing', Fn>> = {}) {
   const api = {
     putLogo: vi.fn(overrides.putLogo ?? (async () => {})),
     deleteLogo: vi.fn(overrides.deleteLogo ?? (async () => {})),
     putAvatar: vi.fn(overrides.putAvatar ?? (async () => {})),
     deleteAvatar: vi.fn(overrides.deleteAvatar ?? (async () => {})),
-    deleteAvatarPhotos: vi.fn(overrides.deleteAvatarPhotos ?? (async () => {})),
+    putPhotoSharing: vi.fn(overrides.putPhotoSharing ?? (async () => {})),
   }
   return { api, cloudApi: api as unknown as CloudApi }
 }
@@ -73,57 +73,52 @@ describe('syncMedia', () => {
     expect(api.putAvatar).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps photos on the device while sharing is off, and takes down any the club held', async () => {
+  it('sends photos as base64 whether or not the live page shows them, for the club’s other staff devices', async () => {
     await setRosterAvatar((await addOrGetPlayer('Ann', 3)).id, PHOTO)
     const { api, cloudApi } = fakeApi()
+    expect(await getSharePhotos()).toBe(false)
     await syncMedia(cloudApi)
-    expect(api.putAvatar).not.toHaveBeenCalled()
-    expect(api.deleteAvatar).toHaveBeenCalledWith('tok-1', 'ann')
+    expect(api.putAvatar).toHaveBeenCalledWith('tok-1', 'ann', { kind: 'photo', photo: { data: 'QUJD' } })
+    expect(api.deleteAvatar).not.toHaveBeenCalled()
     expect(await dirty()).toEqual([])
   })
 
-  it('sends a photo as base64 once sharing is on', async () => {
-    await setRosterAvatar((await addOrGetPlayer('Ann', 3)).id, PHOTO)
-    const { api, cloudApi } = fakeApi()
-    await setPhotoSharing(true, cloudApi)
-    expect(api.putAvatar).toHaveBeenCalledWith('tok-1', 'ann', { kind: 'photo', photo: { data: 'QUJD' } })
-    expect(api.deleteAvatarPhotos).not.toHaveBeenCalled()
-  })
+  it('sends, once per club, the photos that stayed on the device while they only went with sharing on', async () => {
+    const ann = await addOrGetPlayer('Ann', 3, undefined, 'downtown')
+    await setRosterAvatar(ann.id, PHOTO)
+    await setRosterAvatar((await addOrGetPlayer('Bob', 3, undefined, 'downtown')).id, EMOJI)
+    await db.players.toCollection().modify({ avatarDirty: false }) // as an older version left them
 
-  it('sends photos already on the device when sharing is switched on, and only photos', async () => {
-    await setRosterAvatar((await addOrGetPlayer('Ann', 3)).id, PHOTO)
-    await setRosterAvatar((await addOrGetPlayer('Bob', 3)).id, EMOJI)
     const { api, cloudApi } = fakeApi()
-    await syncMedia(cloudApi) // sharing off: the emoji goes, the photo does not
-    api.putAvatar.mockClear()
-    api.deleteAvatar.mockClear()
-
-    await setPhotoSharing(true, cloudApi)
+    await syncMedia(cloudApi)
     expect(api.putAvatar).toHaveBeenCalledTimes(1)
     expect(api.putAvatar.mock.calls[0][1]).toBe('ann')
+    await syncMedia(cloudApi)
+    expect(api.putAvatar).toHaveBeenCalledTimes(1)
   })
 
-  it('takes every photo down when sharing is switched off, and keeps emoji', async () => {
+  it('tells the club when the photo switch changes, and deletes nothing', async () => {
     const { api, cloudApi } = fakeApi()
     await setPhotoSharing(true, cloudApi)
     await setPhotoSharing(false, cloudApi)
-    expect(api.deleteAvatarPhotos).toHaveBeenCalledTimes(1)
-    expect(await getPhotoPurgePending()).toBe(false)
+    expect(api.putPhotoSharing.mock.calls.map((c) => c[1])).toEqual([true, false])
+    expect(api.deleteAvatar).not.toHaveBeenCalled()
+    expect(await getPhotoSharingPending()).toBe(false)
   })
 
-  it('still takes the photos down later when the club could not be reached', async () => {
+  it('still tells the club later when it could not be reached', async () => {
     const failing = fakeApi({
-      deleteAvatarPhotos: async () => {
+      putPhotoSharing: async () => {
         throw new CloudError('network', 'offline')
       },
     })
-    await setPhotoSharing(false, failing.cloudApi)
-    expect(await getPhotoPurgePending()).toBe(true)
+    await setPhotoSharing(true, failing.cloudApi)
+    expect(await getPhotoSharingPending()).toBe(true)
 
     const working = fakeApi()
     expect(await syncMedia(working.cloudApi)).toBe(true)
-    expect(working.api.deleteAvatarPhotos).toHaveBeenCalledTimes(1)
-    expect(await getPhotoPurgePending()).toBe(false)
+    expect(working.api.putPhotoSharing).toHaveBeenCalledWith('tok-1', true)
+    expect(await getPhotoSharingPending()).toBe(false)
   })
 
   it('sends a removed avatar as a removal', async () => {
@@ -270,15 +265,19 @@ describe('when a different club logs in on the same device', () => {
     expect(await getSharePhotos()).toBe(true)
   })
 
-  it('keeps a pending photo takedown while the same club is still the one syncing', async () => {
+  it('keeps a photo switch the club has not heard of while the same club is still the one syncing', async () => {
     await syncMedia(fakeApi().cloudApi)
-    await setRosterAvatar((await addOrGetPlayer('Ann', 3)).id, PHOTO)
     const failing = fakeApi({
-      deleteAvatarPhotos: async () => {
+      putPhotoSharing: async () => {
         throw new CloudError('network')
       },
     })
-    await setPhotoSharing(false, failing.cloudApi)
-    expect(await getPhotoPurgePending()).toBe(true)
+    await setPhotoSharing(true, failing.cloudApi)
+    await adoptClub('downtown')
+    expect(await getPhotoSharingPending()).toBe(true)
+
+    // A different club never gets the earlier club's switch.
+    await adoptClub('uptown')
+    expect(await getPhotoSharingPending()).toBe(false)
   })
 })

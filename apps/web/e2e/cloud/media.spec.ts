@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Browser, type Page } from '@
 import { failOnCspViolations } from '../cspWatch'
 import { checkIn, openSessionMenu } from '../helpers'
 import { avatarOf, openAvatarEditor, setEmojiAvatar, setPhotoAvatar, viewAvatar } from '../avatarHelpers'
-import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
+import { apiCreateClub, bearer, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
 
 failOnCspViolations(test)
 
@@ -73,9 +73,9 @@ test.describe('club media on the live page', () => {
     await context.close()
   })
 
-  test('photos stay on staff devices until sharing is switched on, and come down when it is switched off', async ({ page, browser, request }) => {
+  test('photos reach the club’s staff devices always, and the live page only while sharing is on', async ({ page, browser, request }) => {
     const club = uniqueClub('Photos')
-    await apiCreateClub(request, club)
+    const { token } = await apiCreateClub(request, club)
     await signIn(page, club)
     await expect(shareBox(page)).not.toBeChecked()
     await startSession(page)
@@ -83,14 +83,19 @@ test.describe('club media on the live page', () => {
     await setPhotoAvatar(page, 'Ann')
     await setEmojiAvatar(page, 'Bob', '🥇')
 
-    // Bob's emoji is sent; Ann's photo is not.
-    await expect.poll(async () => Object.keys((await index(request, club.slug)()).avatars)).toEqual(['bob'])
+    // Both go to the club, but the live page shows Ann's photo as initials while sharing is off.
+    const staffKind = async () =>
+      ((await (await request.get('/api/avatars', { headers: bearer(token) })).json()) as { avatars: Record<string, { kind: string }> })
+        .avatars.ann?.kind
+    await expect.poll(staffKind).toBe('photo')
+    await expect.poll(async () => (await index(request, club.slug)()).avatars.bob?.emoji).toBe('🥇')
+    expect((await index(request, club.slug)()).avatars.ann?.kind).toBe('initials')
     const { context, page: viewer } = await viewerPage(browser, club.slug)
     await expect(avatarOf(viewer.locator('ol > li').filter({ hasText: 'Bob' }), 'Bob')).toHaveAttribute('data-emoji', '🥇', { timeout: 20_000 })
     await expect(avatarOf(viewer.locator('ol > li').filter({ hasText: 'Ann' }), 'Ann')).toHaveAttribute('data-avatar-kind', 'initials')
     expect((await request.get(`/api/clubs/${club.slug}/avatars/ann/photo`)).status()).toBe(404)
 
-    // Switch sharing on from the running session (Share live view): the photo goes up.
+    // Switch sharing on from the running session (Share live view): the live page gets the photo.
     await openSessionMenu(page)
     await page.getByRole('button', { name: 'Share live view' }).click()
     await shareBox(page).check()
@@ -99,10 +104,11 @@ test.describe('club media on the live page', () => {
     expect(photo.status()).toBe(200)
     expect(photo.headers()['content-type']).toMatch(/^image\//)
 
-    // Switch it off: every photo comes down, the emoji stays.
+    // Switch it off: the live page loses the photo, the club's staff devices keep it.
     await shareBox(page).uncheck()
-    await expect.poll(async () => Object.keys((await index(request, club.slug)()).avatars)).toEqual(['bob'])
+    await expect.poll(async () => (await index(request, club.slug)()).avatars.ann?.kind).toBe('initials')
     expect((await request.get(`/api/clubs/${club.slug}/avatars/ann/photo`)).status()).toBe(404)
+    expect(await staffKind()).toBe('photo')
     await context.close()
 
     // The choice is the same one the setup screen shows.
@@ -150,6 +156,33 @@ test.describe('club media on the live page', () => {
     await expect(avatarOf(second.locator('ol > li').filter({ hasText: 'Ann' }), 'Ann')).toHaveAttribute('data-emoji', '🎾', { timeout: 20_000 })
     await expect(avatarOf(second.locator('ol > li').filter({ hasText: 'Cy' }), 'Cy')).toHaveAttribute('data-avatar-kind', 'initials')
     await other.close()
+  })
+
+  test('a photo set on one staff device shows on the club’s other devices, with the live page kept private', async ({ page, browser, request }) => {
+    const club = uniqueClub('Faces')
+    const { token } = await apiCreateClub(request, club)
+    await signIn(page, club)
+    await startSession(page)
+    await checkIn(page, ['Ann'])
+    await setPhotoAvatar(page, 'Ann')
+    await expect
+      .poll(async () => ((await (await request.get('/api/avatars', { headers: bearer(token) })).json()) as { avatars: Record<string, { kind: string }> }).avatars.ann?.kind)
+      .toBe('photo')
+
+    // The PC logs in to the same club: Ann is on its roster, with her photo.
+    const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
+    const second = await other.newPage()
+    await signIn(second, club)
+    await startSession(second, 'Second Device')
+    await second.getByRole('tab', { name: 'Check-in' }).click()
+    const roster = second.getByRole('group', { name: 'Check in from the roster' })
+    const avatar = avatarOf(roster.locator('label').filter({ hasText: 'Ann' }), 'Ann')
+    await expect(avatar).toHaveAttribute('data-avatar-kind', 'photo', { timeout: 20_000 })
+    await expect(avatar.locator('img')).toHaveAttribute('src', /^data:image\//)
+    await other.close()
+
+    // Nobody switched sharing on, so the public live page still shows initials.
+    expect((await index(request, club.slug)()).avatars.ann?.kind).toBe('initials')
   })
 
   test('changes made while offline are sent when the connection returns', async ({ page, context, request }) => {

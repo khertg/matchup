@@ -34,6 +34,8 @@ const putAvatar = (token: string | null, key: string, payload: unknown) =>
     payload: payload as object,
   })
 const photo = (bytes: Buffer) => ({ kind: 'photo', photo: { data: b64(bytes) } })
+const sharePhotos = (token: string | null, on: unknown) =>
+  app.inject({ method: 'PUT', url: '/api/photo-sharing', headers: token ? bearer(token) : {}, payload: { on } as object })
 
 describe('club logo', () => {
   it('needs a login to change', async () => {
@@ -140,6 +142,7 @@ describe('player avatars', () => {
     expect((await putAvatar(token, 'ann', { kind: 'emoji', emoji: '🎾', color: '#336699' })).statusCode).toBe(204)
     expect((await putAvatar(token, 'bob', { kind: 'initials', color: '#aa5500' })).statusCode).toBe(204)
     expect((await putAvatar(token, 'cy lee', photo(webp()))).statusCode).toBe(204)
+    expect((await sharePhotos(token, true)).statusCode).toBe(204)
 
     const response = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })
     expect(response.statusCode).toBe(200)
@@ -157,6 +160,7 @@ describe('player avatars', () => {
     const { token, slug } = await createClub(app)
     await putAvatar(token, 'cy lee', photo(jpeg()))
     await putAvatar(token, 'ann', { kind: 'emoji', emoji: '🎾' })
+    await sharePhotos(token, true)
     const ok = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars/${encodeURIComponent('cy lee')}/photo` })
     expect(ok.statusCode).toBe(200)
     expect(ok.headers['content-type']).toBe('image/jpeg')
@@ -196,19 +200,81 @@ describe('player avatars', () => {
     expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars/ann/photo` })).statusCode).toBe(404)
   })
 
-  it('deletes one avatar, or every photo while keeping emoji and initials', async () => {
+  it('deletes one avatar', async () => {
     const { token, slug } = await createClub(app)
     await putAvatar(token, 'ann', photo(png()))
-    await putAvatar(token, 'bob', photo(jpeg()))
     await putAvatar(token, 'cy', { kind: 'emoji', emoji: '🎾' })
     const index = async () => Object.keys((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })).json().avatars).sort()
 
     expect((await app.inject({ method: 'DELETE', url: '/api/avatars/ann', headers: bearer(token) })).statusCode).toBe(204)
-    expect(await index()).toEqual(['bob', 'cy'])
-    expect((await app.inject({ method: 'DELETE', url: '/api/avatars/ann', headers: bearer(token) })).statusCode).toBe(204) // already gone
-
-    expect((await app.inject({ method: 'DELETE', url: '/api/avatars', headers: bearer(token) })).statusCode).toBe(204)
     expect(await index()).toEqual(['cy'])
+    expect((await app.inject({ method: 'DELETE', url: '/api/avatars/ann', headers: bearer(token) })).statusCode).toBe(204) // already gone
+  })
+})
+
+describe('player photos on the live page', () => {
+  const publicIndex = async (slug: string) => (await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })).json()
+  const publicPhoto = (slug: string, key: string) =>
+    app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars/${encodeURIComponent(key)}/photo` })
+  const staffIndex = (token: string | null) =>
+    app.inject({ method: 'GET', url: '/api/avatars', headers: token ? bearer(token) : {} })
+  const staffAvatar = (token: string | null, key: string) =>
+    app.inject({ method: 'GET', url: `/api/avatars/${encodeURIComponent(key)}`, headers: token ? bearer(token) : {} })
+
+  it('are hidden from the public until the club shares them, and staff always get them', async () => {
+    const { token, slug } = await createClub(app)
+    await putAvatar(token, 'ann', photo(jpeg()))
+    await putAvatar(token, 'bob', { kind: 'emoji', emoji: '🎾', color: '#336699' })
+
+    // Off by default: the live page sees initials and no photo.
+    expect((await publicIndex(slug)).avatars.ann.kind).toBe('initials')
+    expect((await publicPhoto(slug, 'ann')).statusCode).toBe(404)
+    const staff = (await staffIndex(token)).json()
+    expect(staff.sharePhotos).toBe(false)
+    expect(staff.avatars.ann.kind).toBe('photo')
+    expect(staff.avatars.bob).toMatchObject({ kind: 'emoji', emoji: '🎾' })
+
+    const one = (await staffAvatar(token, 'ann')).json()
+    expect(one).toMatchObject({ kind: 'photo', photo: { data: b64(jpeg()), type: 'image/jpeg' } })
+    expect(one.v).toBe(staff.avatars.ann.v)
+    expect((await staffAvatar(token, 'bob')).json()).toMatchObject({ kind: 'emoji', emoji: '🎾', color: '#336699' })
+    expect((await staffAvatar(token, 'nobody')).statusCode).toBe(404)
+
+    // On: the live page shows the photo, and its validator changed.
+    const before = String((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })).headers.etag)
+    expect((await sharePhotos(token, true)).statusCode).toBe(204)
+    const after = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars`, headers: { 'if-none-match': before } })
+    expect(after.statusCode).toBe(200)
+    expect(after.json().avatars.ann.kind).toBe('photo')
+    expect((await publicPhoto(slug, 'ann')).statusCode).toBe(200)
+    expect((await staffIndex(token)).json().sharePhotos).toBe(true)
+  })
+
+  it('stop showing, without being deleted, when an older app turns sharing off', async () => {
+    const { token, slug } = await createClub(app)
+    await putAvatar(token, 'ann', photo(png()))
+    await sharePhotos(token, true)
+    expect((await app.inject({ method: 'DELETE', url: '/api/avatars', headers: bearer(token) })).statusCode).toBe(204)
+    expect((await publicPhoto(slug, 'ann')).statusCode).toBe(404)
+    expect((await staffAvatar(token, 'ann')).json().photo.data).toBe(b64(png()))
+  })
+
+  it('need a staff login to list, fetch or switch', async () => {
+    for (const token of [null, 'nope', '0'.repeat(64)]) {
+      expect((await staffIndex(token)).statusCode).toBe(401)
+      expect((await staffAvatar(token, 'ann')).statusCode).toBe(401)
+      expect((await sharePhotos(token, true)).statusCode).toBe(401)
+    }
+    const { token } = await createClub(app)
+    expect((await sharePhotos(token, 'yes')).statusCode).toBe(400)
+  })
+
+  it('never show one club another club’s players', async () => {
+    const a = await createClub(app)
+    const b = await createClub(app)
+    await putAvatar(a.token, 'ann', photo(png()))
+    expect((await staffIndex(b.token)).json().avatars).toEqual({})
+    expect((await staffAvatar(b.token, 'ann')).statusCode).toBe(404)
   })
 
   it('refuses bad emoji, colours and shapes', async () => {

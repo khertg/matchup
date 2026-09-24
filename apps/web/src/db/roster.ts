@@ -9,12 +9,30 @@ import { db, type Gender, type SkillLevel } from './db'
  * it changed or was removed, so the cloud copy follows.
  */
 export async function setRosterAvatar(playerId: number, avatar: PlayerAvatar | null): Promise<void> {
-  await db.players.update(playerId, { avatar: avatar ?? undefined, avatarDirty: true })
+  await db.players.update(playerId, { avatar: avatar ?? undefined, avatarDirty: true, avatarVersion: undefined })
 }
 
-/** Mark every player with a photo as not sent, so sharing photos being switched on uploads them all. */
-export async function markPhotosDirty(): Promise<void> {
-  await db.players.filter((p) => p.avatar?.kind === 'photo').modify({ avatarDirty: true })
+/**
+ * Mark a club's players with a photo as not sent. Photos used to stay on the device unless the club
+ * showed them on its live page, so once, after that changed, they are all sent for the club's other devices.
+ */
+export async function markPhotosDirty(clubSlug: string): Promise<void> {
+  await db.players
+    .filter((p) => p.clubSlug === clubSlug && p.avatar?.kind === 'photo')
+    .modify({ avatarDirty: true })
+}
+
+/**
+ * Take the club's avatar for a saved player, as another device of the club left it (`version` is the
+ * club's). Does nothing if the player's avatar changed here and has not been sent yet: that one goes
+ * up next and wins. Null removes an avatar that had come from the club.
+ */
+export async function setClubAvatar(playerId: number, avatar: PlayerAvatar | null, version?: number): Promise<void> {
+  await db.transaction('rw', db.players, async () => {
+    const player = await db.players.get(playerId)
+    if (!player || player.avatarDirty) return
+    await db.players.update(playerId, { avatar: avatar ?? undefined, avatarVersion: avatar ? version : undefined })
+  })
 }
 
 /** Change a saved player's skill level, so they start future sessions at it. */

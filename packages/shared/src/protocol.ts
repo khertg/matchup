@@ -187,6 +187,30 @@ export interface AvatarIndex {
   name: string | null
 }
 
+/**
+ * `GET /avatars` (staff only): every avatar as it really is, photos included whether or not the club
+ * shows them on its live page, and whether it does. The public index lists a photo as initials while
+ * `sharePhotos` is off.
+ */
+export interface StaffAvatarIndex extends AvatarIndex {
+  sharePhotos: boolean
+}
+
+/** `GET /avatars/:key` (staff only): one avatar with its photo, so a staff device can keep a copy. */
+export interface StaffAvatar {
+  kind: AvatarKind
+  emoji?: string
+  color?: string
+  /** For "photo": the image as base64 text and its type. */
+  photo?: { data: string; type: 'image/png' | 'image/jpeg' | 'image/webp' }
+  v: number
+}
+
+/** `PUT /photo-sharing`: whether the club's live page shows player photos. */
+export interface PhotoSharingRequest {
+  on: boolean
+}
+
 /** An image sent to the server as base64 text. The server decides its type from the bytes. */
 export interface ImageUpload {
   data: string

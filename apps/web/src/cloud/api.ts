@@ -11,6 +11,8 @@ import type {
   PutAvatarRequest,
   PutHistoryRequest,
   ResetPasswordResponse,
+  StaffAvatar,
+  StaffAvatarIndex,
 } from '@q2dink/shared'
 import type { FullBackup } from './snapshot'
 
@@ -58,8 +60,12 @@ export interface CloudApi {
   /** Set a player's avatar; `key` is the lower-case player name. */
   putAvatar(token: string, key: string, avatar: PutAvatarRequest): Promise<void>
   deleteAvatar(token: string, key: string): Promise<void>
-  /** Take every player photo down (emoji and initials avatars stay). */
-  deleteAvatarPhotos(token: string): Promise<void>
+  /** Whether the club's public live page shows player photos. Staff devices get them either way. */
+  putPhotoSharing(token: string, on: boolean): Promise<void>
+  /** Every avatar as it really is, photos included, and whether the club shares photos (staff only). */
+  fetchStaffAvatars(token: string): Promise<StaffAvatarIndex>
+  /** One avatar with its photo, or null when the player has none (staff only). */
+  fetchStaffAvatar(token: string, key: string): Promise<StaffAvatar | null>
   /** Every avatar the club has and its logo's version. Public, so the live page can use it. */
   fetchAvatarIndex(slug: string): Promise<AvatarIndex>
   /** Where the club's logo image is, at this version. */

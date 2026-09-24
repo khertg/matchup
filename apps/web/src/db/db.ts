@@ -20,6 +20,11 @@ export interface Player {
   /** The club's cloud copy is out of date (changed or removed here, not yet sent). */
   avatarDirty?: boolean
   /**
+   * The club's version of `avatar` when it was taken from the club (set on another staff device), so an
+   * unchanged one is not fetched again. Missing when the avatar was set here.
+   */
+  avatarVersion?: number
+  /**
    * The club this player belongs to. Only that club's players are listed while it is logged in.
    * Missing on players saved before a club took them (or in a build with no cloud): the first club
    * to sync on this device takes them.

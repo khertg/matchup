@@ -6,26 +6,30 @@ import {
   claimUnownedPlayers,
   clearAvatarDirty,
   dirtyRoster,
+  listRoster,
   markPhotosDirty,
   markRosterSent,
   mergeClubRoster,
+  setClubAvatar,
 } from '@/db/roster'
-import { MAX_ROSTER_BATCH } from '@q2dink/shared'
+import { MAX_ROSTER_BATCH, type StaffAvatar } from '@q2dink/shared'
 import {
   addPendingRename,
   clearPendingRenames,
   getLogoSetting,
   getPendingRenames,
-  getPhotoPurgePending,
+  getPhotoSharingPending,
   getSharePhotos,
   getSyncClub,
   markLogoSynced,
+  markPhotosSentFor,
+  photosSentFor,
   removePendingRename,
-  setPhotoPurgePending,
+  setPhotoSharingPending,
   setSharePhotos,
   setSyncClub,
 } from '@/db/settings'
-import { avatarKey, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
+import { avatarKey, colorFor, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi, type PutAvatarRequest } from './api'
 import { useClubAuth } from './auth'
@@ -145,7 +149,8 @@ export async function adoptClub(slug: string): Promise<void> {
     await clearAvatarDirty()
     await clearPendingRenames()
     await markLogoSynced()
-    await setPhotoPurgePending(false)
+    // The photo switch belongs to the earlier club; this club's own setting arrives with the next sync.
+    await setPhotoSharingPending(false)
     await setSharePhotos(false)
   }
   await setSyncClub(slug)
@@ -231,7 +236,9 @@ async function exchangeRoster(api: CloudApi): Promise<boolean> {
     }
     // The club may have changed while this ran (another club logged in): never file its players under this one.
     const players = await api.fetchRoster(club.token)
-    if (useClubAuth.getState().club?.slug === club.slug) await mergeClubRoster(club.slug, players)
+    if (useClubAuth.getState().club?.slug !== club.slug) return false
+    await mergeClubRoster(club.slug, players)
+    await pullAvatars(api, club)
     return true
   } catch (error) {
     handleAuthError(error)
@@ -253,7 +260,38 @@ export function requestRosterSync(api: CloudApi | null = cloud): void {
   rosterSyncTimer = setTimeout(() => void syncRoster(api), ROSTER_SYNC_DELAY_MS)
 }
 
-/** What the club is sent for an avatar: emoji and initials always, a photo only while photos are shared. */
+/** A club avatar as this device keeps it on a saved player. */
+function toPlayerAvatar(avatar: StaffAvatar, name: string): PlayerAvatar | null {
+  if (avatar.kind === 'photo') return avatar.photo ? { kind: 'photo', data: `data:${avatar.photo.type};base64,${avatar.photo.data}` } : null
+  if (avatar.kind === 'emoji') return avatar.emoji ? { kind: 'emoji', value: avatar.emoji, color: avatar.color ?? colorFor(name) } : null
+  return { kind: 'initials', color: avatar.color ?? colorFor(name) }
+}
+
+/**
+ * Bring in the avatars the club's other staff devices set, photos included, so every device of the
+ * club shows the same faces. Each saved player whose avatar did not change here takes the club's when
+ * the club's version differs from the one it has, and loses one that had come from the club when the
+ * club no longer has it. Also takes the club's photo switch, unless it was just changed here.
+ */
+async function pullAvatars(api: CloudApi, club: { slug: string; token: string }): Promise<void> {
+  const index = await api.fetchStaffAvatars(club.token)
+  if (!(await getPhotoSharingPending())) await setSharePhotos(index.sharePhotos)
+  for (const player of await listRoster(club.slug)) {
+    if (player.avatarDirty) continue
+    const shared = index.avatars[avatarKey(player.name)]
+    if (!shared) {
+      if (player.avatarVersion !== undefined) await setClubAvatar(player.id, null)
+      continue
+    }
+    if (player.avatarVersion === shared.v) continue
+    const avatar = await api.fetchStaffAvatar(club.token, avatarKey(player.name))
+    if (useClubAuth.getState().club?.slug !== club.slug) return
+    const local = avatar && toPlayerAvatar(avatar, player.name)
+    if (local) await setClubAvatar(player.id, local, avatar.v)
+  }
+}
+
+/** What the club is sent for an avatar. */
 function avatarRequest(avatar: PlayerAvatar): PutAvatarRequest {
   if (avatar.kind === 'photo') return { kind: 'photo', photo: { data: dataUrlBase64(avatar.data) } }
   if (avatar.kind === 'emoji') return { kind: 'emoji', emoji: avatar.value, color: avatar.color }
@@ -261,9 +299,10 @@ function avatarRequest(avatar: PlayerAvatar): PutAvatarRequest {
 }
 
 /**
- * Send the club logo and player avatars that changed on this device. Emoji and initials avatars and
- * the logo always go; photos go only while photo sharing is on (otherwise the club's copy is removed).
- * Safe to call repeatedly. Returns true when nothing is left waiting.
+ * Send the club logo, player avatars (photos too: the club's other staff devices use them) and the
+ * photo switch that changed on this device. Whether the public live page shows the photos is the
+ * club's switch, not a reason to keep them here. Safe to call repeatedly. Returns true when nothing is
+ * left waiting.
  */
 export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> {
   const club = useClubAuth.getState().club
@@ -280,10 +319,14 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
     // Inside the try: if the device's storage cannot be read this is a failed sync, never a rejection
     // that nobody handles (callers do `void syncMedia()`).
     await adoptClub(club.slug)
-    const share = await getSharePhotos()
-    if (!share && (await getPhotoPurgePending())) {
-      await api.deleteAvatarPhotos(club.token)
-      await setPhotoPurgePending(false)
+    if (await getPhotoSharingPending()) {
+      await api.putPhotoSharing(club.token, await getSharePhotos())
+      await setPhotoSharingPending(false)
+    }
+    // Photos set while they only went to the club with sharing on are sent once now.
+    if (!(await photosSentFor(club.slug))) {
+      await markPhotosDirty(club.slug)
+      await markPhotosSentFor(club.slug)
     }
 
     const logo = await getLogoSetting()
@@ -297,11 +340,7 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
       .toArray()) {
       const key = avatarKey(player.name)
       const sent = player.avatar
-      await attempt(() =>
-        !sent || (sent.kind === 'photo' && !share)
-          ? api.deleteAvatar(club.token, key)
-          : api.putAvatar(club.token, key, avatarRequest(sent)),
-      )
+      await attempt(() => (sent ? api.putAvatar(club.token, key, avatarRequest(sent)) : api.deleteAvatar(club.token, key)))
       // Only forget the change if it was not changed again while it was being sent.
       const now = await db.players.get(player.id!)
       if (JSON.stringify(now?.avatar) === JSON.stringify(sent)) await db.players.update(player.id!, { avatarDirty: false })
@@ -314,17 +353,12 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
 }
 
 /**
- * Turn sharing of player photos on the public live page on or off. Off takes every photo down from the
- * club (now, or as soon as it is reachable); on sends the photos on this device.
+ * Turn showing player photos on the club's public live page on or off, for the whole club (now, or as
+ * soon as it is reachable). The photos stay with the club's staff devices either way.
  */
 export async function setPhotoSharing(on: boolean, api: CloudApi | null = cloud): Promise<void> {
   await setSharePhotos(on)
-  if (on) {
-    await setPhotoPurgePending(false)
-    await markPhotosDirty()
-  } else {
-    await setPhotoPurgePending(true)
-  }
+  await setPhotoSharingPending(true)
   await syncMedia(api)
 }
 

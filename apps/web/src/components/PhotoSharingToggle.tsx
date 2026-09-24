@@ -26,8 +26,9 @@ export function PhotoSharingToggle() {
       <div>
         <Label htmlFor="share-photos">Show player photos on the live page</Label>
         <p className="text-xs text-muted-foreground">
-          Off by default. When on, anyone with the live link can see the photos you set. Turning it off
-          removes them from the server. Emoji and initials avatars and the club logo are always shown.
+          For the whole club, off by default. When on, anyone with the live link can see player photos.
+          Your club’s staff devices always get them. Emoji and initials avatars and the club logo are
+          always shown.
         </p>
       </div>
     </div>
