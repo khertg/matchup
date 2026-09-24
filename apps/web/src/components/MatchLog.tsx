@@ -96,7 +96,7 @@ export function MatchLog({ matches, players, onEditScore, onEditPlayers }: Props
                       <span className="text-center text-muted-foreground tabular-nums">{match.score ? loserScore : '–'}</span>
                     </div>
 
-                    <div className="ml-auto flex shrink-0 flex-col items-end gap-1">
+                    <div className="ml-auto flex shrink-0 flex-col items-center gap-1">
                       <Badge variant="secondary">{match.courtName}</Badge>
                       {match.seconds > 0 && (
                         <span className="text-xs text-muted-foreground">{formatDuration(match.seconds)}</span>
