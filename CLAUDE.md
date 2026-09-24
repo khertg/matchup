@@ -62,6 +62,14 @@ The theme is `next-themes` (`ThemeProvider` in `main.tsx`, class `dark` on `<htm
 ### Version
 The version has one source of truth: `version` in the **root** `package.json` (bump with `npm version minor --no-git-tag-version` at the root; workspace versions are unused). `vite.config.ts` (web) and `tsup.config.ts` (API) inject it with `define` along with the short commit (`GIT_SHA` env, else `git rev-parse`, else `dev`) and build date. Docker builds cannot see `.git`, so both Dockerfiles take a `GIT_SHA` build arg (the prod compose file and CI pass it). The web app renders it once in `App.tsx` (`VersionLabel`, `lib/version.ts`); the API reports it on `GET /api/health`. Running from source (tests, tsx) reports `dev` for the API.
 
+**When to bump** (decide it yourself; don't ask). Bump in the same commit as the change, or in a separate "Bump to x.y.z" commit right after it, before pushing:
+- **Minor** (`npm version minor`): a new feature or visible behaviour change, a new API route or wire field, or any database migration (API or Dexie). This includes a batch of smaller UI changes going out together.
+- **Patch** (`npm version patch`): bug fixes and small UI or copy tweaks with no migration and no new route.
+- **Major**: only when an older cached web app or an existing server could no longer work with the new one, or stored data must be converted in a way that can't be read back. That's rare, so check with the user first.
+- **No bump**: changes only to tests, docs, CI or tooling (nothing a device or server would run differently).
+
+The header shows only the version, so without a bump two builds look the same on a phone.
+
 ## Conventions and pitfalls
 
 - Tests that need a running board start games explicitly (`startGame`/`fillCourts`), never rely on check-in doing it. E2E helpers live in `apps/web/e2e/helpers.ts` (`startSession`, `checkIn`, `startGame`, `recordWin`, `cancelGame`).
