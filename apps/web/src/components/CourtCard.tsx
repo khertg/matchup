@@ -84,9 +84,21 @@ export function CourtCard({
     <Card role="region" aria-label={court.name}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate">
-            {court.name}
-            {levels && <span className="font-normal text-muted-foreground"> · {levels}</span>}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate">{court.name}</span>
+            {/*
+              Always shown, so staff and players can see which courts are open to everyone. Drawn from a
+              data attribute, like avatar initials, so it adds no text to the court (tests look for
+              players by name, and "All levels" contains "Eve").
+            */}
+            <Badge
+              variant="secondary"
+              role="img"
+              aria-label={`Skill levels: ${levels ?? 'All levels'}`}
+              title="Skill levels for this court"
+              data-levels={levels ?? 'All levels'}
+              className="shrink-0 font-normal before:content-[attr(data-levels)]"
+            />
           </span>
           <div className="flex shrink-0 items-center gap-2">
             {court.teams ? <PlayingBadge startedAt={court.startedAt} /> : <Badge variant="outline">Open</Badge>}

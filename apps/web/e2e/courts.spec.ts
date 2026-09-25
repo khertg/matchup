@@ -327,8 +327,8 @@ test.describe('skill levels per court', () => {
 
     const court1 = page.getByRole('region', { name: 'Court 1' })
     const court2 = page.getByRole('region', { name: 'Court 2' })
-    await expect(court1).toContainText('Court 1 · 3.5+')
-    await expect(court2).toContainText('Court 2 · 1.0–3.0')
+    await expect(court1.getByRole('img', { name: 'Skill levels: 3.5+' })).toBeVisible()
+    await expect(court2.getByRole('img', { name: 'Skill levels: 1.0–3.0' })).toBeVisible()
     for (const name of ['Ann', 'Cy', 'Eve', 'Gus']) await expect(court1).toContainText(name)
     for (const name of ['Bob', 'Dee', 'Fay', 'Hal']) await expect(court2).toContainText(name)
 
@@ -346,11 +346,13 @@ test.describe('skill levels per court', () => {
 
     // The ranges are part of the session: they survive a reload.
     await page.reload()
-    await expect(court1).toContainText('Court 1 · 3.5+')
+    await expect(court1.getByRole('img', { name: 'Skill levels: 3.5+' })).toBeVisible()
   })
 
   test('a court waits for players in its range, and staff can start it with anyone', async ({ page }) => {
     await startSession(page, { courts: 1 })
+    // Every court shows its setting, including one open to everyone.
+    await expect(page.getByRole('region', { name: 'Court 1' }).getByRole('img', { name: 'Skill levels: All levels' })).toBeVisible()
     await manage(page)
     await setLevels(page, 'Court 1', '3.5 · Upper Intermediate', '5.0+ · Expert')
     await closeDialog(page)

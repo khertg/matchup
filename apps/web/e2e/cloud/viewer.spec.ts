@@ -29,8 +29,8 @@ test.describe('live viewer', () => {
     const { club } = await runningClub(request, snapshot)
     await page.goto(`/club/${club.slug}`)
 
-    await expect(page.getByRole('region', { name: 'Court 1' })).toContainText('Court 1 · 3.5+')
-    await expect(page.getByRole('region', { name: 'Court 2' })).toContainText('Court 2 · 1.0–3.0')
+    await expect(page.getByRole('region', { name: 'Court 1' }).getByRole('img', { name: 'Skill levels: 3.5+' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Court 2' }).getByRole('img', { name: 'Skill levels: 1.0–3.0' })).toBeVisible()
     const nextUp = page.getByRole('group', { name: 'Next up' })
     await expect(nextUp.getByRole('region', { name: '3.5+' })).toContainText('No group is ready yet.')
     await expect(nextUp.getByRole('region', { name: '1.0–3.0' })).toBeVisible()
@@ -46,6 +46,7 @@ test.describe('live viewer', () => {
 
     const court1 = page.getByRole('region', { name: 'Court 1' })
     await expect(court1.getByText('In play')).toBeVisible()
+    await expect(court1.getByRole('img', { name: 'Skill levels: All levels' })).toBeVisible()
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(court1.getByText(name)).toBeVisible()
     await expect(page.getByRole('region', { name: 'Court 2' }).getByText('Open')).toBeVisible()
 
