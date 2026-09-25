@@ -37,7 +37,7 @@ curl https://your-domain/api/health                        # {"ok":true,"version
 To check a deployment more thoroughly (security headers, client routes, the API's build, the service worker), run `bash deploy/smoke.sh https://your-domain` from the repository. CI runs the same script against the production stack on every push. The Caddyfile sends a strict Content-Security-Policy (only this site's own scripts, styles and API), HSTS and a no-framing rule; the policy is defined in `apps/web/csp.ts` and must be changed in both places if the app ever needs to load something from elsewhere.
 
 Open `https://your-domain` in a browser, create a club, and start a session. Players open
-`https://your-domain/club/<your-club>` (the Share button shows a QR code for it).
+`https://your-domain/club/<your-club>/live` (the Share button shows a QR code for it; the older `/club/<your-club>` still opens it).
 
 The database schema is created automatically the first time the API starts.
 

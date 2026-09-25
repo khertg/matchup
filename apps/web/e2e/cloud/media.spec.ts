@@ -21,7 +21,7 @@ async function startSession(page: Page, location = 'Media Night') {
 async function viewerPage(browser: Browser, slug: string) {
   const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
   const page = await context.newPage()
-  await page.goto(`/club/${slug}`)
+  await page.goto(`/club/${slug}/live`)
   return { context, page }
 }
 

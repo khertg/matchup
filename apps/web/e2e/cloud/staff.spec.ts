@@ -42,7 +42,7 @@ test.describe('club sign-in', () => {
     await page.getByRole('button', { name: 'Create a club' }).click()
     const dialog = page.getByRole('dialog', { name: 'Create a club' })
     await dialog.getByLabel('Club name').fill(club.name)
-    await expect(dialog.getByText(`/club/${club.slug}`)).toBeVisible()
+    await expect(dialog.getByText(`/club/${club.slug}/live`)).toBeVisible()
 
     // Passwords need at least eight characters.
     await dialog.getByLabel(/^Password/).fill('abcdefg')
@@ -59,7 +59,7 @@ test.describe('club sign-in', () => {
     await confirmRecoveryCode(page)
 
     await expect(page.getByText(club.name, { exact: true })).toBeVisible()
-    await expect(page.getByText(`/club/${club.slug}`, { exact: true })).toBeVisible()
+    await expect(page.getByText(`/club/${club.slug}/live`, { exact: true })).toBeVisible()
 
     // The club really exists on the server.
     const login = await request.post(`/api/clubs/${club.slug}/login`, { data: { password: club.password } })
@@ -337,7 +337,7 @@ test.describe('sharing', () => {
     await openSessionMenu(page)
     await page.getByRole('button', { name: 'Share live view' }).click()
     const dialog = page.getByRole('dialog')
-    await expect(dialog.getByLabel('Live board link')).toHaveValue(`http://localhost:4174/club/${club.slug}`)
+    await expect(dialog.getByLabel('Live board link')).toHaveValue(`http://localhost:4174/club/${club.slug}/live`)
     const qr = dialog.getByRole('img', { name: 'QR code for the live board' })
     await expect(qr).toBeVisible()
     expect(await qr.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
@@ -353,7 +353,7 @@ test.describe('two browsers', () => {
       serviceWorkers: 'block',
     })
     const viewer = await viewerContext.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await expect(viewer.getByText('No game in progress')).toBeVisible()
 
     // The club starts a session: the viewer's page changes by itself, with no refresh.
@@ -396,7 +396,7 @@ test.describe('editing a skill level', () => {
       serviceWorkers: 'block',
     })
     const viewer = await viewerContext.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await signInAndStart(page, club, 'Level Night')
     await checkIn(page, ['Ann', 'Bob'])
     const viewerRow = viewer.locator('ol > li').filter({ hasText: 'Ann' })
@@ -419,7 +419,7 @@ test.describe('changing who is next up', () => {
       serviceWorkers: 'block',
     })
     const viewer = await viewerContext.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await signInAndStart(page, club, 'Chosen Night')
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
     const viewerNext = viewer.getByRole('group', { name: 'Next up' })
@@ -447,7 +447,7 @@ test.describe('managing courts', () => {
       serviceWorkers: 'block',
     })
     const viewer = await viewerContext.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await signInAndStart(page, club, 'Court Night') // starts with the default four courts
 
     // Court cards set role="region" themselves; the attribute keeps out the toast area.
@@ -489,7 +489,7 @@ test.describe('managing courts', () => {
       serviceWorkers: 'block',
     })
     const viewer = await viewerContext.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
 
     await page.goto('/')
     await uiLogin(page, club)

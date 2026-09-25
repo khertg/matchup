@@ -30,7 +30,7 @@ test.describe('the login gate', () => {
     const club = uniqueClub('Open')
     const { token } = await apiCreateClub(request, club)
     await apiPublish(request, token)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     await expect(gate(page)).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Log in' })).toHaveCount(0)

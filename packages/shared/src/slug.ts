@@ -20,8 +20,14 @@ export function slugify(name: string): string {
   return base ? `${base}-club` : 'club'
 }
 
-/** The club URL name in a path like /club/downtown, or null for any other path. */
+/** The path of a club's public live board, e.g. /club/downtown/live. */
+export const liveBoardPath = (slug: string) => `/club/${slug}/live`
+
+/**
+ * The club URL name in a live-board path, /club/downtown/live, or the older /club/downtown that
+ * printed QR codes still point at. Null for any other path.
+ */
 export function clubSlugFromPath(pathname: string): string | null {
-  const match = /^\/club\/([a-z0-9-]+)\/?$/.exec(pathname)
+  const match = /^\/club\/([a-z0-9-]+)(?:\/live)?\/?$/.exec(pathname)
   return match && isValidSlug(match[1]) ? match[1] : null
 }

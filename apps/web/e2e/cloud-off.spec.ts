@@ -17,12 +17,12 @@ test('shows no sync badge or share button during a session', async ({ page }) =>
 })
 
 test('explains that the live view is unavailable', async ({ page }) => {
-  await page.goto('/club/sunset')
+  await page.goto('/club/sunset/live')
   await expect(page.getByText('Live view is not available')).toBeVisible()
   await expect(page.getByText(/Cloud sync isn.t configured/)).toBeVisible()
 })
 
 test('rejects an invalid club link', async ({ page }) => {
-  await page.goto('/club/NOT_VALID')
+  await page.goto('/club/NOT_VALID/live')
   await expect(page.getByText(/That club link isn.t valid/)).toBeVisible()
 })

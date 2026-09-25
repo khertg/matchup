@@ -30,7 +30,7 @@ test.describe('theme switch with the cloud', () => {
     const club = uniqueClub('Live')
     const { token } = await apiCreateClub(request, club)
     await apiPublish(request, token)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     await chooseDark(page)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()

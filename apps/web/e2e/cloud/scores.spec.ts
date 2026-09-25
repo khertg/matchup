@@ -37,7 +37,7 @@ test.describe('scores on the live board', () => {
         [11, 4, 1],
       ])
 
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await viewer.getByRole('tab', { name: 'Standings' }).click()
     const rows = viewer.getByRole('row')
     await expect(rows.nth(1)).toContainText('Ann', { timeout: 8000 })

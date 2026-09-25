@@ -3,6 +3,7 @@ import {
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
   isValidSlug,
+  liveBoardPath,
   slugify,
 } from '@q2dink/shared'
 import { PencilIcon, QrCodeIcon } from 'lucide-react'
@@ -89,7 +90,7 @@ export function CreateClubDialog() {
             />
             {name.trim() !== '' && (
               <p className="text-sm text-muted-foreground">
-                Link: <span className="font-mono">{`/club/${slug}`}</span>
+                Link: <span className="font-mono">{liveBoardPath(slug)}</span>
               </p>
             )}
           </div>
@@ -288,7 +289,7 @@ function SignedIn() {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Live link: <span className="font-mono">{`/club/${club.slug}`}</span>
+        Live link: <span className="font-mono">{liveBoardPath(club.slug)}</span>
       </p>
       <PhotoSharingToggle />
       {clubSession && running && (

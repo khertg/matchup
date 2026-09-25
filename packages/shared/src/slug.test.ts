@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clubSlugFromPath, isValidSlug, slugify } from './slug'
+import { clubSlugFromPath, isValidSlug, liveBoardPath, slugify } from './slug'
 
 describe('slugify', () => {
   it('makes a lowercase dashed URL name', () => {
@@ -40,13 +40,19 @@ describe('isValidSlug', () => {
 })
 
 describe('clubSlugFromPath', () => {
-  it('reads the club from a viewer path', () => {
+  it('reads the club from a live-board path', () => {
+    expect(clubSlugFromPath('/club/downtown/live')).toBe('downtown')
+    expect(clubSlugFromPath('/club/downtown/live/')).toBe('downtown')
+    expect(clubSlugFromPath(liveBoardPath('downtown'))).toBe('downtown')
+  })
+
+  it('still reads the older path without /live, which printed QR codes point at', () => {
     expect(clubSlugFromPath('/club/downtown')).toBe('downtown')
     expect(clubSlugFromPath('/club/downtown/')).toBe('downtown')
   })
 
   it('ignores every other path and unsafe values', () => {
-    for (const path of ['/', '/club', '/club/', '/clubs/downtown', '/club/a/b', '/club/UP', '/club/x', '/club/a b']) {
+    for (const path of ['/', '/club', '/club/', '/clubs/downtown', '/club/a/b', '/club/UP', '/club/x', '/club/a b', '/club/a/live', '/club/UP/live', '/club/downtown/live/extra', '/club/downtown/lives']) {
       expect(clubSlugFromPath(path), path).toBeNull()
     }
   })

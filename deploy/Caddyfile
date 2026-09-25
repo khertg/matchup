@@ -26,7 +26,7 @@
 		root * /srv
 
 		# Everything revalidates by default. That matters for the HTML shell (also served for routes such as
-		# /club/<name>), the service worker and the manifest: if they were cached, app updates would never arrive.
+		# /club/<name>/live), the service worker and the manifest: if they were cached, app updates would never arrive.
 		@revalidate not path /assets/*
 		header @revalidate Cache-Control "no-cache"
 
@@ -35,7 +35,7 @@
 		@hashed path /assets/*
 		header @hashed Cache-Control "public, max-age=31536000, immutable"
 
-		# Client-side routes such as /club/<name> load the app.
+		# Client-side routes such as /club/<name>/live load the app.
 		try_files {path} /index.html
 		file_server
 	}

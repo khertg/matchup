@@ -6,10 +6,13 @@ import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from 'next-themes'
 import './index.css'
 import App from './App.tsx'
+import { showCanonicalLiveBoardAddress } from './cloud/url'
 import { listenForInstall } from './lib/install'
 
 // Before rendering: the browser can offer installation before React has mounted.
 listenForInstall()
+// Before rendering too: printed QR codes open /club/<name>; the address bar then shows /club/<name>/live.
+showCanonicalLiveBoardAddress()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

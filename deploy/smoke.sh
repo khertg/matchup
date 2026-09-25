@@ -38,8 +38,11 @@ if grep -q "^content-security-policy:.*frame-ancestors 'none'" <<<"$headers"; th
 
 index="$(curl -fsS "$BASE/" 2>/dev/null || true)"
 if [[ "$index" == *'<div id="root">'* ]]; then pass "/ serves the app"; else fail "/ does not serve the app"; fi
+live="$(curl -fsS "$BASE/club/some-club/live" 2>/dev/null || true)"
+if [[ "$live" == *'<div id="root">'* ]]; then pass "/club/<name>/live serves the app (client route)"; else fail "/club/<name>/live does not serve the app"; fi
+# The older live link, still on printed QR codes.
 club="$(curl -fsS "$BASE/club/some-club" 2>/dev/null || true)"
-if [[ "$club" == *'<div id="root">'* ]]; then pass "/club/<name> serves the app (client route)"; else fail "/club/<name> does not serve the app"; fi
+if [[ "$club" == *'<div id="root">'* ]]; then pass "/club/<name> serves the app (older live link)"; else fail "/club/<name> does not serve the app"; fi
 
 manifest="$(curl -fsS "$BASE/manifest.webmanifest" 2>/dev/null || true)"
 if [[ "$manifest" == *'"Q2Dink"'* ]]; then pass "the web app manifest is served"; else fail "the web app manifest is missing"; fi

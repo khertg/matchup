@@ -58,7 +58,7 @@ Every player has a round **avatar** and the club can have a **logo**, both chang
 
 With the API running (see [apps/api/README.md](apps/api/README.md); `npm run dev -w @q2dink/api` needs no database) the app opens on a **login screen**: staff create a club (a password of at least 8 characters, and a one-time **recovery code**) or log in to their club before they can use it. The login is kept on the device, so the app then opens and works with no signal; it is asked for again only after **Log out** (the roster, sessions and history stay on the device) or when the login expires (30 days). You need a connection the first time you log in on a device. The public live page never asks for a login. Logging in gives you:
 
-- a **live board** at `/club/<your-club>` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
+- a **live board** at `/club/<your-club>/live` that players open from a QR code (**Share live view**): courts, queue with wait times, and standings, updating by itself;
 - **resume** of a running session on a second staff device;
 - an **all-time club leaderboard** combined across devices.
 

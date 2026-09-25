@@ -43,7 +43,7 @@ test('dismissing it keeps it hidden after a reload', async ({ page }) => {
 })
 
 test('never shown on the public live page', async ({ page }) => {
-  await page.goto('/club/demo')
+  await page.goto('/club/demo/live')
   await offerInstall(page)
   await expect(page.getByRole('main')).toBeVisible()
   await expect(banner(page)).toHaveCount(0)

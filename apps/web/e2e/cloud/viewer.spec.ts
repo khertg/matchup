@@ -27,7 +27,7 @@ test.describe('live viewer', () => {
       ],
     }
     const { club } = await runningClub(request, snapshot)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
 
     await expect(page.getByRole('region', { name: 'Court 1' }).getByRole('img', { name: 'Skill levels: 3.5+' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Court 2' }).getByRole('img', { name: 'Skill levels: 1.0–3.0' })).toBeVisible()
@@ -36,9 +36,17 @@ test.describe('live viewer', () => {
     await expect(nextUp.getByRole('region', { name: '1.0–3.0' })).toBeVisible()
   })
 
-  test('shows the courts, queue and standings without staff controls', async ({ page, request }) => {
+  test('still opens from the older address without /live, and shows the new one', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.goto(`/club/${club.slug}`)
+
+    await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
+    expect(new URL(page.url()).pathname).toBe(`/club/${club.slug}/live`)
+  })
+
+  test('shows the courts, queue and standings without staff controls', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}/live`)
 
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     await expect(page.getByText('Live', { exact: true })).toBeVisible()
@@ -74,7 +82,7 @@ test.describe('live viewer', () => {
       partners: [],
       nextUp: [1, 3, 2, 4],
     })
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
 
     const nextUp = page.getByRole('group', { name: 'Next up' })
     await expect(nextUp.getByText('Team A', { exact: true })).toBeVisible()
@@ -98,13 +106,13 @@ test.describe('live viewer', () => {
 
   test('says so when no group is ready yet', async ({ page, request }) => {
     const { club } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('group', { name: 'Next up' })).toContainText('No group is ready yet')
   })
 
   test('shows standings with medals and no share buttons', async ({ page, request }) => {
     const { club } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await page.getByRole('tab', { name: 'Standings' }).click()
 
     const rows = page.getByRole('row')
@@ -115,7 +123,7 @@ test.describe('live viewer', () => {
 
   test('shows the podium, with tied players sharing a place', async ({ page, request }) => {
     const { club } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await page.getByRole('tab', { name: 'Standings' }).click()
     // Ann and Bob both won both games: they share gold, so the next place is bronze.
     await expect(page.getByRole('listitem', { name: /^1st place: Ann and Bob,/ })).toBeVisible()
@@ -125,7 +133,7 @@ test.describe('live viewer', () => {
 
   test('does not show the partners and opponents card: the live page carries no game history', async ({ page, request }) => {
     const { club } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await page.getByRole('tab', { name: 'Standings' }).click()
     await expect(page.getByRole('row').nth(1)).toContainText('Gold medal') // the standings themselves are there
     await expect(page.getByRole('group', { name: 'Partners and opponents' })).toHaveCount(0)
@@ -134,7 +142,7 @@ test.describe('live viewer', () => {
 
   test('shows the point differential and time played of each player', async ({ page, request }) => {
     const { club } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await page.getByRole('tab', { name: 'Standings' }).click()
 
     await expect(page.getByRole('columnheader', { name: '+/-' })).toBeVisible()
@@ -148,7 +156,7 @@ test.describe('live viewer', () => {
   test('shows a dash for a board from an older app that sends no scores or time', async ({ page, request }) => {
     const stats = { games: 2, wins: 2, losses: 0, opponentSkill: 6 }
     const { club } = await runningClub(request, { ...liveSnapshot(), stats: { 1: stats, 2: { ...stats, wins: 0, losses: 2 } } })
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await page.getByRole('tab', { name: 'Standings' }).click()
 
     const ann = page.getByRole('row').filter({ hasText: 'Ann' }).getByRole('cell')
@@ -161,13 +169,13 @@ test.describe('live viewer', () => {
     const idle = uniqueClub('Idle')
     await apiCreateClub(request, idle)
     for (const slug of [idle.slug, uniqueClub('Ghost').slug]) {
-      await page.goto(`/club/${slug}`)
+      await page.goto(`/club/${slug}/live`)
       await expect(page.getByText('No game in progress')).toBeVisible()
     }
   })
 
   test('rejects an invalid club link', async ({ page }) => {
-    await page.goto('/club/NOT_VALID')
+    await page.goto('/club/NOT_VALID/live')
     await expect(page.getByText(/That club link isn.t valid/)).toBeVisible()
   })
 
@@ -178,7 +186,7 @@ test.describe('live viewer', () => {
         json: { state: { ...liveSnapshot(), schemaVersion: 99 }, updatedAt: new Date().toISOString() },
       }),
     )
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByText('This board needs a newer version of Q2Dink')).toBeVisible()
     await expect(page.getByText('Ann')).toHaveCount(0)
   })
@@ -186,7 +194,7 @@ test.describe('live viewer', () => {
   test('is usable on a phone without horizontal scrolling', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.setViewportSize({ width: 375, height: 800 })
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -206,7 +214,7 @@ test.describe('live viewer', () => {
 test.describe('live updates', () => {
   test('changes on screen within moments of the club changing the board, with no refresh', async ({ page, request }) => {
     const { club, token } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByText('Queue (2)')).toBeVisible()
 
     // The club moves a game along: court 2 fills from the queue. The polling fallback runs every
@@ -222,7 +230,7 @@ test.describe('live updates', () => {
 
   test('goes back to "no game" the moment the club ends the session', async ({ page, request }) => {
     const { club, token } = await runningClub(request)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
 
     await request.delete('/api/session', { headers: bearer(token) })
@@ -233,7 +241,7 @@ test.describe('live updates', () => {
   test('picks a session up when a club starts one while the page is already open', async ({ page, request }) => {
     const club = uniqueClub('Waiting')
     const { token } = await apiCreateClub(request, club)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByText('No game in progress')).toBeVisible()
 
     await apiPublish(request, token, liveSnapshot('Just Started'))
@@ -244,7 +252,7 @@ test.describe('live updates', () => {
     const { club, token } = await runningClub(request)
     await page.route('**/live/stream', (route) => route.abort('connectionrefused'))
     await page.clock.install()
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByText('Queue (2)')).toBeVisible()
 
     await apiPublish(request, token, { ...liveSnapshot(), queue: [5] })
@@ -255,7 +263,7 @@ test.describe('live updates', () => {
   test('keeps the last board on screen, and says so, when the connection drops', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.clock.install()
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
 
     await page.route('**/api/**', (route) => route.abort('connectionrefused'))
@@ -284,7 +292,7 @@ test.describe('live updates', () => {
 
     // Wait for the board itself rather than collecting replies in the background.
     const board = page.waitForResponse((r) => /\/api\/clubs\/[^/]+\/live$/.test(r.url()))
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     const body = await (await board).text()
     expect(body).toContain('Sunset Courts')
     expect(body).not.toMatch(/gender|email|phone|owner@/)

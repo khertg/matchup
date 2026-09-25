@@ -150,7 +150,7 @@ test.describe('renaming', () => {
 
     await expect(pc.page.getByRole('heading', { name: 'Tuesday' })).toBeVisible(FOLLOW)
     const viewer = await pc.context.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await expect(viewer.getByText('Tuesday', { exact: true }).first()).toBeVisible(FOLLOW)
     await pc.context.close()
   })
@@ -174,7 +174,7 @@ test.describe('renaming', () => {
     // The live page names the club above a running session.
     await startSession(page, { location: 'Night Play' })
     const viewer = await pc.context.newPage()
-    await viewer.goto(`/club/${club.slug}`)
+    await viewer.goto(`/club/${club.slug}/live`)
     await expect(viewer.getByText('Riverside Picklers').first()).toBeVisible(FOLLOW)
     await pc.context.close()
   })

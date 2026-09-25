@@ -69,7 +69,7 @@ test.describe('renaming a player in the club cloud', () => {
     await checkIn(page, ['Anne', 'Bob'])
     const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
     const live = await context.newPage()
-    await live.goto(`/club/${club.slug}`)
+    await live.goto(`/club/${club.slug}/live`)
     await expect(live.getByText('Anne').first()).toBeVisible()
     await expect(live.getByText('Ann', { exact: true })).toHaveCount(0)
     await context.close()

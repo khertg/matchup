@@ -11,7 +11,7 @@ test.describe('version number with the cloud', () => {
     const club = uniqueClub('Versioned')
     const { token } = await apiCreateClub(request, club)
     await apiPublish(request, token)
-    await page.goto(`/club/${club.slug}`)
+    await page.goto(`/club/${club.slug}/live`)
     await expect(page.getByRole('heading', { name: 'Sunset Courts' })).toBeVisible()
     const label = page.getByTestId('app-version')
     await expect(label).toHaveText(VERSION)
