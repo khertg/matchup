@@ -127,3 +127,55 @@ test.describe('two staff devices running one session', () => {
     await pc.context.close()
   })
 })
+
+test.describe('renaming', () => {
+  /** The club's name reaches other devices with the avatar index, fetched every 15 seconds. */
+  const INDEX = { timeout: 20_000 }
+
+  test('a session renamed on one device shows on the other and on the live page', async ({ page, browser, request }) => {
+    const club = uniqueClub('Renamed')
+    await apiCreateClub(request, club)
+    await signIn(page, club)
+    await startSession(page, { location: 'Tusday' })
+    await checkIn(page, ['Ann'])
+    const pc = await secondDevice(browser, club)
+    await pc.page.getByRole('button', { name: 'Join “Tusday”' }).click(FOLLOW)
+    await expect(pc.page.getByRole('heading', { name: 'Tusday' })).toBeVisible()
+
+    // Only the name changes: nothing else is pending, and it must still be sent.
+    await openSessionMenu(page)
+    await page.getByRole('button', { name: 'Rename session' }).click()
+    await page.getByRole('dialog', { name: 'Rename session' }).getByLabel('Session name').fill('Tuesday')
+    await page.getByRole('dialog', { name: 'Rename session' }).getByRole('button', { name: 'Save' }).click()
+
+    await expect(pc.page.getByRole('heading', { name: 'Tuesday' })).toBeVisible(FOLLOW)
+    const viewer = await pc.context.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+    await expect(viewer.getByText('Tuesday', { exact: true }).first()).toBeVisible(FOLLOW)
+    await pc.context.close()
+  })
+
+  test('a club renamed on one device shows on the other and on the live page, with the same link', async ({ page, browser, request }) => {
+    const club = uniqueClub('Old Name')
+    await apiCreateClub(request, club)
+    await signIn(page, club)
+    const pc = await secondDevice(browser, club)
+    await expect(pc.page.getByText(club.name, { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Rename club' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Rename club' })
+    await expect(dialog.getByLabel('Club name')).toHaveValue(club.name)
+    await dialog.getByLabel('Club name').fill('Riverside Picklers')
+    await dialog.getByRole('button', { name: 'Save' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByText('Riverside Picklers', { exact: true })).toBeVisible()
+
+    await expect(pc.page.getByText('Riverside Picklers', { exact: true })).toBeVisible(INDEX)
+    // The live page names the club above a running session.
+    await startSession(page, { location: 'Night Play' })
+    const viewer = await pc.context.newPage()
+    await viewer.goto(`/club/${club.slug}`)
+    await expect(viewer.getByText('Riverside Picklers').first()).toBeVisible(FOLLOW)
+    await pc.context.close()
+  })
+})

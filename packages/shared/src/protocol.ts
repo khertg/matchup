@@ -46,6 +46,15 @@ export interface CreateClubRequest {
   password: string
 }
 
+/** PUT /club/name (staff): the club's display name. The slug, i.e. the live link, never changes. */
+export interface RenameClubRequest {
+  name: string
+}
+
+export interface RenameClubResponse {
+  name: string
+}
+
 /** Returned when a club is created or its password is reset. The recovery code is shown once. */
 export interface AuthGrant {
   token: string

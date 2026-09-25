@@ -226,3 +226,35 @@ describe('recovering a password', () => {
     expect(retry.statusCode).toBe(200)
   })
 })
+
+describe('renaming a club', () => {
+  const rename = (token: string | null, name: unknown) =>
+    app.inject({ method: 'PUT', url: '/api/club/name', payload: { name } as object, headers: token ? bearer(token) : {} })
+
+  it('changes the name staff log in to and the live page shows, and keeps the club URL', async () => {
+    const { token } = await createClub(app, { slug: 'downtown-club', password: 'secret-pass' })
+    const response = await rename(token, '  Downtown Picklers  ')
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ name: 'Downtown Picklers' })
+
+    const login = await post('/api/clubs/downtown-club/login', { password: 'secret-pass' })
+    expect(login.json().name).toBe('Downtown Picklers')
+    const index = await app.inject({ method: 'GET', url: '/api/clubs/downtown-club/avatars' })
+    expect(index.json().name).toBe('Downtown Picklers')
+  })
+
+  it('needs a valid token', async () => {
+    expect((await rename(null, 'New Name')).statusCode).toBe(401)
+    expect((await rename('f'.repeat(64), 'New Name')).statusCode).toBe(401)
+  })
+
+  it('refuses an empty or too long name', async () => {
+    const { token } = await createClub(app, { slug: 'downtown-club', password: 'secret-pass' })
+    for (const name of ['   ', 'x'.repeat(81)]) {
+      const response = await rename(token, name)
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error).toBe('invalid_request')
+    }
+    expect((await rename(token, 42)).statusCode).toBe(400)
+  })
+})

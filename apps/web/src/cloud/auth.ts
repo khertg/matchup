@@ -22,6 +22,8 @@ interface ClubAuthStore {
   pendingLifetime: PendingLifetime[]
   signIn: (club: Club) => void
   signOut: () => void
+  /** The club was renamed, here or on another staff device. */
+  setClubName: (name: string) => void
   enqueueLifetime: (pending: PendingLifetime) => void
   dequeueLifetime: (batchId: string) => void
   /** A player was renamed: totals still waiting to upload must carry the new name, or they would recreate the old one. */
@@ -35,6 +37,7 @@ export const useClubAuth = create<ClubAuthStore>()(
       pendingLifetime: [],
       signIn: (club) => set({ club }),
       signOut: () => set({ club: null }),
+      setClubName: (name) => set((s) => (s.club && s.club.name !== name ? { club: { ...s.club, name } } : {})),
       enqueueLifetime: (pending) =>
         set((s) => ({ pendingLifetime: [...s.pendingLifetime, pending] })),
       dequeueLifetime: (batchId) =>

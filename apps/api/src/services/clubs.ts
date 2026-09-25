@@ -6,6 +6,7 @@ import {
   type AuthGrant,
   type CreateClubRequest,
   type LoginResponse,
+  type RenameClubResponse,
   type ResetPasswordRequest,
   type ResetPasswordResponse,
 } from '@q2dink/shared'
@@ -45,6 +46,15 @@ export async function createClub(db: Db, input: CreateClubRequest, tokenTtlDays:
     return issueToken(tx, slug, tokenTtlDays)
   })
   return { token, recoveryCode }
+}
+
+/** Change a club's display name. Its slug (the live link) stays. */
+export async function renameClub(db: Db, slug: string, input: string): Promise<RenameClubResponse> {
+  const name = input.trim()
+  if (name.length < 1 || name.length > MAX_CLUB_NAME_LENGTH) throw new AppError('invalid_request')
+  const { rowCount } = await db.query('update clubs set name = $2 where slug = $1', [slug, name])
+  if (rowCount === 0) throw new AppError('not_found')
+  return { name }
 }
 
 /**

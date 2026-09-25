@@ -66,6 +66,51 @@ describe('session store', () => {
     expect(store().undo()).toBe(false)
   })
 
+  describe('renaming the session', () => {
+    it('trims the new name and refuses an empty or too long one', () => {
+      store().startSession('Tuesday', 'doubles', 1)
+      store().renameSession('  Tuesday open play  ')
+      expect(store().location).toBe('Tuesday open play')
+      expect(() => store().renameSession('   ')).toThrow('Enter a session name.')
+      expect(() => store().renameSession('x'.repeat(121))).toThrow(/120 characters/)
+      expect(store().location).toBe('Tuesday open play')
+    })
+
+    it('is only waiting to be sent while the session is shared with the club', () => {
+      store().startSession('Tuesday', 'doubles', 1)
+      store().renameSession('Not shared')
+      expect(store().locationPending).toBe(false)
+
+      store().shareSession()
+      store().renameSession('Shared')
+      expect(store().locationPending).toBe(true)
+    })
+
+    it('keeps a rename not sent yet when another device moves the club copy on, and takes theirs otherwise', () => {
+      store().startSession('Tuesday', 'doubles', 1)
+      store().shareSession()
+      const clubCopy = store().session!
+
+      store().rebaseOnto(1, clubCopy, 'Their name')
+      expect(store().location).toBe('Their name')
+
+      store().renameSession('My name')
+      store().rebaseOnto(2, clubCopy, 'Their newer name')
+      expect(store().location).toBe('My name')
+    })
+
+    it('is sent once the club takes the name, but not if it changed again meanwhile', () => {
+      store().startSession('Tuesday', 'doubles', 1)
+      store().shareSession()
+      store().renameSession('First')
+      store().renameSession('Second')
+      store().confirmPublished(0, store().session!, 1, 'First')
+      expect(store().locationPending).toBe(true)
+      store().confirmPublished(0, store().session!, 2, 'Second')
+      expect(store().locationPending).toBe(false)
+    })
+  })
+
   describe('renaming a player', () => {
     it('changes the name for the rest of the session and survives a reload', async () => {
       store().startSession('Club', 'doubles', 1)

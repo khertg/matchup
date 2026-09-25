@@ -10,6 +10,7 @@ import type {
   PublicSnapshot,
   PutAvatarRequest,
   PutHistoryRequest,
+  RenameClubResponse,
   ResetPasswordResponse,
   PublishMeta,
   SessionStateRow,
@@ -36,6 +37,8 @@ export interface CloudApi {
   login(slug: string, password: string): Promise<LoginResponse>
   resetPassword(slug: string, recoveryCode: string, newPassword: string): Promise<ResetPasswordResponse>
   logout(token: string): Promise<void>
+  /** Change the club's display name (its URL stays). Returns the name as saved. */
+  renameClub(token: string, name: string): Promise<RenameClubResponse>
 
   /**
    * Publish the running session: the public board plus a private full backup. With `meta.baseRevision`,

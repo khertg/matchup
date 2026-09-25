@@ -1,3 +1,4 @@
+import { MAX_LOCATION_LENGTH } from '@q2dink/shared'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
@@ -43,6 +44,11 @@ interface SessionStore {
    * reload right after), so the cloud sync ends exactly that one there first. Empty once it is told.
    */
   endedSessionId: string
+  /**
+   * The session was renamed here and the club has not taken the new name yet. Until then, a club copy
+   * adopted from another device keeps this name rather than bringing the old one back.
+   */
+  locationPending: boolean
 
   startSession: (
     location: string,
@@ -50,6 +56,8 @@ interface SessionStore {
     courtCount: number,
     options?: SessionOptions,
   ) => void
+  /** Rename the running session. Throws a RangeError with a readable message if the name is not allowed. */
+  renameSession: (name: string) => void
   setAvgGameMinutes: (minutes: number) => void
   /** Change a checked-in player's skill level. Future matching follows it; a pending result undo stays. */
   setPlayerSkill: (playerId: number, skill: SkillLevel) => void
@@ -108,13 +116,17 @@ interface SessionStore {
 
   /** Start sharing the running session with the club: from now on changes are kept until it has them. */
   shareSession: () => void
-  /** The club took this session, with the first `count` pending changes in it, at `revision`. */
-  confirmPublished: (count: number, sent: SessionState, revision: number) => void
+  /**
+   * The club took this session, with the first `count` pending changes in it, at `revision`, under the
+   * name `sentLocation` (a rename made while it was being sent stays pending).
+   */
+  confirmPublished: (count: number, sent: SessionState, revision: number, sentLocation?: string) => void
   /**
    * Another staff device moved the club's copy on: take it, and apply this device's unsent changes on
-   * top. Returns the changes that no longer applied, and why.
+   * top, and its name unless this device renamed the session and has not sent that yet. Returns the
+   * changes that no longer applied, and why.
    */
-  rebaseOnto: (revision: number, session: SessionState) => Rebased['dropped']
+  rebaseOnto: (revision: number, session: SessionState, clubLocation?: string) => Rebased['dropped']
   /** Run the club's session here too, alongside the device that started it. */
   joinShared: (location: string, session: SessionState, meta: ResumeMeta, revision: number) => void
 }
@@ -167,6 +179,7 @@ export const useSessionStore = create<SessionStore>()(
         base: null,
         pending: [],
         endedSessionId: '',
+        locationPending: false,
 
         startSession: (location, mode, courtCount, options) =>
           set({
@@ -178,7 +191,20 @@ export const useSessionStore = create<SessionStore>()(
             lifetimeCounted: {},
             base: null,
             pending: [],
+            locationPending: false,
           }),
+
+        renameSession: (name) => {
+          requireSession(get().session)
+          const trimmed = name.trim()
+          if (!trimmed) throw new RangeError('Enter a session name.')
+          if (trimmed.length > MAX_LOCATION_LENGTH) {
+            throw new RangeError(`Keep the name to ${MAX_LOCATION_LENGTH} characters or fewer.`)
+          }
+          if (trimmed === get().location) return
+          // While shared, the club has to be sent the new name even with no other change pending.
+          set((state) => ({ location: trimmed, locationPending: state.base !== null }))
+        },
 
         setAvgGameMinutes: (minutes) => {
           const { previous } = get()
@@ -288,6 +314,7 @@ export const useSessionStore = create<SessionStore>()(
             lifetimeCounted: meta?.lifetimeCounted ?? {},
             base: null,
             pending: [],
+            locationPending: false,
           }),
 
         shareSession: () => {
@@ -295,13 +322,24 @@ export const useSessionStore = create<SessionStore>()(
           if (session && !base) set({ base: { revision: 0, session }, pending: [] })
         },
 
-        confirmPublished: (count, sent, revision) =>
-          set((state) => ({ base: { revision, session: sent }, pending: state.pending.slice(count) })),
+        confirmPublished: (count, sent, revision, sentLocation) =>
+          set((state) => ({
+            base: { revision, session: sent },
+            pending: state.pending.slice(count),
+            locationPending: state.locationPending && sentLocation !== state.location,
+          })),
 
-        rebaseOnto: (revision, clubSession) => {
-          if (!get().session) return []
-          const rebased = rebase(clubSession, get().pending)
-          set({ base: { revision, session: clubSession }, session: rebased.session, pending: rebased.pending, previous: null })
+        rebaseOnto: (revision, clubSession, clubLocation) => {
+          const { session, pending, locationPending } = get()
+          if (!session) return []
+          const rebased = rebase(clubSession, pending)
+          set({
+            base: { revision, session: clubSession },
+            session: rebased.session,
+            pending: rebased.pending,
+            previous: null,
+            ...(clubLocation !== undefined && !locationPending ? { location: clubLocation } : {}),
+          })
           return rebased.dropped
         },
 
@@ -315,6 +353,7 @@ export const useSessionStore = create<SessionStore>()(
             lifetimeCounted: meta.lifetimeCounted,
             base: { revision, session },
             pending: [],
+            locationPending: false,
           }),
 
         /** Record which all-time totals this session has now contributed, after saving them. */
@@ -330,6 +369,7 @@ export const useSessionStore = create<SessionStore>()(
             lifetimeCounted: {},
             base: null,
             pending: [],
+            locationPending: false,
             endedSessionId: state.session ? state.sessionId : state.endedSessionId,
           })),
       }
@@ -357,8 +397,9 @@ export const useSessionStore = create<SessionStore>()(
       storage: createJSONStorage(() => localStorage),
       // The undo snapshot only makes sense for a few seconds, so never persist it.
       // `base` and `pending` are kept, so changes made offline still reach the club after a reload.
-      partialize: ({ location, session, sessionId, startedAt, lifetimeCounted, base, pending, endedSessionId }) => ({
+      partialize: ({ location, session, sessionId, startedAt, lifetimeCounted, base, pending, endedSessionId, locationPending }) => ({
         location,
+        locationPending,
         session,
         sessionId,
         startedAt,

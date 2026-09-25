@@ -21,6 +21,8 @@ export interface AvatarContextValue {
   club: { slug: string; index: AvatarIndex } | null
   /** This device's logo: undefined = none set here, null = removed here, else a data URL. */
   localLogo: string | null | undefined
+  /** The signed-in club's name on a staff device (known offline, and at once after a rename here). */
+  clubName?: string | null
 }
 
 export const AvatarContext = createContext<AvatarContextValue>({ local: new Map(), club: null, localLogo: undefined })
@@ -96,7 +98,8 @@ export function useClubLogo(): string | null {
 
 /** The signed-in (or viewed) club's display name, else null. */
 export function useClubName(): string | null {
-  return useContext(AvatarContext).club?.index.name ?? null
+  const { clubName, club } = useContext(AvatarContext)
+  return clubName ?? club?.index.name ?? null
 }
 
 /** A session's name with its club in front, "Club - Session", or the session name alone with no club. */

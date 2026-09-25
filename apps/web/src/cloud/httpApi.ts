@@ -8,6 +8,7 @@ import {
   type LoginResponse,
   type ConflictBody,
   type PublishResponse,
+  type RenameClubResponse,
   type ResetPasswordResponse,
   type SessionStateRow,
   type RosterResponse,
@@ -89,6 +90,8 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
     async logout(token) {
       await request('POST', '/logout', { token })
     },
+
+    renameClub: (token, name) => request<RenameClubResponse>('PUT', '/club/name', { token, body: { name } }),
 
     async publish(token, snapshot, backup, meta = {}) {
       try {

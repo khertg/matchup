@@ -385,3 +385,21 @@ test('ends the session after confirming', async ({ page }) => {
   await expect(page.getByText('Set up an open play session')).toBeVisible()
 })
 
+test('renames the session from the session menu, and keeps the new name after a reload', async ({ page }) => {
+  await startSession(page, { location: 'Tuesdya' })
+  await openSessionMenu(page)
+  await page.getByRole('button', { name: 'Rename session' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Rename session' })
+  const field = dialog.getByLabel('Session name')
+  await expect(field).toHaveValue('Tuesdya')
+  await field.fill('   ')
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled()
+  await field.fill('Tuesday open play')
+  await field.press('Enter')
+  await expect(dialog).toHaveCount(0)
+
+  await expect(page.getByRole('heading', { name: 'Tuesday open play' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Tuesday open play' })).toBeVisible()
+})

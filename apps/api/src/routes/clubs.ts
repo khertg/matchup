@@ -1,12 +1,14 @@
 import type {
   CreateClubRequest,
   LoginRequest,
+  RenameClubRequest,
+  RenameClubResponse,
   ResetPasswordRequest,
 } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError } from '../errors'
-import { createClub, login, resetPassword } from '../services/clubs'
+import { createClub, login, renameClub, resetPassword } from '../services/clubs'
 import { getLeaderboard } from '../services/lifetime'
 import { revokeToken } from '../services/tokens'
 import { authenticate, publicSlug, slugParams } from './auth'
@@ -29,6 +31,13 @@ const loginBody = {
   properties: { password: { type: 'string', maxLength: 1000 } },
 } as const
 
+const renameBody = {
+  type: 'object',
+  required: ['name'],
+  additionalProperties: false,
+  properties: { name: { type: 'string', maxLength: 200 } },
+} as const
+
 const resetBody = {
   type: 'object',
   required: ['recoveryCode', 'newPassword'],
@@ -42,6 +51,9 @@ const resetBody = {
 export function registerClubRoutes(api: FastifyInstance, { db, config, guard }: RouteDeps): void {
   const strict = {
     rateLimit: { max: config.rateLimit.auth.max, timeWindow: config.rateLimit.auth.windowMs },
+  }
+  const write = {
+    rateLimit: { max: config.rateLimit.write.max, timeWindow: config.rateLimit.write.windowMs },
   }
 
   api.post<{ Body: CreateClubRequest }>(
@@ -85,6 +97,15 @@ export function registerClubRoutes(api: FastifyInstance, { db, config, guard }: 
         if (error instanceof AppError && error.code === 'invalid_recovery_code') guard.fail(key, request.ip)
         throw error
       }
+    },
+  )
+
+  api.put<{ Body: RenameClubRequest }>(
+    '/club/name',
+    { config: write, schema: { body: renameBody } },
+    async (request): Promise<RenameClubResponse> => {
+      const { slug } = await authenticate(db, request)
+      return renameClub(db, slug, request.body.name)
     },
   )
 

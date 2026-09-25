@@ -5,7 +5,7 @@ import {
   isValidSlug,
   slugify,
 } from '@q2dink/shared'
-import { QrCodeIcon } from 'lucide-react'
+import { PencilIcon, QrCodeIcon } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { toCloudError } from '@/cloud/api'
@@ -15,6 +15,7 @@ import { useRecoveryCode } from '@/cloud/recovery'
 import { parseFullBackup } from '@/cloud/snapshot'
 import { joinClubSession, useSyncStore } from '@/cloud/sync'
 import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
+import { RenameDialog } from '@/components/RenameDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -250,11 +251,26 @@ function SignedIn() {
   const club = useClubAuth((s) => s.club)
   const signOut = useClubAuth((s) => s.signOut)
   const [shareOpen, setShareOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   // The session another staff device has running, kept current by the cloud sync as it changes.
   const clubSession = useSyncStore((s) => s.clubSession)
   const running = useMemo(() => (clubSession ? parseFullBackup(clubSession.full) : null), [clubSession])
 
   if (!club) return null
+
+  /** The name lives on the club, so renaming needs the server; other staff devices follow within seconds. */
+  async function renameClub(name: string): Promise<string | null> {
+    const current = useClubAuth.getState().club
+    if (!cloud || !current) return 'Not signed in to a club.'
+    try {
+      const saved = await cloud.renameClub(current.token, name)
+      useClubAuth.getState().setClubName(saved.name)
+      toast(`Club renamed to “${saved.name}”`)
+      return null
+    } catch (error) {
+      return toCloudError(error).message
+    }
+  }
 
   async function handleLogOut() {
     const token = club?.token
@@ -265,7 +281,12 @@ function SignedIn() {
 
   return (
     <div className="space-y-3">
-      <p className="font-medium">{club.name}</p>
+      <div className="flex items-center gap-1">
+        <p className="min-w-0 break-words font-medium">{club.name}</p>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Rename club" onClick={() => setRenaming(true)}>
+          <PencilIcon aria-hidden="true" />
+        </Button>
+      </div>
       <p className="text-sm text-muted-foreground">
         Live link: <span className="font-mono">{`/club/${club.slug}`}</span>
       </p>
@@ -294,6 +315,16 @@ function SignedIn() {
         </Button>
       </div>
       <SharePanel open={shareOpen} onOpenChange={setShareOpen} />
+      <RenameDialog
+        open={renaming}
+        onOpenChange={setRenaming}
+        title="Rename club"
+        description="Shown on every staff device, the live page and shared images. The live link stays the same."
+        label="Club name"
+        current={club.name}
+        maxLength={MAX_CLUB_NAME_LENGTH}
+        onSave={renameClub}
+      />
     </div>
   )
 }

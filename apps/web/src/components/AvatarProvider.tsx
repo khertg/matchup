@@ -34,7 +34,12 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
     async function load() {
       try {
         const index = await api.fetchAvatarIndex(slug!)
-        if (!cancelled) setRemote({ slug: slug!, index })
+        if (cancelled) return
+        setRemote({ slug: slug!, index })
+        // Renamed on another staff device: take the club's name for this device's login too.
+        if (!viewerSlug && index.name && useClubAuth.getState().club?.slug === slug) {
+          useClubAuth.getState().setClubName(index.name)
+        }
       } catch {
         // Keep whatever was shown before; avatars are never worth an error.
       }
@@ -48,7 +53,7 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
       clearInterval(timer)
       window.removeEventListener('online', handleOnline)
     }
-  }, [slug])
+  }, [slug, viewerSlug])
 
   const value = useMemo<AvatarContextValue>(() => {
     const local = new Map<string, PlayerAvatar>()
@@ -63,8 +68,9 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
       rosterIds,
       club: remote && remote.slug === slug ? remote : null,
       localLogo: logo === undefined ? undefined : logo.data,
+      clubName: viewerSlug ? null : (club?.name ?? null),
     }
-  }, [players, remote, slug, logo])
+  }, [players, remote, slug, logo, viewerSlug, club?.name])
 
   return <AvatarContext.Provider value={value}>{children}</AvatarContext.Provider>
 }

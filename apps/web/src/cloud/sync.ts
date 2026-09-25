@@ -417,7 +417,7 @@ export async function adoptClubCopy(clubRow: SessionStateRow | null): Promise<vo
   if (row.revision <= store.base.revision) return
   const parsed = parseFullBackup(row.full)
   if (!parsed) return
-  reportDropped(useSessionStore.getState().rebaseOnto(row.revision, parsed.session))
+  reportDropped(useSessionStore.getState().rebaseOnto(row.revision, parsed.session, parsed.location))
 }
 
 /** Another staff device ended the session: keep it in Past sessions here, and leave it. */
@@ -504,7 +504,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
         const club = signedIn()
         if (!club) return
         useSessionStore.getState().shareSession()
-        const { base, pending, session, location, sessionId, startedAt } = useSessionStore.getState()
+        const { base, pending, session, location, locationPending, sessionId, startedAt } = useSessionStore.getState()
         if (!session || !base) return
         // A session that ended here just before this one began (or before a reload): its end may never
         // have been sent, so end it on the club first, or this one would look like a clash with it.
@@ -517,8 +517,8 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
         const { otherSession, keepMine } = useSyncStore.getState()
         // Waiting for staff to choose between this session and another device's.
         if (otherSession) return
-        // Nothing new here (the change came from another device): nothing to send.
-        if (pending.length === 0 && base.revision > 0 && !keepMine) return
+        // Nothing new here (the change came from another device): nothing to send. A rename alone is new.
+        if (pending.length === 0 && !locationPending && base.revision > 0 && !keepMine) return
         try {
           const outcome = await api.publish(
             club.token,
@@ -531,7 +531,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
             },
           )
           if ('revision' in outcome) {
-            useSessionStore.getState().confirmPublished(pending.length, session, outcome.revision)
+            useSessionStore.getState().confirmPublished(pending.length, session, outcome.revision, location)
             useSyncStore.setState({ keepMine: false })
           } else {
             // Moved on elsewhere: take the club's copy, apply this device's changes on top, send again.
