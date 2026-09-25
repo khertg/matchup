@@ -8,7 +8,7 @@ import type { SessionState } from './types'
 export function fillCourts(state: SessionState): SessionState {
   let current = state
   for (const court of state.courts) {
-    if (court.teams || !nextGroup(current)) continue
+    if (court.teams || !nextGroup(current, { courtId: court.id })) continue
     current = startGame(current, court.id)
   }
   return current

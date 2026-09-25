@@ -4,7 +4,8 @@ import {
   parsePublicSnapshot,
   type PublicSnapshot,
 } from '@q2dink/shared'
-import { nextGroup } from '@/rotation/engine'
+import { nextGroups } from '@/rotation/engine'
+import { hasLevelCourts } from '@/rotation/levels'
 import type { LifetimeCounts } from '@/rotation/lifetime'
 import type { SessionState } from '@/rotation/types'
 import { migrateSession, SESSION_STORE_VERSION } from '@/store/migrate'
@@ -31,6 +32,7 @@ export interface FullBackup {
 }
 
 export function toPublicSnapshot(location: string, session: SessionState): PublicSnapshot {
+  const lanes = nextGroups(session)
   return {
     schemaVersion: SNAPSHOT_VERSION,
     location,
@@ -38,11 +40,15 @@ export function toPublicSnapshot(location: string, session: SessionState): Publi
     matchmaking: session.matchmaking,
     avgGameMinutes: session.avgGameMinutes,
     // Only what viewers show; a game's start time stays on the staff device.
-    courts: session.courts.map(({ id, name, teams }) => ({ id, name, teams })),
+    courts: session.courts.map(({ id, name, teams, levels }) => ({ id, name, teams, ...(levels ? { levels } : {}) })),
     queue: session.queue,
     // Computed here, on the staff device, so the live board shows exactly what staff see
     // (including mixed doubles and locked partners, which viewers cannot work out themselves).
-    nextUp: nextGroup(session)?.players ?? [],
+    nextUp: lanes[0].group?.players ?? [],
+    // One group per level range while courts are kept for levels; older viewers still read `nextUp`.
+    ...(hasLevelCourts(session)
+      ? { nextUpLanes: lanes.map((lane) => ({ levels: lane.levels ?? null, players: lane.group?.players ?? [] })) }
+      : {}),
     onBreak: session.onBreak,
     partners: session.partners,
     stats: session.stats,

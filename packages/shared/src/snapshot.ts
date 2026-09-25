@@ -30,6 +30,15 @@ export interface WireCourt {
   /** What people call the court, e.g. "Court 2" or "Center Court". */
   name: string
   teams: [number[], number[]] | null
+  /** The skill levels the court is kept for (min, max). Missing means any level. */
+  levels?: [WireSkill, WireSkill]
+}
+
+/** The group waiting for the courts of one level range; `levels` null for the courts open to any level. */
+export interface WireNextUpLane {
+  levels: [WireSkill, WireSkill] | null
+  /** Team A first, then Team B; empty when no group can be formed yet. */
+  players: number[]
 }
 
 export interface WireStats {
@@ -65,6 +74,11 @@ export interface PublicSnapshot {
    * two on each side, singles one). Empty when no group can be formed yet.
    */
   nextUp: number[]
+  /**
+   * While courts are kept for skill levels: the next group for each level range (see WireCourt.levels),
+   * in board order. `nextUp` is then the first of these. Missing when no court has a range.
+   */
+  nextUpLanes?: WireNextUpLane[]
   onBreak: number[]
   partners: [number, number][]
   stats: Record<number, WireStats>
@@ -89,6 +103,17 @@ const isIdList = (v: unknown, max: number): v is number[] =>
   Array.isArray(v) && v.length <= max && v.every(isId)
 const isCount = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1_000_000
 const isText = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max
+const isLevel = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 6
+const isLevels = (v: unknown): v is [WireSkill, WireSkill] =>
+  Array.isArray(v) && v.length === 2 && isLevel(v[0]) && isLevel(v[1]) && v[0] <= v[1]
+
+function validLanes(v: unknown): v is WireNextUpLane[] {
+  return (
+    Array.isArray(v) &&
+    v.length <= SNAPSHOT_LIMITS.courts + 1 &&
+    v.every((lane) => isObject(lane) && (lane.levels === null || isLevels(lane.levels)) && isIdList(lane.players, 4))
+  )
+}
 
 /**
  * Courts from before names existed have none, and are accepted: they are given the
@@ -103,6 +128,7 @@ function validCourts(v: unknown): v is WireCourt[] {
         isObject(c) &&
         isId(c.id) &&
         (c.name === undefined || isText(c.name, MAX_COURT_NAME_LENGTH)) &&
+        (c.levels === undefined || isLevels(c.levels)) &&
         (c.teams === null ||
           (Array.isArray(c.teams) && c.teams.length === 2 && c.teams.every((t) => isIdList(t, 2)))),
     )
@@ -168,6 +194,7 @@ export function parsePublicSnapshot(raw: unknown): PublicSnapshot | null {
     isIdList(raw.queue, SNAPSHOT_LIMITS.queue) &&
     // Boards published before "next up" existed have none; that is accepted and read as empty.
     (raw.nextUp === undefined || isIdList(raw.nextUp, 4)) &&
+    (raw.nextUpLanes === undefined || validLanes(raw.nextUpLanes)) &&
     isIdList(raw.onBreak, SNAPSHOT_LIMITS.queue) &&
     Array.isArray(raw.partners) &&
     raw.partners.length <= SNAPSHOT_LIMITS.players &&
@@ -190,9 +217,18 @@ function copyPublicSnapshot(s: PublicSnapshot): PublicSnapshot {
       id: c.id,
       name: typeof c.name === 'string' && c.name.trim() !== '' ? c.name : `Court ${c.id}`,
       teams: c.teams ? [[...c.teams[0]], [...c.teams[1]]] : null,
+      ...(c.levels ? { levels: [c.levels[0], c.levels[1]] as [WireSkill, WireSkill] } : {}),
     })),
     queue: [...s.queue],
     nextUp: Array.isArray(s.nextUp) ? [...s.nextUp] : [],
+    ...(s.nextUpLanes
+      ? {
+          nextUpLanes: s.nextUpLanes.map((lane) => ({
+            levels: lane.levels ? ([lane.levels[0], lane.levels[1]] as [WireSkill, WireSkill]) : null,
+            players: [...lane.players],
+          })),
+        }
+      : {}),
     onBreak: [...s.onBreak],
     partners: s.partners.map(([a, b]) => [a, b] as [number, number]),
     stats: Object.fromEntries(

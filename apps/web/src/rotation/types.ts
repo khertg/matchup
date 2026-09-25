@@ -1,4 +1,4 @@
-import type { Player } from '../db/db'
+import type { Player, SkillLevel } from '../db/db'
 
 /** A player who has been saved to the roster and therefore has an id. */
 export type RosterPlayer = Player & { id: number }
@@ -36,6 +36,11 @@ export interface Court {
   name: string
   /** null while the court is empty. */
   teams: Teams | null
+  /**
+   * The skill levels this court is kept for (min, max, both 1 to 6). Its games are drawn only from
+   * waiting players in range (see rotation/levels.ts). Missing means any level.
+   */
+  levels?: [SkillLevel, SkillLevel]
   /**
    * When the game in progress started (ms since the epoch), so its duration can be recorded.
    * Missing for a game started before this was tracked; such a game records no time.

@@ -21,3 +21,19 @@ export const skillLabel = (skill: SkillLevel) =>
 /** The level as a picker shows it, for example "3 · Intermediate (3.0)". */
 export const skillOptionLabel = (level: (typeof SKILL_LEVELS)[number]) =>
   `${level.value} · ${level.label} (${level.rating})`
+
+/**
+ * A court's level range in the ratings players know: "3.5+" (levels 4 to 6), "1.0–3.0" (1 to 3),
+ * "3.0" (just 3). Null for any level.
+ */
+export function levelLabel(levels: readonly [SkillLevel, SkillLevel] | undefined): string | null {
+  if (!levels) return null
+  const rating = (level: SkillLevel) => SKILL_LEVELS.find((s) => s.value === level)?.rating ?? String(level)
+  const [min, max] = levels
+  const low = rating(min).split('-')[0].replace('+', '')
+  if (max === 6) return `${low}+`
+  if (min === max) return rating(min).replace('-', '–')
+  const parts = rating(max).split('-')
+  return `${low}–${parts[parts.length - 1]}`
+}
+

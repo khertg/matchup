@@ -146,6 +146,39 @@ describe('parsePublicSnapshot', () => {
     })
   })
 
+  describe('court skill levels', () => {
+    const withLevels = (levels: unknown) => ({
+      ...good(),
+      courts: [{ id: 1, name: 'Court 1', teams: null, levels }],
+    })
+
+    it('keeps a court’s level range, and leaves it out when there is none', () => {
+      expect(parsePublicSnapshot(withLevels([4, 6]))!.courts[0].levels).toEqual([4, 6])
+      expect(parsePublicSnapshot(good())!.courts[0]).not.toHaveProperty('levels')
+    })
+
+    it('rejects a range outside 1 to 6 or the wrong way round', () => {
+      for (const levels of [[0, 3], [3, 7], [5, 3], [2.5, 4], [3], '3-4', null]) {
+        expect(parsePublicSnapshot(withLevels(levels)), JSON.stringify(levels)).toBeNull()
+      }
+    })
+
+    it('keeps the group for each level range, and accepts a board without them', () => {
+      const lanes = [
+        { levels: [4, 6], players: [3, 4] },
+        { levels: null, players: [] },
+      ]
+      expect(parsePublicSnapshot({ ...good(), nextUpLanes: lanes })!.nextUpLanes).toEqual(lanes)
+      expect(parsePublicSnapshot(good())).not.toHaveProperty('nextUpLanes')
+    })
+
+    it('rejects malformed level groups', () => {
+      for (const nextUpLanes of [7, [{ levels: [4, 6] }], [{ levels: [6, 4], players: [] }], [{ levels: null, players: [1, 2, 3, 4, 5] }]]) {
+        expect(parsePublicSnapshot({ ...good(), nextUpLanes }), JSON.stringify(nextUpLanes)).toBeNull()
+      }
+    })
+  })
+
   describe('court names', () => {
     it('keeps the names people gave their courts', () => {
       expect(parsePublicSnapshot(good())!.courts.map((c) => c.name)).toEqual(['Court 1', 'Center Court'])

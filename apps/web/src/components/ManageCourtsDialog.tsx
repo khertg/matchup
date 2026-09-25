@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SKILL_LEVELS } from '@/lib/skill'
 import {
   isValidGameMinutes,
   MAX_AVG_GAME_MINUTES,
@@ -24,6 +26,56 @@ import type { Court, SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'Something went wrong')
+
+/**
+ * Which skill levels a court is kept for: lowest and highest (both ends included). The full range is
+ * "Any level". Changing it never touches a game in progress; the court's next game follows it.
+ */
+function CourtLevels({ court }: { court: Court }) {
+  const setCourtLevels = useSessionStore((s) => s.setCourtLevels)
+  const [min, max] = court.levels ?? [1, 6]
+
+  function change(nextMin: number, nextMax: number) {
+    try {
+      setCourtLevels(court.id, [nextMin, nextMax])
+    } catch (err) {
+      toast.error(messageOf(err))
+    }
+  }
+
+  const levelSelect = (which: 'lowest' | 'highest', value: number, onPick: (level: number) => void) => (
+    <Select value={String(value)} onValueChange={(v) => onPick(Number(v))}>
+      <SelectTrigger aria-label={`${which === 'lowest' ? 'Lowest' : 'Highest'} level for ${court.name}`} className="w-24">
+        {/* Just the rating when closed, so it fits a phone; the list names each level in full. */}
+        <SelectValue>{SKILL_LEVELS.find((level) => level.value === value)?.rating}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {SKILL_LEVELS.map((level) => (
+          <SelectItem key={level.value} value={String(level.value)}>
+            {level.rating} · {level.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted-foreground">Levels</span>
+      {/* Keep the range the right way round: moving one end past the other brings the other along. */}
+      {levelSelect('lowest', min, (level) => change(level, Math.max(level, max)))}
+      <span className="text-muted-foreground">to</span>
+      {levelSelect('highest', max, (level) => change(Math.min(level, min), level))}
+      {court.levels ? (
+        <Button type="button" variant="ghost" size="sm" onClick={() => change(1, 6)}>
+          Any level
+        </Button>
+      ) : (
+        <span className="text-muted-foreground">(any level)</span>
+      )}
+    </div>
+  )
+}
 
 function GameLengthControl({ minutes }: { minutes: number }) {
   const setAvgGameMinutes = useSessionStore((s) => s.setAvgGameMinutes)
@@ -112,6 +164,8 @@ function CourtRow({ court, index, count }: RowProps) {
           {error}
         </p>
       )}
+
+      <CourtLevels court={court} />
 
       <div className="flex flex-wrap gap-2">
         <Button

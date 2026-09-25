@@ -1,6 +1,7 @@
 import { MAX_COURT_NAME_LENGTH, MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
 import type { SkillLevel } from '../db/db'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
+import { hasLevelCourts, inLevels, laneQueue, lanesOf, normalizeLevels, sameLevels, type LevelRange } from './levels'
 import type {
   Court,
   GameMode,
@@ -138,6 +139,24 @@ export function renameCourt(state: SessionState, courtId: number, name: string):
   }
 }
 
+/**
+ * Keep a court for a range of skill levels (min, max), or for any level with null. A game in progress
+ * is not affected; the court's next game is drawn from players in range. Throws a RangeError for an
+ * invalid range.
+ */
+export function setCourtLevels(state: SessionState, courtId: number, levels: readonly number[] | null): SessionState {
+  findCourt(state, courtId)
+  const range = normalizeLevels(levels)
+  return {
+    ...state,
+    courts: state.courts.map((c) => {
+      if (c.id !== courtId) return c
+      const { levels: _old, ...rest } = c
+      return range ? { ...rest, levels: range } : rest
+    }),
+  }
+}
+
 /** Move a court one place up (-1) or down (1) in the board order. Does nothing at either end. */
 export function moveCourt(state: SessionState, courtId: number, offset: -1 | 1): SessionState {
   const index = state.courts.findIndex((c) => c.id === courtId)
@@ -261,6 +280,17 @@ export interface NextGroup {
 export interface NextGroupOptions {
   /** Choose as if the mode were auto-balanced (the mixed-doubles "start with who is waiting" override). */
   ignoreMode?: boolean
+  /**
+   * The group for this court: while courts are kept for skill levels, only players in its range (see
+   * nextGroups). Without it, the group for the whole queue, as if no court had a range.
+   */
+  courtId?: number
+}
+
+/** The group waiting for the courts of one level range (undefined: the courts open to any level). */
+export interface Lane {
+  levels: LevelRange | undefined
+  group: NextGroup | null
 }
 
 /**
@@ -272,17 +302,46 @@ export interface NextGroupOptions {
  * exactly the teams startGame puts on court.
  */
 export function nextGroup(state: SessionState, options: NextGroupOptions = {}): NextGroup | null {
-  const picked = pickedGroup(state)
-  if (picked) return picked
+  if (options.courtId !== undefined && hasLevelCourts(state)) {
+    const court = findCourt(state, options.courtId)
+    return nextGroups(state, options).find((lane) => sameLevels(lane.levels, court.levels))?.group ?? null
+  }
+  return pickedGroup(state) ?? groupFrom(state, state.queue, options)
+}
+
+/** The group formed from these waiting players (in queue order), ignoring any staff choice. */
+function groupFrom(state: SessionState, queue: number[], options: NextGroupOptions): NextGroup | null {
   if (state.mode === 'singles') {
-    if (state.queue.length < 2) return null
-    const [a, b] = state.queue
+    if (queue.length < 2) return null
+    const [a, b] = queue
     return { players: [a, b], teams: [[a], [b]] }
   }
-  const group = selectGroup(state, state.queue, options)
+  const group = selectGroup(state, queue, options)
   if (!group) return null
   const teams = splitGroup(state, group)
   return { players: teams.flat(), teams }
+}
+
+/**
+ * The group waiting for each lane: one lane per level range kept on the courts, in board order, then
+ * one for the courts open to any level. Each lane draws, in queue order, from the players in its range
+ * that earlier lanes did not take, so nobody is in two groups. A staff-chosen group goes to the first
+ * lane whose range takes all of it. With no level courts, one lane with the usual next group.
+ */
+export function nextGroups(state: SessionState, options: Omit<NextGroupOptions, 'courtId'> = {}): Lane[] {
+  if (!hasLevelCourts(state)) return [{ levels: undefined, group: nextGroup(state, options) }]
+  const lanes = lanesOf(state.courts)
+  const picked = pickedGroup(state)
+  const fitsPick = (levels: LevelRange | undefined) =>
+    !!picked && picked.players.every((id) => inLevels(state.players[id]?.skill ?? 0, levels))
+  const pickLane = picked ? lanes.findIndex(fitsPick) : -1
+  const taken = new Set<number>(pickLane === -1 ? [] : picked!.players)
+  return lanes.map((levels, index) => {
+    if (index === pickLane) return { levels, group: picked }
+    const group = groupFrom(state, laneQueue(state, levels, taken), options)
+    group?.players.forEach((id) => taken.add(id))
+    return { levels, group }
+  })
 }
 
 /** The staff-chosen group, split into teams, while all of it is still waiting; otherwise null. */
@@ -316,11 +375,17 @@ function withoutPickIncluding(state: SessionState, playerId: number): SessionSta
  * cannot stay together across the change.
  */
 export function replaceNextUp(state: SessionState, outId: number, inId: number): SessionState {
-  const group = nextGroup(state)
-  if (!group) throw new Error('There is no next group to change')
-  if (!group.players.includes(outId)) throw new Error(`Player ${outId} is not in the next group`)
+  // With level courts, the group is the lane's that has this player, and the newcomer must be in its range.
+  const lanes = nextGroups(state)
+  if (lanes.every((l) => !l.group)) throw new Error('There is no next group to change')
+  const lane = lanes.find((l) => l.group?.players.includes(outId))
+  const group = lane?.group
+  if (!lane || !group) throw new Error(`Player ${outId} is not in the next group`)
   if (group.players.includes(inId) || !state.queue.includes(inId)) {
     throw new Error('The replacement must be a waiting player who is not already in the next group')
+  }
+  if (!inLevels(state.players[inId]?.skill ?? 0, lane.levels)) {
+    throw new Error('The replacement must be in the level range of the group')
   }
   return {
     ...withoutLocks(state, [outId, inId]),
@@ -348,12 +413,15 @@ export interface StartGameOptions extends NextGroupOptions {
 export function startGame(state: SessionState, courtId: number, options: StartGameOptions = {}): SessionState {
   const court = findCourt(state, courtId)
   if (court.teams) throw new Error(`${court.name} already has a game in progress`)
-  const group = nextGroup(state, options)
+  // The override ("start with whoever is waiting") draws from the whole queue, whatever the court's range.
+  const group = options.ignoreMode ? nextGroup(state, { ignoreMode: true }) : nextGroup(state, { courtId })
   if (!group) throw new Error('Not enough players are waiting to start a game')
   const waited = waitedSeconds(state.queuedAt, group.players, options.now)
+  // A game on another level's court leaves a group staff chose for their own court in place.
+  const keepPick = hasLevelCourts(state) && !state.nextUpPick?.some((id) => group.players.includes(id))
   return withoutQueuedAt(
     {
-      ...withoutPick(state),
+      ...(keepPick ? state : withoutPick(state)),
       courts: state.courts.map((c) =>
         c.id === courtId
           ? {
@@ -415,7 +483,12 @@ function gameSeconds(court: Court, now: number | undefined): number {
 }
 
 /** The court with no game on it. Also drops the start time. */
-const openCourt = (court: Court): Court => ({ id: court.id, name: court.name, teams: null })
+const openCourt = (court: Court): Court => ({
+  id: court.id,
+  name: court.name,
+  teams: null,
+  ...(court.levels ? { levels: court.levels } : {}),
+})
 
 /**
  * Record a finished game. `winner` is the index (0 or 1) of the winning side.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkIn, createSession, recordResult, recordScore, startGame } from '@/rotation/engine'
+import { checkIn, createSession, recordResult, recordScore, setCourtLevels, startGame } from '@/rotation/engine'
 import { fillCourts } from '@/rotation/testing'
 import type { SessionState } from '@/rotation/types'
 import {
@@ -20,6 +20,21 @@ function playedSession(): SessionState {
 }
 
 describe('public snapshot', () => {
+  it('carries each court’s levels and the next group per level, and none without level courts', () => {
+    let s = setCourtLevels(createSession('doubles', 2), 1, [4, 6])
+    const skills = [5, 2, 6, 1, 4, 3, 5, 2] as const
+    skills.forEach((skill, i) => (s = checkIn(s, { id: i + 1, name: `P${i + 1}`, skill })))
+    const snap = parsePublicSnapshot(toPublicSnapshot('Club', s))!
+    expect(snap.courts[0].levels).toEqual([4, 6])
+    expect(snap.courts[1]).not.toHaveProperty('levels')
+    expect(snap.nextUpLanes?.map((lane) => lane.levels)).toEqual([[4, 6], null])
+    expect([...snap.nextUpLanes![0].players].sort()).toEqual([1, 3, 5, 7])
+    expect(snap.nextUp).toEqual(snap.nextUpLanes![0].players)
+    expect(toViewerState(snap).courts[0].levels).toEqual([4, 6])
+
+    expect(toPublicSnapshot('Club', playedSession())).not.toHaveProperty('nextUpLanes')
+  })
+
   it('leaves out genders and result history', () => {
     const snap = toPublicSnapshot('Club', playedSession())
     const json = JSON.stringify(snap)

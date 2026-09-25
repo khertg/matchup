@@ -2,12 +2,14 @@ import { toast } from 'sonner'
 import { CourtCard } from '@/components/CourtCard'
 import { CourtGrid } from '@/components/CourtGrid'
 import { MatchLog } from '@/components/MatchLog'
-import { NextUpCard } from '@/components/NextUpCard'
+import { NextUpCard, type NextUpLane } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
 import { waitingMessage } from '@/lib/nextUp'
+import { levelLabel } from '@/lib/skill'
 import { useSkillEditor } from '@/lib/useSkillEditor'
-import { isNextUpPicked, nextGroup } from '@/rotation/engine'
-import type { SessionState, Teams } from '@/rotation/types'
+import { isNextUpPicked, nextGroup, nextGroups, type NextGroup } from '@/rotation/engine'
+import { hasLevelCourts, inLevels, sameLevels } from '@/rotation/levels'
+import type { Court, SessionState, Teams } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
 const TEAM_NAMES = ['Team A', 'Team B']
@@ -24,14 +26,34 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const editMatch = useSessionStore((s) => s.editMatch)
   const changeSkill = useSkillEditor()
 
-  // Games never start by themselves. This is the group staff would start next, and what each
-  // open court offers: start it, start with whoever is waiting (mixed doubles), or wait.
-  const group = nextGroup(session)
-  const startState = group
-    ? 'ready'
-    : nextGroup(session, { ignoreMode: true })
-      ? 'override'
-      : 'none'
+  // Games never start by themselves. These are the groups staff would start next (one per level range
+  // while courts are kept for levels), and what each open court offers: start its group, start with
+  // whoever is waiting (mixed doubles, or too few players in the court's range), or wait.
+  const lanes = nextGroups(session)
+  const byLevel = hasLevelCourts(session)
+  const group = lanes[0].group
+  const anyone = nextGroup(session, { ignoreMode: true })
+  const groupFor = (court: Court): NextGroup | null =>
+    lanes.find((lane) => sameLevels(lane.levels, court.levels))?.group ?? null
+  const startStateFor = (court: Court) => (groupFor(court) ? 'ready' : anyone ? 'override' : 'none')
+  const teamNames = (g: NextGroup) =>
+    g.teams.map((team) => team.map((id) => session.players[id]?.name ?? 'Player').join(' & ')).join(' vs ')
+  /** On a level court, the group that would start there, so staff can call its players. */
+  const nextHereFor = (court: Court) => {
+    const courtGroup = court.levels ? groupFor(court) : null
+    return courtGroup ? teamNames(courtGroup) : undefined
+  }
+  const nextUpIds = lanes.flatMap((lane) => lane.group?.players ?? [])
+  const levelLanes: NextUpLane[] | undefined = byLevel
+    ? lanes.map((lane) => ({
+        label: levelLabel(lane.levels) ?? 'Any level',
+        nextUp: lane.group?.players ?? [],
+        emptyMessage: waitingMessage(session, lane.levels),
+        waiting: session.queue
+          .filter((id) => !lane.group?.players.includes(id) && inLevels(session.players[id]?.skill ?? 0, lane.levels))
+          .map((id) => session.players[id]),
+      }))
+    : undefined
 
   const courtName = (courtId: number) =>
     session.courts.find((c) => c.id === courtId)?.name ?? `Court ${courtId}`
@@ -108,8 +130,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
             players={session.players}
             queue={session.queue}
             partners={session.partners}
-            startState={startState}
-            waitingMessage={waitingMessage(session)}
+            startState={startStateFor(court)}
+            waitingMessage={waitingMessage(session, court.levels)}
+            nextHere={nextHereFor(court)}
             onStart={(options) => handleStart(court.id, options)}
             onReplace={(outId, inId, options) => handleReplace(court.id, outId, inId, options.sendOnBreak)}
             onSkillChange={changeSkill}
@@ -129,10 +152,11 @@ export function BoardScreen({ session }: { session: SessionState }) {
         onSkillChange={changeSkill}
         editable
         queuedAt={session.queuedAt}
+        lanes={levelLanes}
       />
       <QueueList
         session={session}
-        nextUp={group?.players}
+        nextUp={nextUpIds}
         onSkillChange={changeSkill}
         onTakeBreak={checkOutPlayer}
         editable

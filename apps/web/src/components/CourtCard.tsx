@@ -10,6 +10,7 @@ import { ScoreDialog } from '@/components/ScoreDialog'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
+import { levelLabel } from '@/lib/skill'
 import { formatDuration, useNow } from '@/lib/time'
 import type { Court, RosterPlayer } from '@/rotation/types'
 
@@ -33,6 +34,8 @@ interface Props {
   startState?: 'ready' | 'override' | 'none'
   /** Why no game can start yet, shown on an open court when startState is "none". */
   waitingMessage?: string
+  /** On a court kept for a level range: the group that would start here, as "Ann & Bob vs Cy & Dee". */
+  nextHere?: string
   onStart?: (options?: { ignoreMode?: boolean }) => void
   /** Record the game from its score (Team A, then Team B). Asked for after a win button is pressed. */
   onScore?: (scoreA: number, scoreB: number) => void
@@ -67,6 +70,7 @@ export function CourtCard({
   onSkillChange,
   startState = 'none',
   waitingMessage = 'Waiting for players to check in',
+  nextHere,
   onStart,
   onScore,
   onCancel,
@@ -74,12 +78,16 @@ export function CourtCard({
   // The team whose win button was pressed; the score pop-up is open while this is set.
   const [pendingWinner, setPendingWinner] = useState<0 | 1 | null>(null)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const levels = levelLabel(court.levels)
 
   return (
     <Card role="region" aria-label={court.name}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate">{court.name}</span>
+          <span className="min-w-0 truncate">
+            {court.name}
+            {levels && <span className="font-normal text-muted-foreground"> · {levels}</span>}
+          </span>
           <div className="flex shrink-0 items-center gap-2">
             {court.teams ? <PlayingBadge startedAt={court.startedAt} /> : <Badge variant="outline">Open</Badge>}
             {court.teams && !readOnly && (
@@ -189,7 +197,9 @@ export function CourtCard({
               <p className="text-sm text-muted-foreground">Waiting for the next game</p>
             ) : startState === 'ready' ? (
               <>
-                <p className="text-sm text-muted-foreground">Ready for the next game</p>
+                <p className="text-sm text-muted-foreground">
+                  {nextHere ? `Next here: ${nextHere}` : 'Ready for the next game'}
+                </p>
                 <Button className="h-11 w-full" onClick={() => onStart?.()}>
                   Start game
                 </Button>
@@ -197,8 +207,9 @@ export function CourtCard({
             ) : startState === 'override' ? (
               <>
                 <p className="text-sm text-muted-foreground">
-                  No group fits this matchmaking mode yet. Check in more players, or start with whoever is
-                  waiting.
+                  {levels
+                    ? `${waitingMessage} You can also start with whoever is waiting.`
+                    : 'No group fits this matchmaking mode yet. Check in more players, or start with whoever is waiting.'}
                 </p>
                 <Button variant="outline" className="h-11 w-full" onClick={() => onStart?.({ ignoreMode: true })}>
                   Start with waiting players

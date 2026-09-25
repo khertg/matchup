@@ -11,6 +11,7 @@ import {
   recordResult,
   recordScore,
   renameCourt,
+  setCourtLevels,
   renamePlayer,
   replaceNextUp,
   replacePlayer,
@@ -45,6 +46,7 @@ export type SessionAction =
   | { type: 'startGame'; courtId: number; options?: NextGroupOptions; now: number }
   | { type: 'addCourt'; name?: string }
   | { type: 'renameCourt'; courtId: number; name: string }
+  | { type: 'setCourtLevels'; courtId: number; levels: [number, number] | null }
   | { type: 'moveCourt'; courtId: number; offset: -1 | 1 }
   | { type: 'closeCourt'; courtId: number; now: number }
   | { type: 'replacePlayer'; courtId: number; outId: number; inId?: number; options?: ReplacePlayerOptions; now: number }
@@ -114,6 +116,8 @@ export function applyAction(session: SessionState, action: SessionAction): Appli
       return { session: addCourt(session, action.name) }
     case 'renameCourt':
       return { session: renameCourt(session, action.courtId, action.name) }
+    case 'setCourtLevels':
+      return { session: setCourtLevels(session, action.courtId, action.levels) }
     case 'moveCourt':
       return { session: moveCourt(session, action.courtId, action.offset) }
     case 'closeCourt':

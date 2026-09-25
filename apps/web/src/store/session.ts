@@ -92,6 +92,8 @@ interface SessionStore {
   addCourt: (name?: string) => void
   /** Rename a court. Throws a RangeError with a readable message if the name is empty, too long or taken. */
   renameCourt: (courtId: number, name: string) => void
+  /** Keep a court for a range of skill levels (min, max), or any level with null. Throws a RangeError for a bad range. */
+  setCourtLevels: (courtId: number, levels: [number, number] | null) => void
   /** Move a court one place up (-1) or down (1) on the board. */
   moveCourt: (courtId: number, offset: -1 | 1) => void
   /** Close a court. A game in progress is cancelled and its players return to the front of the queue. */
@@ -276,6 +278,8 @@ export const useSessionStore = create<SessionStore>()(
         addCourt: (name) => dispatch({ type: 'addCourt', ...(name !== undefined ? { name } : {}) }, null),
 
         renameCourt: (courtId, name) => dispatch({ type: 'renameCourt', courtId, name }, null),
+
+        setCourtLevels: (courtId, levels) => dispatch({ type: 'setCourtLevels', courtId, levels }, null),
 
         moveCourt: (courtId, offset) => dispatch({ type: 'moveCourt', courtId, offset }, null),
 

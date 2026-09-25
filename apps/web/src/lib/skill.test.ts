@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillLevel } from '@/db/db'
-import { DEFAULT_SKILL, SKILL_LEVELS, skillLabel, skillOptionLabel } from './skill'
+import { DEFAULT_SKILL, SKILL_LEVELS, levelLabel, skillLabel, skillOptionLabel } from './skill'
 
 describe('skill levels', () => {
   it('are the six levels, named from Beginner up to Expert', () => {
@@ -40,3 +40,16 @@ describe('skill levels', () => {
     expect(skillLabel(DEFAULT_SKILL)).toBe('Intermediate')
   })
 })
+
+describe('levelLabel', () => {
+  it('names a court’s range in ratings', () => {
+    expect(levelLabel([4, 6])).toBe('3.5+')
+    expect(levelLabel([1, 3])).toBe('1.0–3.0')
+    expect(levelLabel([2, 4])).toBe('2.0–3.5')
+    expect(levelLabel([3, 3])).toBe('3.0')
+    expect(levelLabel([5, 5])).toBe('4.0–4.5')
+    expect(levelLabel([6, 6])).toBe('5.0+')
+    expect(levelLabel(undefined)).toBeNull()
+  })
+})
+

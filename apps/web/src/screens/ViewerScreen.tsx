@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useClubName } from '@/lib/avatars'
+import { levelLabel } from '@/lib/skill'
 import { matchmakingLabel } from '@/lib/matchmaking'
 import { cn } from '@/lib/utils'
 import { StandingsScreen } from './StandingsScreen'
@@ -167,8 +168,16 @@ export function ViewerScreen({ slug }: { slug: string }) {
             nextUp={snapshot.nextUp}
             players={session.players}
             emptyMessage="No group is ready yet. Waiting for more players."
+            lanes={snapshot.nextUpLanes?.map((lane) => ({
+              label: levelLabel(lane.levels ?? undefined) ?? 'Any level',
+              nextUp: lane.players,
+              emptyMessage: 'No group is ready yet.',
+            }))}
           />
-          <QueueList session={session} nextUp={snapshot.nextUp} />
+          <QueueList
+            session={session}
+            nextUp={snapshot.nextUpLanes ? snapshot.nextUpLanes.flatMap((lane) => lane.players) : snapshot.nextUp}
+          />
         </TabsContent>
         <TabsContent value="standings">
           <StandingsScreen session={session} location={snapshot.location} readOnly />

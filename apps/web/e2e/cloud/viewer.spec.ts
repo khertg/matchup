@@ -13,6 +13,29 @@ async function runningClub(request: APIRequestContext, snapshot: object = liveSn
 }
 
 test.describe('live viewer', () => {
+  test('shows each court’s skill levels and the next group per level', async ({ page, request }) => {
+    const snapshot = {
+      ...liveSnapshot(),
+      courts: [
+        { id: 1, name: 'Court 1', teams: [[1, 2], [3, 4]], levels: [4, 6] },
+        { id: 2, name: 'Court 2', teams: null, levels: [1, 3] },
+      ],
+      nextUp: [],
+      nextUpLanes: [
+        { levels: [4, 6], players: [] },
+        { levels: [1, 3], players: [] },
+      ],
+    }
+    const { club } = await runningClub(request, snapshot)
+    await page.goto(`/club/${club.slug}`)
+
+    await expect(page.getByRole('region', { name: 'Court 1' })).toContainText('Court 1 · 3.5+')
+    await expect(page.getByRole('region', { name: 'Court 2' })).toContainText('Court 2 · 1.0–3.0')
+    const nextUp = page.getByRole('group', { name: 'Next up' })
+    await expect(nextUp.getByRole('region', { name: '3.5+' })).toContainText('No group is ready yet.')
+    await expect(nextUp.getByRole('region', { name: '1.0–3.0' })).toBeVisible()
+  })
+
   test('shows the courts, queue and standings without staff controls', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.goto(`/club/${club.slug}`)
