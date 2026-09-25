@@ -107,7 +107,7 @@ test.describe('live viewer', () => {
     const rows = page.getByRole('row')
     // Columns: 0 rank, 1 player, 2 GP, 3 W, 4 L, 5 Win %, 6 +/-, 7 Opp., 8 Time.
     await expect(rows.filter({ hasText: 'Ann' }).getByRole('cell').nth(6)).toHaveText('+8')
-    await expect(rows.filter({ hasText: 'Ann' }).getByRole('cell').nth(8)).toHaveText('21 min')
+    await expect(rows.filter({ hasText: 'Ann' }).getByRole('cell').nth(8)).toHaveText('0:21')
     await expect(rows.filter({ hasText: 'Dee' }).getByRole('cell').nth(6)).toHaveText('-8')
   })
 

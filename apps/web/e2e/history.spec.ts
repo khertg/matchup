@@ -204,8 +204,8 @@ test.describe('resuming a session', () => {
     await expect(page.getByRole('heading', { name: 'Frozen' })).toBeVisible()
 
     // Still 5 minutes, not the day that passed while it sat ended.
-    await expect(queueRow(page, 'Cy')).toContainText('5 min')
-    await expect(page.getByRole('region', { name: 'Court 1' }).getByText('Playing 5 min')).toBeVisible()
+    await expect(queueRow(page, 'Cy')).toContainText('0:05')
+    await expect(page.getByRole('region', { name: 'Court 1' }).getByText('In play 0:05')).toBeVisible()
   })
 
   test('is offered right after ending, in case it was a slip', async ({ page }) => {

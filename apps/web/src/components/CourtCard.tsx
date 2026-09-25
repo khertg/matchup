@@ -1,4 +1,4 @@
-import { Lock, MoreVerticalIcon } from 'lucide-react'
+import { History, Lock, MoreVerticalIcon, Timer } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,10 +41,20 @@ interface Props {
 
 const TEAM_NAMES = ['Team A', 'Team B'] as const
 
-/** How long the game has been going, refreshed every 30 seconds by its own timer. */
-function Elapsed({ startedAt }: { startedAt: number }) {
+/**
+ * The in-play badge: a timer icon and how long the game has been going ("⏱ 0:07"), refreshed every
+ * 30 seconds by its own timer. "In play" is kept for screen readers. A game with no start time says "In play".
+ */
+function PlayingBadge({ startedAt }: { startedAt?: number }) {
   const now = useNow()
-  return <p className="text-xs text-muted-foreground">Playing {formatDuration((now - startedAt) / 1000)}</p>
+  if (startedAt === undefined) return <Badge>In play</Badge>
+  return (
+    <Badge className="tabular-nums">
+      <span className="sr-only">In play </span>
+      <Timer aria-hidden="true" />
+      {formatDuration((now - startedAt) / 1000)}
+    </Badge>
+  )
 }
 
 export function CourtCard({
@@ -71,8 +81,7 @@ export function CourtCard({
         <CardTitle className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate">{court.name}</span>
           <div className="flex shrink-0 items-center gap-2">
-            {court.teams && court.startedAt !== undefined && <Elapsed startedAt={court.startedAt} />}
-            {court.teams ? <Badge>In play</Badge> : <Badge variant="outline">Open</Badge>}
+            {court.teams ? <PlayingBadge startedAt={court.startedAt} /> : <Badge variant="outline">Open</Badge>}
             {court.teams && !readOnly && (
               <Popover>
                 <PopoverTrigger asChild>
@@ -120,8 +129,9 @@ export function CourtCard({
                         {players[id] && <PlayerAvatar name={players[id].name} size="sm" editable={!readOnly} viewable />}
                         <span className="min-w-0 truncate">{players[id]?.name}</span>
                         {court.waited?.[id] !== undefined && (
-                          <span className="shrink-0 text-xs text-muted-foreground small-caps">
-                            waited {formatDuration(court.waited[id])}
+                          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                            <History className="size-3" aria-label="Waited" />
+                            {formatDuration(court.waited[id])}
                           </span>
                         )}
                       </span>

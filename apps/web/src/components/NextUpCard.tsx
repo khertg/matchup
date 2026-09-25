@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
+import { WaitingTime } from '@/components/WaitingTime'
 import type { SkillLevel } from '@/db/db'
-import { formatDuration, useNow } from '@/lib/time'
+import { useNow } from '@/lib/time'
 import type { RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -71,9 +72,7 @@ export function NextUpCard({ nextUp, players, emptyMessage, waiting = [], onRepl
                         <PlayerAvatar name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
                         <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
                         {queuedAt?.[id] !== undefined && (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {formatDuration((now - queuedAt[id]) / 1000)}
-                          </span>
+                          <WaitingTime seconds={(now - queuedAt[id]) / 1000} className="text-xs" />
                         )}
                       </span>
                       {players[id] && (

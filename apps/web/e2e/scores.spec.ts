@@ -382,17 +382,17 @@ test.describe('time played', () => {
   test('an in-play court shows how long the game has been going, and keeps counting', async ({ page }) => {
     await page.clock.install()
     await startSingles(page)
-    await expect(court(page).getByText('Playing 0s')).toBeVisible()
+    await expect(court(page).getByText('In play 0:00')).toBeVisible()
 
     await page.clock.fastForward('07:10')
-    await expect(court(page).getByText('Playing 7 min')).toBeVisible()
+    await expect(court(page).getByText('In play 0:07')).toBeVisible()
     await page.clock.fastForward('58:00')
-    await expect(court(page).getByText('Playing 1h 05m')).toBeVisible()
+    await expect(court(page).getByText('In play 1:05')).toBeVisible()
   })
 
   test('an open court shows no timer', async ({ page }) => {
     await startSession(page, { mode: 'Singles' })
-    await expect(court(page).getByText(/Playing/)).toHaveCount(0)
+    await expect(court(page).getByText(/In play [0-9]/)).toHaveCount(0)
   })
 
   test('the time a game took shows in the standings, for every game that finishes', async ({ page }) => {
@@ -411,10 +411,10 @@ test.describe('time played', () => {
     const rows = page.getByRole('row')
     await expect(rows.getByRole('columnheader', { name: 'Time' })).toBeVisible()
     const timeOf = (name: string) => cell(rows.filter({ hasText: name }), TIME)
-    await expect(timeOf('Ann')).toHaveText('7 min')
-    await expect(timeOf('Bob')).toHaveText('7 min')
-    await expect(timeOf('Cy')).toHaveText('12 min')
-    await expect(timeOf('Dee')).toHaveText('12 min')
+    await expect(timeOf('Ann')).toHaveText('0:07')
+    await expect(timeOf('Bob')).toHaveText('0:07')
+    await expect(timeOf('Cy')).toHaveText('0:12')
+    await expect(timeOf('Dee')).toHaveText('0:12')
   })
 
   test('a long game adds up over the session, in hours and minutes', async ({ page }) => {
@@ -424,7 +424,7 @@ test.describe('time played', () => {
     await enterScore(page, 11, 6)
 
     await openStandings(page)
-    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText('1h 05m')
+    await expect(cell(page.getByRole('row').nth(1), TIME)).toHaveText('1:05')
   })
 
   test('a cancelled game records no time', async ({ page }) => {
@@ -450,7 +450,7 @@ test.describe('time played', () => {
     })
     await page.reload()
     await expect(court(page).getByText('In play')).toBeVisible()
-    await expect(court(page).getByText(/Playing/)).toHaveCount(0)
+    await expect(court(page).getByText(/In play [0-9]/)).toHaveCount(0)
 
     await enterScore(page, 11, 4)
     await openStandings(page)
@@ -497,24 +497,25 @@ test.describe('queue wait time', () => {
     await startSession(page, { mode: 'Singles' })
     // Ann and Bob are next up (singles needs 2); Cy is left waiting with a ticking counter.
     await checkIn(page, ['Ann', 'Bob', 'Cy'])
-    await expect(queueRow(page, 'Cy')).toContainText('0s')
+    await expect(queueRow(page, 'Cy')).toContainText('0:00')
 
     await page.clock.fastForward('05:00')
-    await expect(queueRow(page, 'Cy')).toContainText('5 min')
+    await expect(queueRow(page, 'Cy')).toContainText('0:05')
     const nextUp = page.getByRole('group', { name: 'Next up' })
-    await expect(nextUp).toContainText('5 min')
+    await expect(nextUp).toContainText('0:05')
 
     await startGame(page)
     await page.clock.fastForward('02:00')
-    await expect(court(page).getByText('waited 5 min')).toHaveCount(2)
+    await expect(court(page).getByText('0:05', { exact: true })).toHaveCount(2)
+    await expect(court(page).getByRole('img', { name: 'Waited' })).toHaveCount(2)
     // Playing time keeps ticking, but the frozen wait time does not.
-    await expect(court(page).getByText('Playing 2 min')).toBeVisible()
-    await expect(court(page).getByText('waited 5 min')).toHaveCount(2)
+    await expect(court(page).getByText('In play 0:02')).toBeVisible()
+    await expect(court(page).getByText('0:05', { exact: true })).toHaveCount(2)
 
     await enterScore(page, 11, 6)
     const matches = page.getByRole('group', { name: 'Matches' })
-    await expect(matches).toContainText('Ann (5 min)')
-    await expect(matches).toContainText('Bob (5 min)')
+    await expect(matches).toContainText('Ann (0:05)')
+    await expect(matches).toContainText('Bob (0:05)')
   })
 })
 
@@ -536,7 +537,7 @@ test.describe('past sessions', () => {
     const rows = view.getByRole('row')
     await expect(cell(rows.nth(1), 1)).toHaveText('Ann')
     await expect(cell(rows.nth(1), DIFF)).toHaveText('+4')
-    await expect(cell(rows.nth(1), TIME)).toHaveText('12 min')
+    await expect(cell(rows.nth(1), TIME)).toHaveText('0:12')
     await expect(cell(rows.nth(2), DIFF)).toHaveText('-4')
   })
 })

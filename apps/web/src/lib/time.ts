@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react'
 
 /**
- * Time on court as people say it: "42 min", or "1h 05m" from an hour up. Under a minute is
- * whole seconds, e.g. "45s". Whole minutes are rounded down, so it never claims more than was played.
+ * A duration as a clock, hours and minutes: "0:42", "1:05". Whole minutes are rounded down, so it
+ * never claims more than was played, and nothing below a minute is shown (screens refresh every 30 s).
  */
 export function formatDuration(seconds: number): string {
-  const whole = Math.floor(Math.max(0, seconds))
-  const minutes = Math.floor(whole / 60)
-  if (minutes < 1) return `${whole}s`
-  if (minutes < 60) return `${minutes} min`
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+  const minutes = Math.floor(Math.max(0, seconds) / 60)
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
 }
 
 /** The current time (ms), refreshed every `intervalMs`. Only the component that calls it re-renders. */

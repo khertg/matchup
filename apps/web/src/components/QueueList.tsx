@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
+import { WaitingTime } from '@/components/WaitingTime'
 import type { SkillLevel } from '@/db/db'
-import { formatDuration, useNow } from '@/lib/time'
+import { useNow } from '@/lib/time'
 import type { SessionState } from '@/rotation/types'
 
 interface Props {
@@ -59,7 +60,7 @@ export function QueueList({ session, nextUp = [], onSkillChange, onTakeBreak, ed
                     {nextUp.includes(id) ? (
                       <Badge>Next up</Badge>
                     ) : queuedAt !== undefined ? (
-                      formatDuration((now - queuedAt) / 1000)
+                      <WaitingTime seconds={(now - queuedAt) / 1000} />
                     ) : (
                       'Waiting'
                     )}
