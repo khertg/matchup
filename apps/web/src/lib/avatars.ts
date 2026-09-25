@@ -98,3 +98,9 @@ export function useClubLogo(): string | null {
 export function useClubName(): string | null {
   return useContext(AvatarContext).club?.index.name ?? null
 }
+
+/** A session's name with its club in front, "Club - Session", or the session name alone with no club. */
+export function useSessionTitle(sessionName: string): string {
+  const clubName = useClubName()
+  return clubName ? `${clubName} - ${sessionName}` : sessionName
+}

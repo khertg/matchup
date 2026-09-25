@@ -47,3 +47,28 @@ test.describe('scores on the live board', () => {
     await viewerContext.close()
   })
 })
+
+test.describe('shared images', () => {
+  test('show "Club - Session" on the standings image and the stats card', async ({ page, request }) => {
+    const club = uniqueClub('Shared')
+    await apiCreateClub(request, club)
+    await page.goto('/')
+    await uiLogin(page, club)
+    await expectSignedIn(page)
+    await page.getByLabel('Session name').fill('Share Night')
+    await page.getByRole('button', { name: 'Singles' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
+    await checkIn(page, ['Ann', 'Bob'])
+    await startGame(page)
+    await recordWin(page, 'Court 1', 'A', [11, 4])
+
+    await page.getByRole('tab', { name: 'Standings' }).click()
+    await page.getByRole('button', { name: 'Share standings' }).click()
+    const standings = page.getByRole('dialog', { name: 'Share standings' })
+    await expect(standings.getByText(`${club.name} - Share Night`, { exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    await page.getByRole('button', { name: 'Share card for Ann' }).click()
+    await expect(page.getByRole('dialog', { name: 'Stats card' }).getByText(`${club.name} - Share Night`, { exact: true })).toBeVisible()
+  })
+})

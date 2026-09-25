@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useClubAuth } from '@/cloud/auth'
 import { viewerUrl } from '@/cloud/url'
+import { CardColorPicker } from '@/components/CardColorPicker'
 import { StandingsCard } from '@/components/StandingsCard'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,6 +16,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { cardColors, useCardChoice } from '@/lib/cardPalette'
 import { canShareNatively, downloadImages, shareImages } from '@/lib/share'
 import { pageStandings, type Standing } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
@@ -35,6 +37,7 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
   const pages = pageStandings(standings)
   const refs = useRef<(HTMLDivElement | null)[]>([])
   const [busy, setBusy] = useState(false)
+  const colors = cardColors(useCardChoice((s) => s.choice))
 
   const top = withRepeats ? repeatStats(session).summary.topPartnership : undefined
   const topPartnership = top
@@ -112,6 +115,7 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
               : 'An image of the standings, ready for a group chat.'}
           </DialogDescription>
         </DialogHeader>
+        <CardColorPicker />
         <div className="flex max-h-[50vh] flex-col items-center gap-3 overflow-y-auto rounded-lg">
           {pages.map((page, i) => (
             <StandingsCard
@@ -125,6 +129,7 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
               location={location}
               date={date}
               topPartnership={i === pages.length - 1 ? topPartnership : undefined}
+              colors={colors}
             />
           ))}
         </div>

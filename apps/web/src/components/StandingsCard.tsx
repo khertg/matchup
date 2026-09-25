@@ -2,6 +2,8 @@ import type { Ref } from 'react'
 import { ClubLogo } from '@/components/ClubLogo'
 import { MedalBadge } from '@/components/MedalBadge'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { useSessionTitle } from '@/lib/avatars'
+import type { CardColors } from '@/lib/cardPalette'
 import { cn } from '@/lib/utils'
 import { formatDiff, STANDINGS_PAGE_SIZE, type Standing } from '@/rotation/standings'
 
@@ -14,13 +16,15 @@ interface Props {
   date: string
   /** Shown only on the last page: the pair who played together most, if any pair repeated. */
   topPartnership?: { names: [string, string]; count: number }
+  /** The picked colours (see cardColors). */
+  colors: CardColors
   ref?: Ref<HTMLDivElement>
 }
 
 /**
- * One page of the ranked standings, sized for a messaging app share. Uses fixed colours, not
- * theme tokens, so the exported image looks the same in light and dark mode (same reasoning as
- * StatsCard). Same fixed width as StatsCard, so every shared image (one player or the whole
+ * One page of the ranked standings, sized for a messaging app share. Uses the picked fixed colours
+ * (`colors`), not theme tokens, so the exported image looks the same in light and dark mode (same
+ * reasoning as StatsCard). Shows the club's name when there is one. Same fixed width as StatsCard, so every shared image (one player or the whole
  * standings) looks consistent side by side in a chat.
  *
  * When there is more than one page, every page reserves the same `STANDINGS_PAGE_SIZE` row slots
@@ -31,15 +35,16 @@ interface Props {
  * different widths too, which is the "inconsistent size" this guards against. A lone page (no
  * set to match) is left to size itself naturally.
  */
-export function StandingsCard({ page, pageNumber, pageCount, location, date, topPartnership, ref }: Props) {
+export function StandingsCard({ page, pageNumber, pageCount, location, date, topPartnership, colors, ref }: Props) {
   const padded = pageCount > 1
   const rowSlots = padded ? STANDINGS_PAGE_SIZE : page.length
+  const title = useSessionTitle(location)
 
   return (
     <div
       ref={ref}
-      className="flex w-[360px] flex-col gap-4 p-6 text-white"
-      style={{ background: 'linear-gradient(135deg, #14532d 0%, #16a34a 100%)' }}
+      className="flex w-[360px] flex-col gap-4 p-6"
+      style={{ background: colors.background, color: colors.text }}
     >
       <div className="flex items-center justify-between text-sm font-semibold tracking-widest">
         <span className="flex items-center gap-2">
@@ -51,7 +56,7 @@ export function StandingsCard({ page, pageNumber, pageCount, location, date, top
 
       <div>
         <p className="text-2xl leading-tight font-bold">Standings</p>
-        <p className="text-sm opacity-90">{location}</p>
+        <p className="text-sm opacity-90">{title}</p>
         {pageCount > 1 && (
           <p className="text-xs uppercase tracking-wide opacity-70">
             Page {pageNumber} of {pageCount}
@@ -62,7 +67,7 @@ export function StandingsCard({ page, pageNumber, pageCount, location, date, top
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: rowSlots }, (_, i) => page[i]).map((row, i) =>
           row ? (
-            <div key={row.id} className="flex items-center gap-2 rounded-lg bg-white/15 px-2 py-1.5">
+            <div key={row.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: colors.panel }}>
               <span className="w-5 shrink-0 text-center text-sm font-bold">{row.rank}</span>
               <MedalBadge medal={row.medal} />
               <PlayerAvatar name={row.name} size="sm" />

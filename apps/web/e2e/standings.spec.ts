@@ -90,6 +90,9 @@ test('downloads a stats card image', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('Stats card')).toBeVisible()
   await expect(dialog.getByText('Gold medal')).toBeVisible()
+  // The session name is not a place: no "at Test Club". With no club it stands alone.
+  await expect(dialog.getByText('Finished #1', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Test Club', { exact: true })).toBeVisible()
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -120,6 +123,47 @@ test('downloads the whole standings as one image', async ({ page }) => {
   const bytes = readFileSync(await download.path())
   expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47])
   expect(bytes.length).toBeGreaterThan(1000)
+})
+
+test.describe('image colours', () => {
+  /** The shared image in a dialog (the swatches are buttons and labels, not divs). */
+  const card = (dialog: ReturnType<Page['getByRole']>) => dialog.locator('div[style*="linear-gradient"]').first()
+  const background = (dialog: ReturnType<Page['getByRole']>) => card(dialog).evaluate((el) => getComputedStyle(el).backgroundImage)
+  const textColour = (dialog: ReturnType<Page['getByRole']>) => card(dialog).evaluate((el) => getComputedStyle(el).color)
+
+  test('the picked preset colours the preview, is remembered, and applies to the stats card too', async ({ page }) => {
+    await singlesWithGames(page, 1)
+    await openStandings(page)
+    await page.getByRole('button', { name: 'Share standings' }).click()
+    let dialog = page.getByRole('dialog', { name: 'Share standings' })
+    const colours = dialog.getByRole('radiogroup', { name: 'Colour' })
+    await expect(colours.getByRole('radio', { name: 'Court' })).toHaveAttribute('aria-checked', 'true')
+    expect(await background(dialog)).toContain('rgb(20, 83, 45)') // #14532d
+
+    await colours.getByRole('radio', { name: 'Ocean' }).click()
+    await expect(colours.getByRole('radio', { name: 'Ocean' })).toHaveAttribute('aria-checked', 'true')
+    expect(await background(dialog)).toContain('rgb(30, 58, 138)') // #1e3a8a
+    await page.keyboard.press('Escape')
+
+    await page.reload()
+    await openStandings(page)
+    await page.getByRole('button', { name: 'Share card for Ann' }).click()
+    dialog = page.getByRole('dialog', { name: 'Stats card' })
+    await expect(dialog.getByRole('radio', { name: 'Ocean' })).toHaveAttribute('aria-checked', 'true')
+    expect(await background(dialog)).toContain('rgb(30, 58, 138)')
+  })
+
+  test('a light custom colour switches the text to dark', async ({ page }) => {
+    await singlesWithGames(page, 1)
+    await openStandings(page)
+    await page.getByRole('button', { name: 'Share standings' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Share standings' })
+    expect(await textColour(dialog)).toBe('rgb(255, 255, 255)')
+
+    await dialog.getByLabel('Custom colour').fill('#fde047')
+    await expect.poll(() => background(dialog)).toContain('rgb(253, 224, 71)')
+    expect(await textColour(dialog)).toBe('rgb(15, 23, 42)') // #0f172a
+  })
 })
 
 test('splits a large roster into several images of up to 10 players each', async ({ page }) => {

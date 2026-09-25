@@ -2,6 +2,7 @@ import { Download, Share2 } from 'lucide-react'
 import { toBlob } from 'html-to-image'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { CardColorPicker } from '@/components/CardColorPicker'
 import { StatsCard } from '@/components/StatsCard'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { cardColors, useCardChoice } from '@/lib/cardPalette'
 import { canShareNatively, downloadImages, shareImages } from '@/lib/share'
 import type { Standing } from '@/rotation/standings'
 
@@ -27,6 +29,7 @@ export function StatsCardDialog({ standing, location, date }: Props) {
   const cardRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
   const native = canShareNatively()
+  const colors = cardColors(useCardChoice((s) => s.choice))
 
   async function buildFile(): Promise<File> {
     if (!cardRef.current) throw new Error('no card')
@@ -72,8 +75,9 @@ export function StatsCardDialog({ standing, location, date }: Props) {
             A square image for Instagram, Facebook or WhatsApp.
           </DialogDescription>
         </DialogHeader>
+        <CardColorPicker />
         <div className="flex justify-center overflow-hidden rounded-lg">
-          <StatsCard ref={cardRef} standing={standing} location={location} date={date} />
+          <StatsCard ref={cardRef} standing={standing} location={location} date={date} colors={colors} />
         </div>
         <Button className="h-11 w-full" onClick={handleShare} disabled={busy}>
           {native ? <Share2 /> : <Download />} {busy ? 'Creating image…' : native ? 'Share card' : 'Download image'}
