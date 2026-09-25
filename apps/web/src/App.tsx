@@ -5,6 +5,7 @@ import { cloud } from '@/cloud/client'
 import { requiresLogin } from '@/cloud/gate'
 import { startCloudSync } from '@/cloud/sync'
 import { AvatarProvider } from '@/components/AvatarProvider'
+import { InstallBanner } from '@/components/InstallBanner'
 import { LoginGate } from '@/components/LoginGate'
 import { NavBar } from '@/components/NavBar'
 import { RecoveryCodeHost } from '@/components/RecoveryCodeHost'
@@ -35,6 +36,8 @@ export default function App() {
     <AvatarProvider viewerSlug={isViewerPath ? (viewerSlug ?? undefined) : undefined}>
     <NavBar />
     <main className="mx-auto max-w-5xl p-4 pb-24 sm:p-6 sm:pb-24">
+      {/* Staff only: the manifest starts at "/", so installing from the viewer would open the staff app. */}
+      {!isViewerPath && <InstallBanner />}
       {isViewerPath ? (
         viewerSlug ? (
           <ViewerScreen slug={viewerSlug} />

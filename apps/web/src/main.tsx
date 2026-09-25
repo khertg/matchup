@@ -6,6 +6,10 @@ import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from 'next-themes'
 import './index.css'
 import App from './App.tsx'
+import { listenForInstall } from './lib/install'
+
+// Before rendering: the browser can offer installation before React has mounted.
+listenForInstall()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
