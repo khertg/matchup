@@ -63,6 +63,10 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --color-team-blue: var(--team-blue);
+    --color-team-blue-soft: var(--team-blue-soft);
+    --color-team-orange: var(--team-orange);
+    --color-team-orange-soft: var(--team-orange-soft);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -89,6 +93,11 @@
     --accent: oklch(0.97 0 0);
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
+    /* The two sides of a game, shown by colour rather than by name. */
+    --team-blue: oklch(0.55 0.17 255);
+    --team-blue-soft: oklch(0.95 0.03 255);
+    --team-orange: oklch(0.66 0.17 50);
+    --team-orange-soft: oklch(0.96 0.035 60);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
@@ -125,6 +134,10 @@
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
+    --team-blue: oklch(0.66 0.09 255);
+    --team-blue-soft: oklch(0.25 0.025 255);
+    --team-orange: oklch(0.72 0.1 60);
+    --team-orange-soft: oklch(0.26 0.025 55);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);

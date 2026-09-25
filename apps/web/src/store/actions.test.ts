@@ -53,6 +53,32 @@ describe('rebase', () => {
     expect(result.session.players[3].name).toBe('Cy')
   })
 
+  it('renumbers a player taken out of Next up after a check-in got a different id', () => {
+    // Here Bob became 2 and was taken out of Next up onto a break; on the club, Zed already took 2.
+    const club = apply(base, checkIn('Zed'))
+    const pending: PendingAction[] = [
+      { action: checkIn('Bob', 'Cy', 'Dee', 'Eve'), ids: [2, 3, 4, 5] },
+      { action: { type: 'dropFromNextUp', playerId: 2, onBreak: true } },
+    ]
+    const result = rebase(club, pending)
+    expect(result.dropped).toEqual([])
+    expect(result.session.onBreak.map((id) => result.session.players[id].name)).toEqual(['Bob'])
+  })
+
+  it('renumbers a player taken off a court after a check-in got a different id', () => {
+    // Here Bob became 2 and was taken off the court; on the club, Zed already took 2.
+    const club = apply(base, checkIn('Zed'))
+    const pending: PendingAction[] = [
+      { action: checkIn('Bob', 'Cy', 'Dee'), ids: [2, 3, 4] },
+      { action: { type: 'startGame', courtId: 1, now: 0 } },
+      { action: { type: 'removeFromCourt', courtId: 1, playerId: 2, onBreak: false, now: 1000 } },
+    ]
+    const result = rebase(club, pending)
+    expect(result.dropped).toEqual([])
+    expect(names(result.session)[0]).toBe('Bob')
+    expect(result.session.courts[0].pausedAt).toBe(1000)
+  })
+
   it('drops a change that no longer applies, and says why', () => {
     const playing = apply(base, checkIn('Bob', 'Cy', 'Dee'), { type: 'startGame', courtId: 1, now: 0 })
     const club = apply(playing, { type: 'recordScore', courtId: 1, scoreA: 11, scoreB: 2, now: 0 })

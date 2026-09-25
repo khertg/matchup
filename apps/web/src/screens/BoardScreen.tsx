@@ -4,15 +4,16 @@ import { CourtGrid } from '@/components/CourtGrid'
 import { MatchLog } from '@/components/MatchLog'
 import { NextUpCard, type NextUpLane } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
+import type { Candidate } from '@/components/ReplacePlayerDialog'
 import { waitingMessage } from '@/lib/nextUp'
+import { playerStatuses } from '@/lib/playerStatus'
 import { levelLabel } from '@/lib/skill'
+import { TEAM_NAMES } from '@/lib/teams'
 import { useSkillEditor } from '@/lib/useSkillEditor'
-import { isNextUpPicked, nextGroup, nextGroups, type NextGroup } from '@/rotation/engine'
-import { hasLevelCourts, inLevels, sameLevels } from '@/rotation/levels'
+import { isNextUpPicked, nextGroup, nextGroups, nextUpSpots, nextUpStandIn, type NextGroup } from '@/rotation/engine'
+import { hasLevelCourts, sameLevels } from '@/rotation/levels'
 import type { Court, SessionState, Teams } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
-
-const TEAM_NAMES = ['Team A', 'Team B']
 
 export function BoardScreen({ session }: { session: SessionState }) {
   const recordScore = useSessionStore((s) => s.recordScore)
@@ -21,6 +22,10 @@ export function BoardScreen({ session }: { session: SessionState }) {
   const replacePlayer = useSessionStore((s) => s.replacePlayer)
   const replaceNextUp = useSessionStore((s) => s.replaceNextUp)
   const resetNextUp = useSessionStore((s) => s.resetNextUp)
+  const dropFromNextUp = useSessionStore((s) => s.dropFromNextUp)
+  const removeFromCourt = useSessionStore((s) => s.removeFromCourt)
+  const fillCourtSpot = useSessionStore((s) => s.fillCourtSpot)
+  const fillNextUpSpot = useSessionStore((s) => s.fillNextUpSpot)
   const startGame = useSessionStore((s) => s.startGame)
   const checkOutPlayer = useSessionStore((s) => s.checkOutPlayer)
   const editMatch = useSessionStore((s) => s.editMatch)
@@ -45,15 +50,18 @@ export function BoardScreen({ session }: { session: SessionState }) {
   }
   const nextUpIds = lanes.flatMap((lane) => lane.group?.players ?? [])
   const levelLanes: NextUpLane[] | undefined = byLevel
-    ? lanes.map((lane) => ({
+    ? lanes.map((lane, index) => ({
         label: levelLabel(lane.levels) ?? 'Any level',
         nextUp: lane.group?.players ?? [],
         emptyMessage: waitingMessage(session, lane.levels),
-        waiting: session.queue
-          .filter((id) => !lane.group?.players.includes(id) && inLevels(session.players[id]?.skill ?? 0, lane.levels))
-          .map((id) => session.players[id]),
+        spots: nextUpSpots(session, index),
       }))
     : undefined
+  // Everyone, with where they are right now: any of them can be swapped in from any card.
+  const statuses = playerStatuses(session, lanes)
+  const candidates: Candidate[] = statuses.map((status) => ({ player: session.players[status.id], status }))
+  const statusOf = (id: number) => statuses.find((s) => s.id === id)
+  const slotsPerTeam = session.mode === 'doubles' ? 2 : 1
 
   const courtName = (courtId: number) =>
     session.courts.find((c) => c.id === courtId)?.name ?? `Court ${courtId}`
@@ -78,8 +86,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
   }
 
   function handleCancel(courtId: number) {
+    const staged = session.courts.find((c) => c.id === courtId)?.notStarted
     cancelMatch(courtId)
-    toast(`${courtName(courtId)}: game cancelled`)
+    toast(`${courtName(courtId)}: ${staged ? 'cleared' : 'game cancelled'}`)
   }
 
   function handleStart(courtId: number, options?: { ignoreMode?: boolean }) {
@@ -92,23 +101,89 @@ export function BoardScreen({ session }: { session: SessionState }) {
     [...session.partners, ...(session.pendingPartners ?? []).map(({ pair }) => pair)].some((pair) => pair.includes(id))
 
   function handleReplace(courtId: number, outId: number, inId: number, sendOnBreak: boolean) {
+    const from = statusOf(inId)
+    const out = session.players[outId].name
+    const into = session.players[inId].name
+    if (from?.place === 'court') {
+      const wasLocked = hasLock(outId) || hasLock(inId)
+      replacePlayer(courtId, outId, inId)
+      const where =
+        from.courtId === courtId ? `on ${courtName(courtId)}` : `(${courtName(courtId)} ↔ ${courtName(from.courtId!)})`
+      toast(`${into} and ${out} traded places ${where}.` + (wasLocked ? ' Partner locks were removed.' : ''))
+      return
+    }
     const wasLocked = hasLock(outId)
     replacePlayer(courtId, outId, inId, { sendOnBreak })
-    const out = session.players[outId].name
     toast(
-      `${session.players[inId].name} replaced ${out}. ${out} ${sendOnBreak ? 'is on a break' : 'is first in the queue'}.` +
+      `${into}${from?.place === 'break' ? ' is back from a break and' : ''} replaced ${out}. ` +
+        `${out} ${sendOnBreak ? 'is on a break' : from?.place === 'nextUp' ? `takes ${into}'s spot in Next up` : 'is first in the queue'}.` +
         (wasLocked ? ' Their partner lock was removed.' : ''),
     )
   }
 
   function handleReplaceNextUp(outId: number, inId: number) {
-    const wasLocked = hasLock(outId) || hasLock(inId)
+    const from = statusOf(inId)
+    const out = session.players[outId].name
+    const into = session.players[inId].name
+    const sameGroup = from?.place === 'nextUp' && from.lane === statusOf(outId)?.lane
+    const wasLocked = !sameGroup && (hasLock(outId) || hasLock(inId))
     replaceNextUp(outId, inId)
+    const message = sameGroup
+      ? `${into} and ${out} changed places in Next up.`
+      : from?.place === 'court'
+        ? `${into} and ${out} traded places: ${out} is on ${courtName(from.courtId!)}, ${into} is next up.`
+        : from?.place === 'break'
+          ? `${into} is back from a break and next up instead of ${out}.`
+          : `${into} is next up instead of ${out}.`
+    toast(message + (wasLocked ? ' Partner locks were removed.' : ''))
+  }
+
+  /** Take a player off a court: their spot stays open and the game pauses until someone fills it. */
+  function handleOffCourt(courtId: number, outId: number, onBreak: boolean) {
+    const wasLocked = hasLock(outId)
+    const staged = session.courts.find((c) => c.id === courtId)?.notStarted
+    removeFromCourt(courtId, outId, onBreak)
+    const out = session.players[outId].name
     toast(
-      `${session.players[inId].name} is next up instead of ${session.players[outId].name}.` +
-        (wasLocked ? ' Partner locks were removed.' : ''),
+      `${out} is off ${courtName(courtId)} and ${onBreak ? 'on a break' : 'first in the queue'}.` +
+        (staged ? '' : ' The game is paused until the spot is filled.') +
+        (wasLocked ? ' Their partner lock was removed.' : ''),
     )
   }
+
+  /** Put someone in an open spot on a court: a game missing a player, or a court being set up by hand. */
+  function handleFill(courtId: number, team: 0 | 1, inId: number) {
+    const court = session.courts.find((c) => c.id === courtId)
+    fillCourtSpot(courtId, team, inId)
+    const lastSpot = (court?.teams?.flat().length ?? 0) === slotsPerTeam * 2 - 1
+    const after = !lastSpot ? '' : court?.teams && !court.notStarted ? ' The game is back on.' : ' Ready to start.'
+    toast(`${session.players[inId].name} is on ${courtName(courtId)}.${after}`)
+  }
+
+  function handleFillNextUp(lane: number, slot: number, inId: number) {
+    fillNextUpSpot(lane, slot, inId)
+    toast(`${session.players[inId].name} is pinned to Next up.`)
+  }
+
+  /** Take a player out of Next up: a stand-in takes their spot and the rest of the group stays. */
+  function handleOffNextUp(outId: number, onBreak: boolean) {
+    const standIn = nextUpStandIn(session, outId)
+    const out = session.players[outId].name
+    dropFromNextUp(outId, onBreak)
+    if (!nextUpIds.includes(outId)) {
+      // Pinned into a group that has not formed yet: their spot is simply open again.
+      toast(onBreak ? `${out} is on a break.` : `${out} is no longer pinned to Next up.`)
+      return
+    }
+    const instead = standIn === undefined ? '' : `${session.players[standIn].name} is next up instead`
+    toast(onBreak ? `${out} is on a break.${instead ? ` ${instead}.` : ''}` : `${instead} of ${out}.`)
+  }
+
+  /** Why a Next up player cannot be removed: nobody is waiting outside the groups (in their level range). */
+  const nextUpRemoveBlocked = (id: number) =>
+    nextUpIds.includes(id) && nextUpStandIn(session, id) === undefined
+      ? 'No one else is waiting to take their spot'
+      : undefined
 
   function handleEditScore(matchIndex: number, score: [number, number]) {
     editMatch(matchIndex, { score })
@@ -128,13 +203,17 @@ export function BoardScreen({ session }: { session: SessionState }) {
             key={court.id}
             court={court}
             players={session.players}
-            queue={session.queue}
+            candidates={candidates}
+            slotsPerTeam={slotsPerTeam}
             partners={session.partners}
             startState={startStateFor(court)}
             waitingMessage={waitingMessage(session, court.levels)}
             nextHere={nextHereFor(court)}
             onStart={(options) => handleStart(court.id, options)}
             onReplace={(outId, inId, options) => handleReplace(court.id, outId, inId, options.sendOnBreak)}
+            onRemove={(id) => handleOffCourt(court.id, id, false)}
+            onTakeBreak={(id) => handleOffCourt(court.id, id, true)}
+            onFill={(team, inId) => handleFill(court.id, team, inId)}
             onSkillChange={changeSkill}
             onScore={(a, b) => handleScore(court.id, a, b)}
             onCancel={() => handleCancel(court.id)}
@@ -143,10 +222,16 @@ export function BoardScreen({ session }: { session: SessionState }) {
       </CourtGrid>
       <NextUpCard
         nextUp={group?.players ?? []}
+        spots={nextUpSpots(session, 0)}
         players={session.players}
         emptyMessage={waitingMessage(session)}
-        waiting={session.queue.filter((id) => !group?.players.includes(id)).map((id) => session.players[id])}
+        candidates={candidates}
+        slotsPerTeam={slotsPerTeam}
         onReplace={handleReplaceNextUp}
+        onRemove={(id) => handleOffNextUp(id, false)}
+        onTakeBreak={(id) => handleOffNextUp(id, true)}
+        removeBlocked={nextUpRemoveBlocked}
+        onFillSpot={handleFillNextUp}
         picked={isNextUpPicked(session)}
         onReset={resetNextUp}
         onSkillChange={changeSkill}

@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { checkIn, openSessionMenu, recordWin, startGame, startSession } from './helpers'
+import { checkIn, openSessionMenu, recordWin, startGame, startSession, playerAction } from './helpers'
 import { TINY_PNG, avatarOf, openAvatarEditor, queueRow, setEmojiAvatar, setPhotoAvatar, viewAvatar } from './avatarHelpers'
 
 const color = (locator: Locator) => locator.first().evaluate((el) => (el as HTMLElement).style.backgroundColor)
@@ -293,7 +293,7 @@ test('the Replace dialog rows have room around the avatar', async ({ page }) => 
   await startSession(page)
   await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
   await startGame(page)
-  await page.getByRole('region', { name: 'Court 1' }).getByRole('button', { name: 'Replace Ann' }).click()
+  await playerAction(page.getByRole('region', { name: 'Court 1' }), 'Ann', 'Swap…')
   const option = page.getByRole('dialog').getByRole('button', { name: /Eve/ })
   const row = (await option.boundingBox())!
   const avatar = (await avatarOf(option, 'Eve').boundingBox())!

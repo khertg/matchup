@@ -84,7 +84,7 @@ function EditScoreForm({ courtName, teamNames, score, onOpenChange, onSubmit }: 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="edit-score-a">Team A score</Label>
+            <Label htmlFor="edit-score-a">Blue score</Label>
             <TeamPlayers names={teamNames[0]} />
             <Input
               id="edit-score-a"
@@ -98,7 +98,7 @@ function EditScoreForm({ courtName, teamNames, score, onOpenChange, onSubmit }: 
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-score-b">Team B score</Label>
+            <Label htmlFor="edit-score-b">Orange score</Label>
             <TeamPlayers names={teamNames[1]} />
             <Input
               id="edit-score-b"

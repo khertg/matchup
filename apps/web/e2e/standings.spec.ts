@@ -2,14 +2,14 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
-/** Singles on one court: Ann is always Team A, so "Team A won" makes Ann win every time. */
+/** Singles on one court: Ann is always Blue, so "Blue won" makes Ann win every time. */
 async function singlesWithGames(page: Page, teamAWins: number) {
   await startSession(page, { mode: 'Singles' })
   await checkIn(page, ['Ann', 'Bob'])
   for (let i = 0; i < teamAWins; i++) {
     await startGame(page)
     await recordWin(page)
-    await expect(page.getByText('Court 1: Team A won').first()).toBeVisible()
+    await expect(page.getByText('Court 1: Blue won').first()).toBeVisible()
   }
 }
 

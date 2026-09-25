@@ -99,12 +99,20 @@ interface SessionStore {
   /** Close a court. A game in progress is cancelled and its players return to the front of the queue. */
   closeCourt: (courtId: number) => void
   /**
-   * Swap a playing player for a waiting one (defaults to the front of the queue). The player who
-   * comes off goes to the front of the queue, or on a break with `sendOnBreak`.
+   * Swap a playing player for anyone else (defaults to the front of the queue). One from the queue or a
+   * break sends the other to the front of the queue (or on a break with `sendOnBreak`); two on courts trade places.
    */
   replacePlayer: (courtId: number, outId: number, inId?: number, options?: ReplacePlayerOptions) => void
-  /** Put a waiting player in the next group in place of one of its players. The group stays as chosen. */
+  /** Put anyone in the next group in the spot of one of its players (see the engine). The group stays as chosen. */
   replaceNextUp: (outId: number, inId: number) => void
+  /** Take a player out of the next group: a stand-in takes their spot; they keep their queue place, or go on a break. */
+  dropFromNextUp: (playerId: number, onBreak: boolean) => void
+  /** Take a player off a court, leaving the spot open and the game paused; they go to the front of the queue or on a break. */
+  removeFromCourt: (courtId: number, playerId: number, onBreak: boolean) => void
+  /** Put a waiting (or resting) player in an open spot on a team; the game runs again once the court is full. */
+  fillCourtSpot: (courtId: number, team: 0 | 1, playerId: number) => void
+  /** Pin a waiting (or resting) player into an open Next up spot of a lane; the group forms around them. */
+  fillNextUpSpot: (lane: number, slot: number, playerId: number) => void
   /** Go back to the automatic next group. */
   resetNextUp: () => void
   /** Lock two checked-in players as doubles partners. */
@@ -299,7 +307,18 @@ export const useSessionStore = create<SessionStore>()(
             null,
           ),
 
-        replaceNextUp: (outId, inId) => dispatch({ type: 'replaceNextUp', outId, inId }, null),
+        replaceNextUp: (outId, inId) => dispatch({ type: 'replaceNextUp', outId, inId, now: Date.now() }, null),
+
+        dropFromNextUp: (playerId, onBreak) => dispatch({ type: 'dropFromNextUp', playerId, onBreak }, null),
+
+        removeFromCourt: (courtId, playerId, onBreak) =>
+          dispatch({ type: 'removeFromCourt', courtId, playerId, onBreak, now: Date.now() }, null),
+
+        fillCourtSpot: (courtId, team, playerId) =>
+          dispatch({ type: 'fillCourtSpot', courtId, team, playerId, now: Date.now() }, null),
+
+        fillNextUpSpot: (lane, slot, playerId) =>
+          dispatch({ type: 'fillNextUpSpot', lane, slot, playerId, now: Date.now() }, null),
 
         resetNextUp: () => dispatch({ type: 'resetNextUp' }, null),
 

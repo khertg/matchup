@@ -22,7 +22,7 @@ async function signInAndPlay(page: Page, club: TestClub, location: string) {
   await checkIn(page, ['Ann', 'Bob'])
   await startGame(page)
   await recordWin(page)
-  await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+  await expect(page.getByText('Court 1: Blue won')).toBeVisible()
 }
 
 async function end(page: Page) {
@@ -93,7 +93,7 @@ test.describe('history in the club cloud', () => {
     await second.getByRole('tab', { name: 'Board' }).click()
     await startGame(second)
     await recordWin(second)
-    await expect(second.getByText('Court 1: Team A won').last()).toBeVisible()
+    await expect(second.getByText('Court 1: Blue won').last()).toBeVisible()
     await end(second, false)
     await expect.poll(async () => (await history(request, token)()).map((s) => s.games)).toEqual([2])
 
@@ -165,7 +165,7 @@ test.describe('history in the club cloud', () => {
 
     await startGame(second)
     await recordWin(second)
-    await expect(second.getByText('Court 1: Team A won').last()).toBeVisible()
+    await expect(second.getByText('Court 1: Blue won').last()).toBeVisible()
     await end(second, true)
 
     await expect.poll(async () => (await clubPlayers(request, club.slug)()).find((p) => p.name === 'Ann')?.games).toBe(2)

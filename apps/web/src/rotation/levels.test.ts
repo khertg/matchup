@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillLevel } from '@/db/db'
-import { checkIn, createSession, lockPartners, nextGroup, nextGroups, replaceNextUp, setCourtLevels, startGame } from './engine'
+import {
+  checkIn,
+  createSession,
+  dropFromNextUp,
+  lockPartners,
+  nextGroup,
+  nextGroups,
+  nextUpStandIn,
+  replaceNextUp,
+  setCourtLevels,
+  startGame,
+} from './engine'
 import { lanesOf, normalizeLevels } from './levels'
 import type { SessionState } from './types'
 
@@ -118,8 +129,23 @@ describe('lanes', () => {
     expect(ids(nextGroup(s, { courtId: 1 }))).toEqual([1, 3, 5, 9])
   })
 
-  it('refuses a swap that would put someone out of range into a group', () => {
+  it('takes a stand-in from the same level range, never from another group', () => {
+    // High: 1, 3, 5, 7 next up; 9 waits. Low: 2, 4, 6, 8 next up; 10 waits.
+    const s = split([5, 2, 6, 1, 4, 3, 5, 2, 6, 1])
+    expect(nextUpStandIn(s, 1)).toBe(9)
+    expect(nextUpStandIn(s, 2)).toBe(10)
+    const t = dropFromNextUp(s, 2)
+    const [high, low] = nextGroups(t)
+    expect(ids(low.group)).toEqual([4, 6, 8, 10])
+    expect(ids(high.group)).toEqual([1, 3, 5, 7])
+  })
+
+  it('keeps a group with someone out of range, as staff chose it, in the lane it came from', () => {
     const s = split([5, 2, 6, 1, 4, 3, 5, 2])
-    expect(() => replaceNextUp(s, 1, 2)).toThrow('level range')
+    const [high] = nextGroups(s)
+    const picked = replaceNextUp(s, 1, 2)
+    const [pickedHigh, pickedLow] = nextGroups(picked)
+    expect(pickedHigh.group!.players).toEqual(high.group!.players.map((id) => (id === 1 ? 2 : id)))
+    expect(pickedLow.group?.players ?? []).not.toContain(2)
   })
 })

@@ -147,6 +147,11 @@ describe('parsePublicSnapshot', () => {
     })
   })
 
+  it('keeps a game with an open spot (a player was removed and the game is paused)', () => {
+    const short = { ...good(), courts: [{ id: 1, name: 'Court 1', teams: [[1], [3, 4]] }] }
+    expect(parsePublicSnapshot(short)!.courts[0].teams).toEqual([[1], [3, 4]])
+  })
+
   describe('court skill levels', () => {
     const withLevels = (levels: unknown) => ({
       ...good(),

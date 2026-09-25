@@ -84,7 +84,10 @@ test.describe('partner locking', () => {
     const court = page.getByRole('region', { name: 'Court 1' })
     await expect(court.getByText('Open')).toBeVisible()
     // Next up already shows the pair together.
-    const preview = page.getByRole('group', { name: 'Next up' }).locator('div.rounded-lg').filter({ hasText: 'Ann' })
+    const preview = page
+      .getByRole('group', { name: 'Next up' })
+      .getByRole('group', { name: /^(Blue|Orange)$/ })
+      .filter({ hasText: 'Ann' })
     await expect(preview.getByText('Cy')).toBeVisible()
     await startGame(page)
     const annsTeam = court.getByRole('group').filter({ has: page.getByText('Ann') })

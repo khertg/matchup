@@ -2,13 +2,13 @@ import { expect, test, type Page } from '@playwright/test'
 import { queueRow } from './avatarHelpers'
 import { checkIn, openSessionMenu, startGame, startSession, recordWin } from './helpers'
 
-/** Singles on one court: Ann is Team A, so "Team A won" gives Ann the win. */
+/** Singles on one court: Ann is Blue, so "Blue won" gives Ann the win. */
 async function playOneGame(page: Page, location = 'Sunset Club') {
   await startSession(page, { location, mode: 'Singles' })
   await checkIn(page, ['Ann', 'Bob'])
   await startGame(page)
   await recordWin(page)
-  await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+  await expect(page.getByText('Court 1: Blue won')).toBeVisible()
 }
 
 async function endAndSave(page: Page) {
@@ -159,7 +159,7 @@ test.describe('resuming a session', () => {
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve'])
     await startGame(page, 'Court 1')
     await recordWin(page)
-    await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+    await expect(page.getByText('Court 1: Blue won')).toBeVisible()
     await startGame(page, 'Court 2') // Cy v Dee is on court when it ends
     await openSessionMenu(page)
     await page.getByRole('button', { name: 'End session' }).click()
@@ -242,7 +242,7 @@ test.describe('resuming a session', () => {
 
     await startGame(page)
     await recordWin(page)
-    await expect(page.getByText('Court 1: Team A won').last()).toBeVisible()
+    await expect(page.getByText('Court 1: Blue won').last()).toBeVisible()
     await endAndSave(page)
 
     list = await openPast(page)
@@ -259,7 +259,7 @@ test.describe('resuming a session', () => {
     await page.getByRole('dialog', { name: 'Careful' }).getByRole('button', { name: 'Resume this session' }).click()
     await startGame(page)
     await recordWin(page)
-    await expect(page.getByText('Court 1: Team A won').last()).toBeVisible()
+    await expect(page.getByText('Court 1: Blue won').last()).toBeVisible()
     await endAndSave(page)
 
     await page.getByRole('button', { name: 'Lifetime leaderboard' }).click()

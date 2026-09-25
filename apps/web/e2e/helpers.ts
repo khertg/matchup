@@ -1,4 +1,17 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
+
+/** A team's name as the app shows it: the first team (A) is Blue, the second (B) Orange. */
+export const teamName = (team: 'A' | 'B') => (team === 'A' ? 'Blue' : 'Orange')
+
+/**
+ * Open a player's ⋮ menu on a card (a court, or Next up) and choose one of its items. The menu opens
+ * in a popover outside the card, so the item is found on the page.
+ */
+export async function playerAction(scope: Locator | Page, name: string, item: 'Swap…' | 'Remove' | 'Take a break') {
+  await scope.getByRole('button', { name: `Options for ${name}` }).click()
+  const page = 'page' in scope ? scope.page() : scope
+  await page.locator('[data-slot="popover-content"]').getByRole('button', { name: item }).click()
+}
 
 /** Open a shadcn Select by its label and pick an option by name. */
 export async function choose(page: Page, label: string | RegExp, option: string | RegExp) {
@@ -76,11 +89,11 @@ export async function recordWin(
   const [a, b] = score ?? (winner === 'A' ? [11, 5] : [5, 11])
   await page
     .getByRole('region', { name: courtName, exact: true })
-    .getByRole('button', { name: `Team ${winner} won` })
+    .getByRole('button', { name: `${teamName(winner)} won` })
     .click()
-  const dialog = page.getByRole('dialog', { name: `Team ${winner} won` })
-  await dialog.getByLabel('Team A score').fill(String(a))
-  await dialog.getByLabel('Team B score').fill(String(b))
+  const dialog = page.getByRole('dialog', { name: `${teamName(winner)} won` })
+  await dialog.getByLabel('Blue score').fill(String(a))
+  await dialog.getByLabel('Orange score').fill(String(b))
   await dialog.getByRole('button', { name: 'Record score' }).click()
   await expect(dialog).toHaveCount(0)
 }

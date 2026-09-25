@@ -1,5 +1,6 @@
 import { MAX_COURT_NAME_LENGTH, MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
 import type { SkillLevel } from '../db/db'
+import { TEAM_NAMES } from '../lib/teams'
 import { partnerOf, selectGroup, splitGroup } from '../matchmaking/grouping'
 import { hasLevelCourts, inLevels, laneQueue, lanesOf, normalizeLevels, sameLevels, type LevelRange } from './levels'
 import type {
@@ -307,7 +308,7 @@ export function nextGroup(state: SessionState, options: NextGroupOptions = {}): 
     const court = findCourt(state, options.courtId)
     return nextGroups(state, options).find((lane) => sameLevels(lane.levels, court.levels))?.group ?? null
   }
-  return pickedGroup(state) ?? groupFrom(state, state.queue, options)
+  return pickedGroup(state) ?? (validPick(state) ? null : groupFrom(state, state.queue, options))
 }
 
 /** The group formed from these waiting players (in queue order), ignoring any staff choice. */
@@ -332,11 +333,10 @@ function groupFrom(state: SessionState, queue: number[], options: NextGroupOptio
 export function nextGroups(state: SessionState, options: Omit<NextGroupOptions, 'courtId'> = {}): Lane[] {
   if (!hasLevelCourts(state)) return [{ levels: undefined, group: nextGroup(state, options) }]
   const lanes = lanesOf(state.courts)
-  const picked = pickedGroup(state)
-  const fitsPick = (levels: LevelRange | undefined) =>
-    !!picked && picked.players.every((id) => inLevels(state.players[id]?.skill ?? 0, levels))
-  const pickLane = picked ? lanes.findIndex(fitsPick) : -1
-  const taken = new Set<number>(pickLane === -1 ? [] : picked!.players)
+  const pickLane = pickLaneOf(state, lanes)
+  const picked = pickLane === -1 ? null : pickedGroup(state, lanes[pickLane])
+  // The staff's choice is served first; while it cannot be completed its pinned players stay reserved.
+  const taken = new Set<number>(pickLane === -1 ? [] : (picked?.players ?? pinsOf(state)))
   return lanes.map((levels, index) => {
     if (index === pickLane) return { levels, group: picked }
     const group = groupFrom(state, laneQueue(state, levels, taken), options)
@@ -345,17 +345,93 @@ export function nextGroups(state: SessionState, options: Omit<NextGroupOptions, 
   })
 }
 
-/** The staff-chosen group, split into teams, while all of it is still waiting; otherwise null. */
-function pickedGroup(state: SessionState): NextGroup | null {
+/**
+ * The staff's choice for the next group, while it still holds: one spot per player (Team A, then
+ * Team B), each a pinned player who is still waiting or null for a spot to fill automatically, and
+ * at least one pinned. Otherwise undefined.
+ */
+function validPick(state: SessionState): (number | null)[] | undefined {
   const pick = state.nextUpPick
-  if (!pick || pick.length !== playersPerCourt(state.mode)) return null
-  if (new Set(pick).size !== pick.length || !pick.every((id) => state.queue.includes(id))) return null
-  const teams: Teams = state.mode === 'singles' ? [[pick[0]], [pick[1]]] : splitGroup(state, pick)
+  if (!pick || pick.length !== playersPerCourt(state.mode)) return undefined
+  const pins = pick.filter((id): id is number => id !== null)
+  if (pins.length === 0 || new Set(pins).size !== pins.length) return undefined
+  return pins.every((id) => state.queue.includes(id)) ? pick : undefined
+}
+
+const pinsOf = (state: SessionState) => (validPick(state) ?? []).filter((id): id is number => id !== null)
+
+/**
+ * Which lane the staff's choice belongs to (-1 if none): the first whose range takes every pinned
+ * player. Staff may also have put someone out of range in; then it stays with the lane that takes
+ * most of them (the one it was chosen from), never silently dropped.
+ */
+function pickLaneOf(state: SessionState, lanes: (LevelRange | undefined)[]): number {
+  const pins = pinsOf(state)
+  if (pins.length === 0) return -1
+  const inRange = (levels: LevelRange | undefined) =>
+    pins.filter((id) => inLevels(state.players[id]?.skill ?? 0, levels)).length
+  const fullLane = lanes.findIndex((levels) => inRange(levels) === pins.length)
+  return fullLane !== -1 ? fullLane : lanes.reduce((best, levels, i) => (inRange(levels) > inRange(lanes[best]) ? i : best), 0)
+}
+
+/**
+ * The staff-chosen group while all of it is still waiting; otherwise null. It is kept exactly as
+ * staff set it (Team A, then Team B), so changing one player never reshuffles the others; its open
+ * spots are filled, in order, by the first waiting players in range who are not pinned (null while
+ * too few are waiting). Only a lock made since that puts two of them on opposite teams has it split again.
+ */
+function pickedGroup(state: SessionState, levels?: LevelRange): NextGroup | null {
+  const pick = validPick(state)
+  if (!pick) return null
+  const fill = state.queue.filter((id) => !pick.includes(id) && inLevels(state.players[id]?.skill ?? 0, levels))
+  let next = 0
+  const full = pick.map((id) => id ?? fill[next++])
+  if (full.some((id) => id === undefined)) return null
+  const players = full as number[]
+  const half = players.length / 2
+  const asSet: Teams = [players.slice(0, half), players.slice(half)]
+  const splitsLock = state.partners.some(
+    ([a, b]) => players.includes(a) && players.includes(b) && asSet[0].includes(a) !== asSet[0].includes(b),
+  )
+  const teams = splitsLock ? splitGroup(state, players) : asSet
   return { players: teams.flat(), teams }
 }
 
-/** Whether the next group is one staff chose, rather than the automatic pick. */
-export const isNextUpPicked = (state: SessionState) => pickedGroup(state) !== null
+/** Whether the next group is one staff chose (or pinned players into), rather than the automatic pick. */
+export const isNextUpPicked = (state: SessionState) => validPick(state) !== undefined
+
+/**
+ * What a lane's Next up spots hold while its group cannot be formed yet: the players staff pinned,
+ * in their spots, and null for each open one. All null when staff pinned nobody there.
+ */
+export function nextUpSpots(state: SessionState, laneIndex: number): (number | null)[] {
+  const lanes = hasLevelCourts(state) ? lanesOf(state.courts) : [undefined]
+  const pick = validPick(state)
+  if (pick && pickLaneOf(state, lanes) === laneIndex) return [...pick]
+  return Array<number | null>(playersPerCourt(state.mode)).fill(null)
+}
+
+/**
+ * Pin a player into an open spot of a lane's Next up (its spots are Team A, then Team B). They can be
+ * waiting, or on a break (they come back to the end of the queue); not on a court. The group then
+ * forms around them as soon as enough players in range are waiting. Pinning into another lane than
+ * the current choice's starts a new one there.
+ */
+export function fillNextUpSpot(
+  state: SessionState,
+  laneIndex: number,
+  slot: number,
+  playerId: number,
+  now?: number,
+): SessionState {
+  if (courtWithPlayer(state, playerId)) throw new Error('Choose a player who is waiting or on a break')
+  const back = state.onBreak.includes(playerId) ? checkIn(state, state.players[playerId], now) : state
+  if (!back.queue.includes(playerId)) throw new Error('Choose a player who is waiting or on a break')
+  const spots = nextUpSpots(back, laneIndex).map((id) => (id === playerId ? null : id))
+  if (slot < 0 || slot >= spots.length || spots[slot] !== null) throw new Error('That spot is not open')
+  spots[slot] = playerId
+  return { ...back, nextUpPick: spots }
+}
 
 /** The state without a staff-chosen group. Anything that changes who is waiting or playing ends the choice. */
 function withoutPick(state: SessionState): SessionState {
@@ -369,29 +445,94 @@ function withoutPickIncluding(state: SessionState, playerId: number): SessionSta
   return state.nextUpPick?.includes(playerId) ? withoutPick(state) : state
 }
 
+/** The next group (of any level lane) that has this player, if any. */
+function groupWith(state: SessionState, playerId: number): NextGroup | undefined {
+  return nextGroups(state).find((lane) => lane.group?.players.includes(playerId))?.group ?? undefined
+}
+
 /**
- * Change who is in the next group: `inId` (waiting, not already in it) takes the place of `outId`
- * (in it). `outId` stays in the queue where they were. The group is kept as chosen until a game
- * starts or one of them leaves the queue. Locked pairs of both players are dissolved, since a pair
- * cannot stay together across the change.
+ * Change who is in the next group: `inId` takes the exact spot of `outId` (in it), and the group is
+ * then kept as chosen until a game starts or one of them leaves the queue. `inId` can be anyone in
+ * the session, whatever their level:
+ * - waiting (in another level's group or not): `outId` stays in the queue where they were;
+ * - in the same group: the two change places, for example to change teams;
+ * - on a break: they come back to the end of the queue;
+ * - on a court: the two trade places. `outId` goes onto that court in their spot, and `inId` waits
+ *   where `outId` was in the queue.
+ * Locked pairs of both players are dissolved, since a pair cannot stay together across the change
+ * (two players of one group changing places keep theirs).
  */
-export function replaceNextUp(state: SessionState, outId: number, inId: number): SessionState {
-  // With level courts, the group is the lane's that has this player, and the newcomer must be in its range.
+export function replaceNextUp(state: SessionState, outId: number, inId: number, now?: number): SessionState {
+  if (!groupWith(state, outId) && pinsOf(state).includes(outId)) return replacePin(state, outId, inId, now)
+  if (nextGroups(state).every((l) => !l.group)) throw new Error('There is no next group to change')
+  const group = groupWith(state, outId)
+  if (!group) throw new Error(`Player ${outId} is not in the next group`)
+  if (inId === outId || !state.players[inId]) throw new Error('The replacement must be another player of this session')
+  const trade = (id: number) => (id === outId ? inId : id === inId ? outId : id)
+  const pick = group.players.map(trade)
+  if (group.players.includes(inId)) return { ...state, nextUpPick: pick }
+
+  const court = courtWithPlayer(state, inId)
+  if (court) {
+    const waited = { ...court.waited, ...waitedSeconds(state.queuedAt, [outId], now) }
+    delete waited[inId]
+    const traded: SessionState = {
+      ...withoutLocks(state, [outId, inId]),
+      courts: state.courts.map((c) => (c.id === court.id ? withTeams(c, tradeTeams(c.teams!, trade), waited) : c)),
+      queue: state.queue.map(trade),
+      nextUpPick: pick,
+    }
+    return withQueuedAt(withoutQueuedAt(traded, [outId]), [inId], now)
+  }
+  const back = state.onBreak.includes(inId) ? checkIn(state, state.players[inId], now) : state
+  if (!back.queue.includes(inId)) throw new Error('The replacement must be another player of this session')
+  return { ...withoutLocks(back, [outId, inId]), nextUpPick: pick }
+}
+
+/**
+ * Swap a player pinned into a group that has not formed yet: `inId` (waiting, on a break, or pinned
+ * too, when the two change spots) takes their spot, and `outId` stays in the queue.
+ */
+function replacePin(state: SessionState, outId: number, inId: number, now?: number): SessionState {
+  if (inId === outId || courtWithPlayer(state, inId)) throw new Error('Choose a player who is waiting or on a break')
+  const back = state.onBreak.includes(inId) ? checkIn(state, state.players[inId], now) : state
+  if (!back.queue.includes(inId)) throw new Error('Choose a player who is waiting or on a break')
+  const trade = (id: number | null) => (id === outId ? inId : id === inId ? outId : id)
+  return { ...back, nextUpPick: validPick(state)!.map(trade) }
+}
+
+/**
+ * Who would take this next-up player's spot if they were removed: the first waiting player who is in
+ * no next group and fits the level range of theirs. Undefined when nobody can, or they are not next up.
+ */
+export function nextUpStandIn(state: SessionState, outId: number): number | undefined {
   const lanes = nextGroups(state)
-  if (lanes.every((l) => !l.group)) throw new Error('There is no next group to change')
   const lane = lanes.find((l) => l.group?.players.includes(outId))
-  const group = lane?.group
-  if (!lane || !group) throw new Error(`Player ${outId} is not in the next group`)
-  if (group.players.includes(inId) || !state.queue.includes(inId)) {
-    throw new Error('The replacement must be a waiting player who is not already in the next group')
+  if (!lane) return undefined
+  const grouped = new Set(lanes.flatMap((l) => l.group?.players ?? []))
+  return state.queue.find((id) => !grouped.has(id) && inLevels(state.players[id]?.skill ?? 0, lane.levels))
+}
+
+/**
+ * Take a player out of their next group: the stand-in (see nextUpStandIn) takes their exact spot and
+ * the rest of the group stays as it was. The player keeps their place in the queue, or goes on a
+ * break with `onBreak`. With nobody to stand in, only a break is possible (the group is then automatic).
+ */
+export function dropFromNextUp(state: SessionState, outId: number, { onBreak = false } = {}): SessionState {
+  if (!groupWith(state, outId) && pinsOf(state).includes(outId)) {
+    // Pinned into a group that has not formed yet: their spot is open again.
+    const spots = validPick(state)!.map((id) => (id === outId ? null : id))
+    const unpinned = spots.some((id) => id !== null) ? { ...state, nextUpPick: spots } : withoutPick(state)
+    return onBreak ? checkOut(unpinned, outId) : unpinned
   }
-  if (!inLevels(state.players[inId]?.skill ?? 0, lane.levels)) {
-    throw new Error('The replacement must be in the level range of the group')
+  if (!groupWith(state, outId)) throw new Error(`Player ${outId} is not in the next group`)
+  const standIn = nextUpStandIn(state, outId)
+  if (standIn === undefined) {
+    if (!onBreak) throw new Error('No one is waiting to take their place')
+    return checkOut(state, outId)
   }
-  return {
-    ...withoutLocks(state, [outId, inId]),
-    nextUpPick: group.players.map((id) => (id === outId ? inId : id)),
-  }
+  const replaced = replaceNextUp(state, outId, standIn)
+  return onBreak ? checkOut(replaced, outId) : replaced
 }
 
 /** Go back to the automatic next group. */
@@ -413,13 +554,14 @@ export interface StartGameOptions extends NextGroupOptions {
  */
 export function startGame(state: SessionState, courtId: number, options: StartGameOptions = {}): SessionState {
   const court = findCourt(state, courtId)
+  if (court.notStarted) return startStaged(state, court, options.now)
   if (court.teams) throw new Error(`${court.name} already has a game in progress`)
   // The override ("start with whoever is waiting") draws from the whole queue, whatever the court's range.
   const group = options.ignoreMode ? nextGroup(state, { ignoreMode: true }) : nextGroup(state, { courtId })
   if (!group) throw new Error('Not enough players are waiting to start a game')
   const waited = waitedSeconds(state.queuedAt, group.players, options.now)
   // A game on another level's court leaves a group staff chose for their own court in place.
-  const keepPick = hasLevelCourts(state) && !state.nextUpPick?.some((id) => group.players.includes(id))
+  const keepPick = hasLevelCourts(state) && !state.nextUpPick?.some((id) => id !== null && group.players.includes(id))
   return withoutQueuedAt(
     {
       ...(keepPick ? state : withoutPick(state)),
@@ -459,7 +601,8 @@ export function scoreProblem(a: number, b: number): string | null {
   return null
 }
 
-const TEAM_LABELS = ['Team A', 'Team B'] as const
+/** The teams by name, as players see them. */
+const TEAM_LABELS = TEAM_NAMES
 
 /**
  * Why a score cannot be recorded for a game that this team won, or null if it can: the same checks
@@ -473,13 +616,32 @@ export function winnerScoreProblem(winner: 0 | 1, scoreA: number, scoreB: number
   return winnerScore > otherScore ? null : `${TEAM_LABELS[winner]} won, so their score must be higher.`
 }
 
+/** Players per team: 2 in doubles, 1 in singles. */
+export const playersPerTeam = (mode: GameMode) => playersPerCourt(mode) / 2
+
+/** Whether a game on this court is missing a player (someone was removed and the spot is open). */
+export const isShort = (court: Court, mode: GameMode) =>
+  !!court.teams && court.teams.some((team) => team.length < playersPerTeam(mode))
+
 /**
- * Whole seconds the game on this court has lasted, from 0 to MAX_GAME_SECONDS. 0 when the
- * game has no start time (it began before times were tracked) or no end time is given.
+ * How long the game on this court has actually been played, in ms: since it started, less the time
+ * its spot was open (paused before, and paused now). Undefined when it has no start time.
+ */
+export function playedMs(court: Court, now: number): number | undefined {
+  if (court.startedAt === undefined) return undefined
+  const pausedNow = court.pausedAt === undefined ? 0 : Math.max(0, now - court.pausedAt)
+  return now - court.startedAt - (court.pausedSeconds ?? 0) * 1000 - pausedNow
+}
+
+/**
+ * Whole seconds the game on this court has been played (time paused left out), from 0 to
+ * MAX_GAME_SECONDS. 0 when the game has no start time (it began before times were tracked) or no
+ * end time is given.
  */
 function gameSeconds(court: Court, now: number | undefined): number {
-  if (court.startedAt === undefined || now === undefined) return 0
-  const seconds = Math.floor((now - court.startedAt) / 1000)
+  const played = now === undefined ? undefined : playedMs(court, now)
+  if (played === undefined) return 0
+  const seconds = Math.floor(played / 1000)
   return Number.isFinite(seconds) ? Math.min(Math.max(seconds, 0), MAX_GAME_SECONDS) : 0
 }
 
@@ -592,6 +754,8 @@ function finishGame(
 ): GameResult {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams) throw new Error(`Court ${courtId} has no game in progress`)
+  if (court.notStarted) throw new Error(`The game on ${court.name} has not started`)
+  if (isShort(court, state.mode)) throw new Error(`Fill the open spot on ${court.name} before finishing the game`)
   const loser = winner === 0 ? 1 : 0
   const winners = court.teams[winner]
   const losers = court.teams[loser]
@@ -656,10 +820,38 @@ export function editMatch(state: SessionState, matchIndex: number, edit: MatchEd
   return { ...state, matches: newMatches, stats: computeStats(newMatches, state.players) }
 }
 
-/** Abandon a game without a result or a time. Its players return to the front of the queue. */
+/**
+ * Start the line-up staff put on this court by hand (see fillCourtSpot). Every spot must be filled.
+ * Each player's wait is recorded up to now; the next group is left as it is.
+ */
+function startStaged(state: SessionState, court: Court, now: number | undefined): SessionState {
+  if (isShort(court, state.mode)) throw new Error(`Fill every spot on ${court.name} to start the game`)
+  const players = court.teams!.flat()
+  const waited = waitedSeconds(state.queuedAt, players, now)
+  const { notStarted: _staged, waited: _none, ...rest } = court
+  const started: Court = {
+    ...rest,
+    ...(now === undefined ? {} : { startedAt: now }),
+    ...(waited ? { waited } : {}),
+  }
+  return withoutQueuedAt({ ...state, courts: state.courts.map((c) => (c.id === court.id ? started : c)) }, players)
+}
+
+/**
+ * Abandon a game without a result or a time. Its players return to the front of the queue. On a
+ * court staff were setting up by hand, the same clears it, and its players keep their wait so far
+ * (they never played).
+ */
 export function cancelMatch(state: SessionState, courtId: number, now?: number): SessionState {
   const court = state.courts.find((c) => c.id === courtId)
   if (!court?.teams) throw new Error(`Court ${courtId} has no game in progress`)
+  if (court.notStarted) {
+    return {
+      ...state,
+      courts: state.courts.map((c) => (c.id === courtId ? openCourt(c) : c)),
+      queue: [...court.teams.flat(), ...state.queue],
+    }
+  }
   return withQueuedAt(
     {
       ...state,
@@ -678,10 +870,22 @@ export interface ReplacePlayerOptions {
   now?: number
 }
 
+/** The court with these teams and pre-game waits (the waits left out when there are none). */
+function withTeams(court: Court, teams: Teams, waited: Record<number, number>): Court {
+  const { waited: _old, ...rest } = court
+  return { ...rest, teams, ...(Object.keys(waited).length > 0 ? { waited } : {}) }
+}
+
+const tradeTeams = (teams: Teams, trade: (id: number) => number): Teams => [teams[0].map(trade), teams[1].map(trade)]
+
 /**
- * Swap a player out of a live game. The substitute defaults to the front of the queue and takes
- * the same side. The player who comes off goes to the front of the queue, or on a break when
- * asked to.
+ * Swap a player out of a live game. The substitute defaults to the front of the queue and takes the
+ * same spot. It can be anyone in the session:
+ * - waiting or on a break: the player who comes off goes to the front of the queue, or on a break
+ *   when asked to. If the substitute was in a next group, the one coming off takes their spot in it,
+ *   so the rest of that group stays as it was.
+ * - on a court (this one or another): the two trade places, each with their pre-game wait, and
+ *   nobody leaves the courts.
  */
 export function replacePlayer(
   state: SessionState,
@@ -694,32 +898,129 @@ export function replacePlayer(
   if (!court?.teams?.flat().includes(outId)) {
     throw new Error(`Player ${outId} is not playing on court ${courtId}`)
   }
-  if (inId === undefined || !state.queue.includes(inId)) {
-    throw new Error('Substitute must be a player waiting in the queue')
+  const other = inId === undefined || inId === outId ? undefined : courtWithPlayer(state, inId)
+  if (other && inId !== undefined) {
+    const trade = (id: number) => (id === outId ? inId : id === inId ? outId : id)
+    const waitsOf = (c: Court) => {
+      if (other.id === courtId) return Object.fromEntries(Object.entries(c.waited ?? {}).map(([id, s]) => [trade(Number(id)), s]))
+      const [leaving, coming, from] = c.id === courtId ? [outId, inId, other] : [inId, outId, court]
+      const waited = { ...c.waited }
+      delete waited[leaving]
+      if (from.waited?.[coming] !== undefined) waited[coming] = from.waited[coming]
+      return waited
+    }
+    return {
+      // A locked pair cannot stay together once one of them moves.
+      ...withoutLocks(state, [outId, inId]),
+      courts: state.courts.map((c) =>
+        c.id === courtId || c.id === other.id ? withTeams(c, tradeTeams(c.teams!, trade), waitsOf(c)) : c,
+      ),
+    }
   }
-  const swap = (side: number[]) => side.map((id) => (id === outId ? inId : id))
-  const waiting = state.queue.filter((id) => id !== inId)
-  const incomingWaited = waitedSeconds(state.queuedAt, [inId], now)
-  const waited = { ...court.waited }
+  const back = inId !== undefined && state.onBreak.includes(inId) ? checkIn(state, state.players[inId], now) : state
+  if (inId === undefined || !back.queue.includes(inId)) {
+    throw new Error('Substitute must be another player of this session')
+  }
+  const swap = (id: number) => (id === outId ? inId : id)
+  const waiting = back.queue.filter((id) => id !== inId)
+  const waited = { ...court.waited, ...waitedSeconds(back.queuedAt, [inId], now) }
   delete waited[outId]
-  if (incomingWaited) Object.assign(waited, incomingWaited)
-  const hasWaited = Object.keys(waited).length > 0
+  // The substitute's spot in a next group goes to whoever comes off, so the rest of it stays put.
+  const group = sendOnBreak ? undefined : groupWith(back, inId)
+  const picked = group
+    ? { ...back, nextUpPick: group.players.map((id) => (id === inId ? outId : id)) }
+    : withoutPickIncluding(back, inId)
   const base = {
     // Whoever comes off is no longer bound to their partner, whether the lock is in force or waiting.
-    ...withoutLocks(withoutPickIncluding(state, inId), [outId]),
-    courts: state.courts.map((c) => {
-      if (c.id !== courtId) return c
-      const { waited: _old, ...rest } = c
-      const teams: Teams = [swap(court.teams![0]), swap(court.teams![1])]
-      return { ...rest, teams, ...(hasWaited ? { waited } : {}) }
-    }),
+    ...withoutLocks(picked, [outId]),
+    courts: back.courts.map((c) => (c.id === courtId ? withTeams(c, tradeTeams(court.teams!, swap), waited) : c)),
     queue: sendOnBreak ? waiting : [outId, ...waiting],
-    onBreak: sendOnBreak ? [...state.onBreak, outId] : state.onBreak,
+    onBreak: sendOnBreak ? [...back.onBreak, outId] : back.onBreak,
   }
   const withoutIncoming = withoutQueuedAt(base, [inId])
   return sendOnBreak
     ? withoutQueuedAt(withoutIncoming, [outId])
     : withQueuedAt(withoutIncoming, [outId], now)
+}
+
+export interface RemoveFromCourtOptions {
+  /** Send them on a break. Otherwise they go to the front of the queue. */
+  onBreak?: boolean
+  /** When it happened: the game is paused from then, and they wait from then. */
+  now?: number
+}
+
+/**
+ * Take a player off a game in progress, leaving their spot open. They go to the front of the queue
+ * (or on a break), their partner locks end, and the game is paused until the spot is filled (see
+ * fillCourtSpot); it cannot be finished while short. A court with nobody left is simply open again.
+ */
+export function removeFromCourt(
+  state: SessionState,
+  courtId: number,
+  playerId: number,
+  { onBreak = false, now }: RemoveFromCourtOptions = {},
+): SessionState {
+  const court = state.courts.find((c) => c.id === courtId)
+  if (!court?.teams?.flat().includes(playerId)) {
+    throw new Error(`Player ${playerId} is not playing on court ${courtId}`)
+  }
+  const teams: Teams = [court.teams[0].filter((id) => id !== playerId), court.teams[1].filter((id) => id !== playerId)]
+  const waited = { ...court.waited }
+  delete waited[playerId]
+  const empty = teams.every((team) => team.length === 0)
+  const left = withTeams(court, teams, waited)
+  // Only a game that has started is paused; a court being set up has no time to stop.
+  if (!court.notStarted && (court.pausedAt ?? now) !== undefined) left.pausedAt = court.pausedAt ?? now
+  const off: SessionState = {
+    ...withoutLocks(state, [playerId]),
+    courts: state.courts.map((c) => (c.id !== courtId ? c : empty ? openCourt(c) : left)),
+    queue: onBreak ? state.queue : [playerId, ...state.queue],
+    onBreak: onBreak ? [...state.onBreak, playerId] : state.onBreak,
+  }
+  if (onBreak) return withoutQueuedAt(off, [playerId])
+  // Off a court being set up they never played, so they keep waiting from when they joined the queue.
+  return court.notStarted ? off : withQueuedAt(off, [playerId], now)
+}
+
+/**
+ * Put a player in an open spot on a team of a game in progress (see removeFromCourt). They can be
+ * waiting or on a break (they come back), not on a court. Once the court is full again its time runs
+ * again: the time it was paused is kept aside and left out of the game's recorded length.
+ */
+export function fillCourtSpot(
+  state: SessionState,
+  courtId: number,
+  team: 0 | 1,
+  playerId: number,
+  now?: number,
+): SessionState {
+  const found = state.courts.find((c) => c.id === courtId)
+  if (!found) throw new Error(`Court ${courtId} does not exist`)
+  // An open court is set up by hand, one spot at a time; its game starts when staff press Start game.
+  const court: Court = found.teams ? found : { ...openCourt(found), teams: [[], []], notStarted: true }
+  const current = court.teams!
+  if (current[team].length >= playersPerTeam(state.mode)) throw new Error(`${TEAM_LABELS[team]} has no open spot`)
+  if (courtWithPlayer(state, playerId)) throw new Error('Choose a player who is waiting or on a break')
+  const back = state.onBreak.includes(playerId) ? checkIn(state, state.players[playerId], now) : state
+  if (!back.queue.includes(playerId)) throw new Error('Choose a player who is waiting or on a break')
+  const teams: Teams = team === 0 ? [[...current[0], playerId], current[1]] : [current[0], [...current[1], playerId]]
+  const moved = {
+    ...withoutPickIncluding(back, playerId),
+    queue: back.queue.filter((id) => id !== playerId),
+  }
+  if (court.notStarted) {
+    // Not playing yet: they keep their wait, recorded when the game starts.
+    return { ...moved, courts: back.courts.map((c) => (c.id === courtId ? { ...court, teams } : c)) }
+  }
+  const waited = { ...court.waited, ...waitedSeconds(back.queuedAt, [playerId], now) }
+  let filled = withTeams(court, teams, waited)
+  if (!isShort(filled, state.mode) && filled.pausedAt !== undefined) {
+    const { pausedAt, ...running } = filled
+    const pausedFor = now === undefined ? 0 : Math.max(0, Math.floor((now - pausedAt) / 1000))
+    filled = { ...running, pausedSeconds: (filled.pausedSeconds ?? 0) + pausedFor }
+  }
+  return withoutQueuedAt({ ...moved, courts: back.courts.map((c) => (c.id === courtId ? filled : c)) }, [playerId])
 }
 
 /** Where a partner is, when they are not waiting: on a named court, or on a break. */
@@ -858,7 +1159,13 @@ export function shiftSessionClock(session: SessionState, offsetMs: number): Sess
       ? { queuedAt: Object.fromEntries(Object.entries(session.queuedAt).map(([id, t]) => [Number(id), t + offsetMs])) }
       : {}),
     courts: session.courts.map((c) =>
-      c.teams && c.startedAt !== undefined ? { ...c, startedAt: c.startedAt + offsetMs } : c,
+      c.teams && c.startedAt !== undefined
+        ? {
+            ...c,
+            startedAt: c.startedAt + offsetMs,
+            ...(c.pausedAt !== undefined ? { pausedAt: c.pausedAt + offsetMs } : {}),
+          }
+        : c,
     ),
   }
 }

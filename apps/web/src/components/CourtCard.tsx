@@ -1,17 +1,22 @@
-import { History, Lock, MoreVerticalIcon, Timer } from 'lucide-react'
-import { useState } from 'react'
+import { History, MoreVerticalIcon, Pause, Timer, Trophy } from 'lucide-react'
+import { Fragment, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CancelGameDialog } from '@/components/CancelGameDialog'
-import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
+import { ReplacePlayerDialog, type Candidate } from '@/components/ReplacePlayerDialog'
 import { ScoreDialog } from '@/components/ScoreDialog'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { PlayerMenu } from '@/components/PlayerMenu'
+import { EmptyTeams, OpenTile, PlayerTile, TeamBox, Versus } from '@/components/PlayerTile'
 import { SkillBadge } from '@/components/SkillBadge'
 import type { SkillLevel } from '@/db/db'
 import { levelLabel } from '@/lib/skill'
+import { TEAM_BUTTON, TEAM_NAMES } from '@/lib/teams'
 import { formatDuration, useNow } from '@/lib/time'
+import { cn } from '@/lib/utils'
+import { playedMs } from '@/rotation/engine'
 import type { Court, RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -21,9 +26,17 @@ interface Props {
   partners: [number, number][]
   /** Read-only cards (the public viewer page) show teams but no controls. */
   readOnly?: boolean
-  /** Waiting player ids in queue order, offered as substitutes. */
-  queue?: number[]
+  /** Everyone in the session with where they are, offered as substitutes (anyone can come on). */
+  candidates?: Candidate[]
+  /** Players per team (2 in doubles, 1 in singles): the spots of an empty court, and the open ones of a short team. */
+  slotsPerTeam?: number
   onReplace?: (outId: number, inId: number, options: { sendOnBreak: boolean }) => void
+  /** Take a player off the court, leaving their spot open (a game in progress pauses); they go to the front of the queue. */
+  onRemove?: (playerId: number) => void
+  /** The same, but they go on a break. */
+  onTakeBreak?: (playerId: number) => void
+  /** Put a waiting or resting player in an open spot on a team: on a game missing a player, or to set up an open court. */
+  onFill?: (team: 0 | 1, playerId: number) => void
   /** Staff only: change a player's skill level from their badge. */
   onSkillChange?: (playerId: number, skill: SkillLevel) => void
   /**
@@ -36,26 +49,39 @@ interface Props {
   waitingMessage?: string
   /** On a court kept for a level range: the group that would start here, as "Ann & Bob vs Cy & Dee". */
   nextHere?: string
+  /** Start the next group here, or (on a court set up by hand) exactly the players on it. */
   onStart?: (options?: { ignoreMode?: boolean }) => void
-  /** Record the game from its score (Team A, then Team B). Asked for after a win button is pressed. */
+  /** Record the game from its score (Blue, then Orange). Asked for after a Won button is pressed. */
   onScore?: (scoreA: number, scoreB: number) => void
+  /** Cancel the game, or clear a court being set up. */
   onCancel?: () => void
 }
 
-const TEAM_NAMES = ['Team A', 'Team B'] as const
-
 /**
- * The in-play badge: a timer icon and how long the game has been going ("⏱ 0:07"), refreshed every
- * 30 seconds by its own timer. "In play" is kept for screen readers. A game with no start time says "In play".
+ * The in-play badge: a timer icon and how long the game has been played ("⏱ 0:07"), refreshed every
+ * 30 seconds by its own timer. Time with an open spot is left out, and while a spot is open the badge
+ * says "Paused" with the time stopped. "In play" is kept for screen readers. A game with no start
+ * time says "In play"; a court being set up by hand says "Not started".
  */
-function PlayingBadge({ startedAt }: { startedAt?: number }) {
+function PlayingBadge({ court }: { court: Court }) {
   const now = useNow()
-  if (startedAt === undefined) return <Badge>In play</Badge>
+  if (court.notStarted) return <Badge variant="outline">Not started</Badge>
+  const played = playedMs(court, now)
+  if (court.pausedAt !== undefined) {
+    return (
+      <Badge variant="secondary" className="tabular-nums">
+        <Pause aria-hidden="true" />
+        Paused
+        {played !== undefined && <span className="text-muted-foreground">{formatDuration(played / 1000)}</span>}
+      </Badge>
+    )
+  }
+  if (played === undefined) return <Badge>In play</Badge>
   return (
     <Badge className="tabular-nums">
       <span className="sr-only">In play </span>
       <Timer aria-hidden="true" />
-      {formatDuration((now - startedAt) / 1000)}
+      {formatDuration(played / 1000)}
     </Badge>
   )
 }
@@ -65,8 +91,12 @@ export function CourtCard({
   players,
   partners,
   readOnly = false,
-  queue = [],
+  candidates = [],
+  slotsPerTeam = 2,
   onReplace,
+  onRemove,
+  onTakeBreak,
+  onFill,
   onSkillChange,
   startState = 'none',
   waitingMessage = 'Waiting for players to check in',
@@ -78,7 +108,12 @@ export function CourtCard({
   // The team whose win button was pressed; the score pop-up is open while this is set.
   const [pendingWinner, setPendingWinner] = useState<0 | 1 | null>(null)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
+  // The team whose open spot is being filled; the pop-up to choose who is open while this is set.
+  const [filling, setFilling] = useState<0 | 1 | null>(null)
   const levels = levelLabel(court.levels)
+  const short = !!court.teams && court.teams.some((team) => team.length < slotsPerTeam)
+  const staged = !!court.notStarted
+  const canFill = !readOnly && !!onFill
 
   return (
     <Card role="region" aria-label={court.name}>
@@ -101,7 +136,7 @@ export function CourtCard({
             />
           </span>
           <div className="flex shrink-0 items-center gap-2">
-            {court.teams ? <PlayingBadge startedAt={court.startedAt} /> : <Badge variant="outline">Open</Badge>}
+            {court.teams ? <PlayingBadge court={court} /> : <Badge variant="outline">Open</Badge>}
             {court.teams && !readOnly && (
               <Popover>
                 <PopoverTrigger asChild>
@@ -115,9 +150,10 @@ export function CourtCard({
                       type="button"
                       variant="ghost"
                       className="w-full justify-start"
-                      onClick={() => setConfirmingCancel(true)}
+                      // Nothing is lost clearing a court being set up, so it needs no confirmation.
+                      onClick={() => (staged ? onCancel?.() : setConfirmingCancel(true))}
                     >
-                      Cancel game
+                      {staged ? 'Clear court' : 'Cancel game'}
                     </Button>
                   </PopoverClose>
                 </PopoverContent>
@@ -126,25 +162,32 @@ export function CourtCard({
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {court.teams ? (
           <>
             {court.teams.map((team, i) => (
-              <div
-                key={TEAM_NAMES[i]}
-                role="group"
-                aria-label={TEAM_NAMES[i]}
-                className="rounded-lg border p-2"
-              >
-                <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                  {TEAM_NAMES[i]}
-                  {partners.some(([x, y]) => team.includes(x) && team.includes(y)) && (
-                    <Lock className="size-3" aria-label="Locked partners" />
-                  )}
-                </p>
-                <ul>
+              <Fragment key={i}>
+                {i === 1 && <Versus />}
+                <TeamBox
+                  team={i as 0 | 1}
+                  locked={partners.some(([x, y]) => team.includes(x) && team.includes(y))}
+                  footer={
+                    !readOnly &&
+                    !staged && (
+                      <Button
+                        variant="outline"
+                        className={cn('h-9 w-full', TEAM_BUTTON[i])}
+                        disabled={short}
+                        onClick={() => setPendingWinner(i as 0 | 1)}
+                      >
+                        <Trophy aria-hidden="true" />
+                        {TEAM_NAMES[i]} won
+                      </Button>
+                    )
+                  }
+                >
                   {team.map((id) => (
-                    <li key={id} className="flex items-center gap-2 py-1">
+                    <PlayerTile key={id}>
                       <span className="flex min-w-0 flex-1 items-center gap-2">
                         {players[id] && <PlayerAvatar name={players[id].name} size="sm" editable={!readOnly} viewable />}
                         <span className="min-w-0 truncate">{players[id]?.name}</span>
@@ -161,28 +204,44 @@ export function CourtCard({
                           onChange={!readOnly && onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
                         />
                       )}
-                      {!readOnly && onReplace && (
-                        <ReplacePlayerDialog
+                      {!readOnly && onReplace && players[id] && (
+                        <PlayerMenu
                           player={players[id]}
-                          waiting={queue.map((qid) => players[qid])}
+                          candidates={candidates}
+                          courtId={court.id}
                           onReplace={(inId, options) => onReplace(id, inId, options)}
+                          onRemove={onRemove && (() => onRemove(id))}
+                          onTakeBreak={onTakeBreak && (() => onTakeBreak(id))}
                         />
                       )}
-                    </li>
+                    </PlayerTile>
                   ))}
-                </ul>
-              </div>
+                  {Array.from({ length: Math.max(0, slotsPerTeam - team.length) }, (_, k) => (
+                    <OpenTile
+                      key={`open-${k}`}
+                      onFill={canFill ? () => setFilling(i as 0 | 1) : undefined}
+                      fillLabel={`Fill open spot on ${TEAM_NAMES[i]}`}
+                    />
+                  ))}
+                </TeamBox>
+              </Fragment>
             ))}
-            {!readOnly && (
+            {!readOnly && staged && (
+              <div className="space-y-2 pt-1 text-center">
+                {short ? (
+                  <p className="text-sm text-muted-foreground">Fill every spot to start the game.</p>
+                ) : (
+                  <Button className="h-11 w-full" onClick={() => onStart?.()}>
+                    Start game
+                  </Button>
+                )}
+              </div>
+            )}
+            {!readOnly && !staged && (
               <>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button className="h-11" onClick={() => setPendingWinner(0)}>
-                    Team A won
-                  </Button>
-                  <Button className="h-11" onClick={() => setPendingWinner(1)}>
-                    Team B won
-                  </Button>
-                </div>
+                {short && (
+                  <p className="text-center text-sm text-muted-foreground">Fill the open spot to finish the game.</p>
+                )}
                 <ScoreDialog
                   courtName={court.name}
                   teamNames={[
@@ -204,7 +263,8 @@ export function CourtCard({
             )}
           </>
         ) : (
-          <div className="space-y-3 py-4 text-center">
+          <div className="space-y-3 text-center">
+            <EmptyTeams perTeam={slotsPerTeam} stacked onFill={canFill ? (team) => setFilling(team) : undefined} />
             {readOnly ? (
               <p className="text-sm text-muted-foreground">Waiting for the next game</p>
             ) : startState === 'ready' ? (
@@ -231,6 +291,16 @@ export function CourtCard({
               <p className="text-sm text-muted-foreground">{waitingMessage}</p>
             )}
           </div>
+        )}
+        {canFill && (
+          <ReplacePlayerDialog
+            mode="fill"
+            spot={`${court.name}, ${TEAM_NAMES[filling ?? 0]}`}
+            candidates={candidates}
+            open={filling !== null}
+            onOpenChange={(open) => !open && setFilling(null)}
+            onReplace={(inId) => filling !== null && onFill?.(filling, inId)}
+          />
         )}
       </CardContent>
     </Card>

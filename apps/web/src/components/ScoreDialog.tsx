@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { TEAM_NAMES } from '@/lib/teams'
 import { isValidScore, MAX_SCORE, winnerScoreProblem } from '@/rotation/engine'
 
 interface Props {
@@ -22,8 +23,6 @@ interface Props {
   /** Called with Team A's and Team B's score. The winner's score is always the higher one. */
   onSubmit: (scoreA: number, scoreB: number) => void
 }
-
-const TEAM_NAMES = ['Team A', 'Team B'] as const
 
 /** Games are usually played to 11, so the winner's box starts there; only the other score is typed. */
 const DEFAULT_WINNING_SCORE = '11'
@@ -100,7 +99,7 @@ function ScoreForm({
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="score-a">Team A score</Label>
+            <Label htmlFor="score-a">Blue score</Label>
             <TeamPlayers names={teamNames[0]} />
             <Input
               id="score-a"
@@ -115,7 +114,7 @@ function ScoreForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="score-b">Team B score</Label>
+            <Label htmlFor="score-b">Orange score</Label>
             <TeamPlayers names={teamNames[1]} />
             <Input
               id="score-b"

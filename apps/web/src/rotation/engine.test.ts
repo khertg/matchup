@@ -6,8 +6,12 @@ import {
   checkOut,
   closeCourt,
   createSession,
+  dropFromNextUp,
   defaultCourtName,
   editMatch,
+  fillCourtSpot,
+  fillNextUpSpot,
+  isShort,
   estimateWaitMinutes,
   lockPartners,
   lockStatus,
@@ -16,8 +20,11 @@ import {
   MAX_SCORE,
   moveCourt,
   nextGroup,
+  nextUpSpots,
+  nextUpStandIn,
   recordResult,
   recordScore,
+  removeFromCourt,
   renameCourt,
   replaceNextUp,
   replacePlayer,
@@ -345,8 +352,8 @@ describe('recordScore', () => {
   it('checks a score against the team that won', () => {
     expect(winnerScoreProblem(0, 11, 7)).toBeNull()
     expect(winnerScoreProblem(1, 7, 11)).toBeNull()
-    expect(winnerScoreProblem(0, 7, 11)).toBe('Team A won, so their score must be higher.')
-    expect(winnerScoreProblem(1, 11, 7)).toBe('Team B won, so their score must be higher.')
+    expect(winnerScoreProblem(0, 7, 11)).toBe('Blue won, so their score must be higher.')
+    expect(winnerScoreProblem(1, 11, 7)).toBe('Orange won, so their score must be higher.')
     // Level and invalid scores keep the plain reasons.
     expect(winnerScoreProblem(0, 7, 7)).toMatch(/level/)
     expect(winnerScoreProblem(1, 100, 7)).toMatch(/0 to 99/)
@@ -606,7 +613,224 @@ describe('replacePlayer', () => {
     expect(() => replacePlayer(s, 1, 1)).toThrow()
     const five = fillCourts(withPlayers(createSession('doubles', 1), 5))
     expect(() => replacePlayer(five, 1, 5, 5)).toThrow('not playing')
-    expect(() => replacePlayer(five, 1, 1, 3)).toThrow('Substitute')
+    expect(() => replacePlayer(five, 1, 1, 1)).toThrow('Substitute')
+    expect(() => replacePlayer(five, 1, 1, 99)).toThrow('Substitute')
+  })
+
+  it('trades places with a player on another court, each keeping their pre-game wait', () => {
+    let s = fillCourts(withPlayers(createSession('doubles', 2), 8)) // 1-4 on court 1, 5-8 on court 2
+    s = {
+      ...s,
+      courts: s.courts.map((c) => ({ ...c, waited: Object.fromEntries(c.teams!.flat().map((id) => [id, id * 10])) })),
+    }
+    const [here, there] = s.courts.map((c) => c.teams!)
+    const t = replacePlayer(s, 1, 2, 7)
+    expect(t.courts[0].teams).toEqual(tradeIn(here, 2, 7))
+    expect(t.courts[1].teams).toEqual(tradeIn(there, 7, 2))
+    expect(t.courts[0].waited).toEqual({ 1: 10, 7: 70, 3: 30, 4: 40 })
+    expect(t.courts[1].waited).toEqual({ 5: 50, 2: 20, 6: 60, 8: 80 })
+    expect(t.queue).toEqual(s.queue)
+  })
+
+  it('switches two players on the same court, for example to change teams', () => {
+    const s = fillCourts(withPlayers(createSession('doubles', 1), 4))
+    const [[a], [b]] = s.courts[0].teams!
+    const t = replacePlayer(s, 1, a, b)
+    expect(t.courts[0].teams![0]).toContain(b)
+    expect(t.courts[0].teams![1]).toContain(a)
+    expect(t.courts[0].teams!.flat().sort()).toEqual([1, 2, 3, 4])
+  })
+
+  it('brings a substitute back from a break', () => {
+    const s = checkOut(fillCourts(withPlayers(createSession('doubles', 1), 6)), 6)
+    const t = replacePlayer(s, 1, 1, 6)
+    expect(t.courts[0].teams!.flat()).toContain(6)
+    expect(t.onBreak).toEqual([])
+    expect(t.queue).toEqual([1, 5])
+  })
+
+  it('gives the substitute their spot in Next up to whoever comes off, leaving the rest of the group as it was', () => {
+    const s = fillCourts(withPlayers(createSession('doubles', 1), 8)) // 5-8 next up
+    const group = nextGroup(s)!
+    const t = replacePlayer(s, 1, 1, group.players[0])
+    expect(nextGroup(t)!.teams).toEqual(tradeIn(group.teams, group.players[0], 1))
+    expect(isNextUpPicked(t)).toBe(true)
+  })
+})
+
+/** The teams with inId in the spot of outId. */
+function tradeIn(teams: number[][], outId: number, inId: number) {
+  return teams.map((team) => team.map((id) => (id === outId ? inId : id)))
+}
+
+describe('removing a player from a court', () => {
+  const MIN = 60_000
+  /** Court 1 with 1 and 2 against 3 and 4, started at 0; 5 and 6 wait. */
+  const playing = () => {
+    const s = withPlayers(createSession('doubles', 1), 6)
+    return startGame(s, 1, { now: 0 })
+  }
+
+  it('leaves the spot open, pauses the game, and puts the player first in the queue', () => {
+    const s = playing()
+    const [a] = s.courts[0].teams![0]
+    const t = removeFromCourt(s, 1, a, { now: 2 * MIN })
+    expect(t.courts[0].teams![0]).toHaveLength(1)
+    expect(t.courts[0].teams!.flat()).not.toContain(a)
+    expect(t.courts[0].pausedAt).toBe(2 * MIN)
+    expect(isShort(t.courts[0], t.mode)).toBe(true)
+    expect(t.queue[0]).toBe(a)
+    expect(t.queuedAt?.[a]).toBe(2 * MIN)
+  })
+
+  it('can send them on a break instead, and ends their partner lock', () => {
+    const [a, b] = playing().courts[0].teams![0]
+    const s = lockPartners(playing(), a, b)
+    const t = removeFromCourt(s, 1, a, { onBreak: true, now: MIN })
+    expect(t.onBreak).toEqual([a])
+    expect(t.queue).not.toContain(a)
+    expect(t.partners).toEqual([])
+  })
+
+  it('cannot be finished while short, but can be cancelled', () => {
+    const t = removeFromCourt(playing(), 1, playing().courts[0].teams![0][0], { now: MIN })
+    expect(() => recordScore(t, 1, 11, 5, { now: 2 * MIN })).toThrow('Fill the open spot on Court 1')
+    const cancelled = cancelMatch(t, 1, 2 * MIN)
+    expect(cancelled.courts[0].teams).toBeNull()
+    expect(cancelled.courts[0].pausedAt).toBeUndefined()
+  })
+
+  it('fills the spot from the queue or a break, and leaves the paused time out of the game', () => {
+    let s = checkOut(playing(), 6)
+    const out = s.courts[0].teams![1][0]
+    s = removeFromCourt(s, 1, out, { now: 2 * MIN }) // paused at 2 minutes
+    s = fillCourtSpot(s, 1, 1, 6, 5 * MIN) // back on at 5: 3 minutes paused
+    expect(s.courts[0].teams![1]).toContain(6)
+    expect(s.onBreak).toEqual([])
+    expect(s.courts[0].pausedAt).toBeUndefined()
+    expect(s.courts[0].pausedSeconds).toBe(180)
+    const done = recordScore(s, 1, 11, 5, { now: 10 * MIN }).state
+    expect(done.matches!.at(-1)!.seconds).toBe(7 * 60) // 10 minutes, less 3 paused
+  })
+
+  it('refuses a full team, or a player on a court', () => {
+    const s = removeFromCourt(playing(), 1, playing().courts[0].teams![0][0], { now: MIN })
+    const [b] = s.courts[0].teams![1]
+    expect(() => fillCourtSpot(s, 1, 1, 5, MIN)).toThrow('no open spot')
+    expect(() => fillCourtSpot(s, 1, 0, b, MIN)).toThrow('waiting or on a break')
+  })
+
+  it('opens the court when nobody is left, and moves the pause with the session clock', () => {
+    let s = createSession('singles', 1)
+    s = startGame(withPlayers(s, 2), 1, { now: 0 })
+    const one = removeFromCourt(s, 1, 1, { now: MIN })
+    expect(shiftSessionClock(one, 1000).courts[0].pausedAt).toBe(MIN + 1000)
+    const none = removeFromCourt(one, 1, 2, { now: MIN })
+    expect(none.courts[0].teams).toBeNull()
+    expect(none.queue).toEqual([2, 1])
+  })
+})
+
+describe('setting up a court by hand', () => {
+  const MIN = 60_000
+  /** Six waiting, each since their id in minutes. */
+  const six = () => {
+    let s = createSession('doubles', 2)
+    for (let id = 1; id <= 6; id++) s = checkIn(s, player(id), id * MIN)
+    return s
+  }
+  const stage = (s: SessionState, spots: [0 | 1, number][]) =>
+    spots.reduce((acc, [team, id]) => fillCourtSpot(acc, 1, team, id, 10 * MIN), s)
+
+  it('puts each chosen player on the open court without starting anything', () => {
+    const s = stage(six(), [[0, 5]])
+    expect(s.courts[0].teams).toEqual([[5], []])
+    expect(s.courts[0].notStarted).toBe(true)
+    expect(s.courts[0].startedAt).toBeUndefined()
+    expect(s.queue).toEqual([1, 2, 3, 4, 6])
+    expect(s.queuedAt?.[5]).toBe(5 * MIN) // still counts as waiting until the game starts
+    expect(() => recordScore(s, 1, 11, 5)).toThrow('has not started')
+  })
+
+  it('starts exactly that line-up once every spot is filled, recording each wait', () => {
+    const s = stage(six(), [
+      [0, 5],
+      [0, 6],
+      [1, 1],
+    ])
+    expect(() => startGame(s, 1, { now: 12 * MIN })).toThrow('Fill every spot')
+    const full = stage(s, [[1, 2]])
+    const started = startGame(full, 1, { now: 12 * MIN })
+    expect(started.courts[0].teams).toEqual([
+      [5, 6],
+      [1, 2],
+    ])
+    expect(started.courts[0].notStarted).toBeUndefined()
+    expect(started.courts[0].startedAt).toBe(12 * MIN)
+    expect(started.courts[0].waited).toEqual({ 5: 7 * 60, 6: 6 * 60, 1: 11 * 60, 2: 10 * 60 })
+    expect(started.queue).toEqual([3, 4])
+    expect(started.queuedAt?.[5]).toBeUndefined()
+  })
+
+  it('takes players off again without pausing anything, keeping their wait; Clear court sends all back', () => {
+    const s = stage(six(), [
+      [0, 5],
+      [1, 6],
+    ])
+    const off = removeFromCourt(s, 1, 5, { now: 11 * MIN })
+    expect(off.courts[0].teams).toEqual([[], [6]])
+    expect(off.courts[0].pausedAt).toBeUndefined()
+    expect(off.queue[0]).toBe(5)
+    expect(off.queuedAt?.[5]).toBe(5 * MIN)
+    const cleared = cancelMatch(off, 1, 11 * MIN)
+    expect(cleared.courts[0].teams).toBeNull()
+    expect(cleared.queue.slice(0, 2)).toEqual([6, 5])
+    expect(cleared.queuedAt?.[6]).toBe(6 * MIN)
+  })
+
+  it('brings a player back from a break onto the court', () => {
+    const s = stage(checkOut(six(), 3), [[1, 3]])
+    expect(s.onBreak).toEqual([])
+    expect(s.courts[0].teams).toEqual([[], [3]])
+  })
+})
+
+describe('pinning players into Next up', () => {
+  it('keeps a pinned player in their spot while the group cannot form, then fills the rest around them', () => {
+    let s = withPlayers(createSession('doubles', 1), 3)
+    expect(nextGroup(s)).toBeNull()
+    s = fillNextUpSpot(s, 0, 3, 2)
+    expect(nextUpSpots(s, 0)).toEqual([null, null, null, 2])
+    expect(isNextUpPicked(s)).toBe(true)
+    expect(nextGroup(s)).toBeNull()
+    s = checkIn(s, player(4))
+    expect(nextGroup(s)!.teams).toEqual([
+      [1, 3],
+      [4, 2],
+    ])
+    // Starting it uses the choice up.
+    expect(startGame(s, 1).nextUpPick).toBeUndefined()
+  })
+
+  it('brings a player back from a break, and refuses someone on a court or a taken spot', () => {
+    let s = checkOut(withPlayers(createSession('doubles', 1), 3), 3)
+    s = fillNextUpSpot(s, 0, 0, 3)
+    expect(s.onBreak).toEqual([])
+    expect(nextUpSpots(s, 0)[0]).toBe(3)
+    expect(() => fillNextUpSpot(s, 0, 0, 1)).toThrow('not open')
+    const playing = fillCourts(withPlayers(createSession('doubles', 2), 5))
+    expect(() => fillNextUpSpot(playing, 0, 0, 1)).toThrow('waiting or on a break')
+  })
+
+  it('unpins through Remove, Swap and Reset', () => {
+    let s = withPlayers(createSession('doubles', 1), 3)
+    s = fillNextUpSpot(fillNextUpSpot(s, 0, 0, 1), 0, 1, 2)
+    s = dropFromNextUp(s, 1)
+    expect(nextUpSpots(s, 0)).toEqual([null, 2, null, null])
+    s = replaceNextUp(s, 2, 3)
+    expect(nextUpSpots(s, 0)).toEqual([null, 3, null, null])
+    expect(isNextUpPicked(resetNextUp(s))).toBe(false)
+    expect(isNextUpPicked(dropFromNextUp(s, 3))).toBe(false) // nobody pinned: automatic again
   })
 })
 
@@ -1178,11 +1402,11 @@ describe('changing who is next up', () => {
     expect(nextGroup(picked)!.players.slice().sort()).toEqual([1, 3, 4, 5])
   })
 
-  it('refuses a player who is not in the group, one already in it, or one who is not waiting', () => {
+  it('refuses a player who is not in the group, or a replacement who is not another session player', () => {
     const s = eight()
     expect(() => replaceNextUp(s, 5, 6)).toThrow('not in the next group')
-    expect(() => replaceNextUp(s, 1, 2)).toThrow('waiting player who is not already')
-    expect(() => replaceNextUp(s, 1, 99)).toThrow('waiting player')
+    expect(() => replaceNextUp(s, 1, 1)).toThrow('another player')
+    expect(() => replaceNextUp(s, 1, 99)).toThrow('another player')
     expect(() => replaceNextUp(withPlayers(createSession('doubles', 1), 3), 1, 2)).toThrow('no next group')
     const playing = fillCourts(withPlayers(createSession('doubles', 1), 5))
     expect(() => replaceNextUp(playing, 5, 1)).toThrow()
@@ -1210,13 +1434,58 @@ describe('changing who is next up', () => {
     expect(nextGroup(s)!.players.slice().sort()).toEqual([2, 3, 4, 8])
   })
 
-  it('ends when a court swap takes one of the group', () => {
-    let s = fillCourts(withPlayers(createSession('doubles', 1), 9)) // 1-4 on court 1; 5-9 wait
-    s = replaceNextUp(s, 5, 9)
-    expect(nextGroup(s)!.players.slice().sort()).toEqual([6, 7, 8, 9])
-    s = replacePlayer(s, 1, 1, 9)
-    expect(s.nextUpPick).toBeUndefined()
-    expect(isNextUpPicked(s)).toBe(false)
+  it('keeps the group when a court swap takes one of it: the player coming off takes their spot', () => {
+    const start = replaceNextUp(fillCourts(withPlayers(createSession('doubles', 1), 9)), 5, 9) // 1-4 on court 1
+    const before = nextGroup(start)!.teams
+    expect(nextGroup(replacePlayer(start, 1, 1, 9))!.teams).toEqual(tradeIn(before, 9, 1))
+    // Sent on a break instead, the one coming off is not waiting, so the group goes back to automatic.
+    expect(replacePlayer(start, 1, 1, 9, { sendOnBreak: true }).nextUpPick).toBeUndefined()
+  })
+
+  it('keeps everyone else on the same team and in the same spot, however often it is changed', () => {
+    let s = withPlayers(createSession('doubles', 2), 12)
+    const { teams } = nextGroup(s)!
+    s = replaceNextUp(s, teams[0][0], 9)
+    s = replaceNextUp(s, teams[1][1], 10)
+    s = replaceNextUp(s, 9, 11)
+    expect(nextGroup(s)!.teams).toEqual([
+      [11, teams[0][1]],
+      [teams[1][0], 10],
+    ])
+  })
+
+  it('lets two players of the group change places, so staff can change the teams', () => {
+    const s = eight()
+    const { teams } = nextGroup(s)!
+    const t = replaceNextUp(s, teams[0][0], teams[1][0])
+    expect(nextGroup(t)!.teams).toEqual([
+      [teams[1][0], teams[0][1]],
+      [teams[0][0], teams[1][1]],
+    ])
+    expect(t.queue).toEqual(s.queue)
+  })
+
+  it('brings a player back from a break into the group', () => {
+    const t = replaceNextUp(checkOut(eight(), 8), 1, 8, 5000)
+    expect(t.onBreak).toEqual([])
+    expect(t.queue.at(-1)).toBe(8)
+    expect(nextGroup(t)!.players).toContain(8)
+    expect(nextGroup(t)!.players).not.toContain(1)
+  })
+
+  it('trades places with a player on a court', () => {
+    let s = fillCourts(withPlayers(createSession('doubles', 1), 8)) // 1-4 playing, 5-8 next up
+    s = { ...s, queuedAt: { 5: 1000, 6: 1000, 7: 1000, 8: 1000 } }
+    const court = s.courts[0].teams!
+    const group = nextGroup(s)!
+    const out = group.players[0]
+    const t = replaceNextUp(s, out, 3, 61_000)
+    expect(t.courts[0].teams).toEqual(tradeIn(court, 3, out))
+    expect(t.courts[0].waited?.[out]).toBe(60)
+    expect(nextGroup(t)!.teams).toEqual(tradeIn(group.teams, out, 3))
+    expect(t.queue).toEqual(s.queue.map((id) => (id === out ? 3 : id)))
+    expect(t.queuedAt?.[3]).toBe(61_000)
+    expect(t.queuedAt?.[out]).toBeUndefined()
   })
 
   it('falls back to the automatic group if a chosen player is no longer waiting', () => {
@@ -1230,6 +1499,44 @@ describe('changing who is next up', () => {
     expect(isNextUpPicked(s)).toBe(false)
     expect(nextGroup(s)!.players.slice().sort()).toEqual([1, 2, 3, 4])
     expect(resetNextUp(eight())).toEqual(eight())
+  })
+})
+
+describe('taking a player out of Next up', () => {
+  const eight = () => withPlayers(createSession('doubles', 2), 8)
+
+  it('puts the first waiting player outside the group in their exact spot, and keeps them in the queue', () => {
+    const s = eight()
+    const { teams } = nextGroup(s)!
+    const out = teams[0][0]
+    expect(nextUpStandIn(s, out)).toBe(5)
+    const t = dropFromNextUp(s, out)
+    expect(nextGroup(t)!.teams).toEqual(tradeIn(teams, out, 5))
+    expect(t.queue).toEqual(s.queue)
+  })
+
+  it('sends them on a break with the group still as it was', () => {
+    const s = eight()
+    const { teams } = nextGroup(s)!
+    const out = teams[1][1]
+    const t = dropFromNextUp(s, out, { onBreak: true })
+    expect(t.onBreak).toEqual([out])
+    expect(t.queue).not.toContain(out)
+    expect(nextGroup(t)!.teams).toEqual(tradeIn(teams, out, 5))
+  })
+
+  it('with nobody to stand in, only allows a break', () => {
+    const s = withPlayers(createSession('doubles', 1), 4)
+    expect(nextUpStandIn(s, 1)).toBeUndefined()
+    expect(() => dropFromNextUp(s, 1)).toThrow('No one is waiting')
+    const t = dropFromNextUp(s, 1, { onBreak: true })
+    expect(t.onBreak).toEqual([1])
+    expect(nextGroup(t)).toBeNull()
+  })
+
+  it('refuses a player who is not next up', () => {
+    expect(() => dropFromNextUp(eight(), 7)).toThrow('not in the next group')
+    expect(nextUpStandIn(eight(), 7)).toBeUndefined()
   })
 })
 

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addCourt, checkIn, openSessionMenu, startGame, recordWin } from '../helpers'
+import { addCourt, checkIn, openSessionMenu, startGame, recordWin, playerAction } from '../helpers'
 import {
   apiCreateClub,
   apiLive,
@@ -426,7 +426,7 @@ test.describe('changing who is next up', () => {
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(viewerNext.getByText(name)).toBeVisible({ timeout: 8000 })
 
     const staffNext = page.getByRole('group', { name: 'Next up' })
-    await staffNext.getByRole('button', { name: 'Change Ann in Next up' }).click()
+    await playerAction(staffNext, 'Ann', 'Swap…')
     await page.getByRole('dialog').getByRole('button', { name: /Eve/ }).click()
     await expect(viewerNext.getByText('Eve')).toBeVisible({ timeout: 8000 })
     await expect(viewerNext.getByText('Ann')).toHaveCount(0)

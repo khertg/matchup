@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TEAM_NAMES } from '@/lib/teams'
 import type { RosterPlayer, Teams } from '@/rotation/types'
 
 interface Props {
@@ -21,7 +22,7 @@ interface Props {
   onSubmit: (teams: Teams) => void
 }
 
-const TEAM_LABELS = ['Team A', 'Team B'] as const
+const TEAM_LABELS = TEAM_NAMES
 
 /** Reassign who was actually on each team for an already-recorded match. */
 export function EditMatchPlayersDialog({ courtName, teams, players, open, onOpenChange, onSubmit }: Props) {

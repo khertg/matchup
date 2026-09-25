@@ -1,26 +1,44 @@
-import { ReplacePlayerDialog } from '@/components/ReplacePlayerDialog'
+import { useState } from 'react'
+import { ReplacePlayerDialog, type Candidate } from '@/components/ReplacePlayerDialog'
+import { PlayerMenu } from '@/components/PlayerMenu'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { OpenTile, PlayerTile, TeamBox } from '@/components/PlayerTile'
 import { SkillBadge } from '@/components/SkillBadge'
 import { WaitingTime } from '@/components/WaitingTime'
 import type { SkillLevel } from '@/db/db'
+import { TEAM_NAMES } from '@/lib/teams'
 import { useNow } from '@/lib/time'
 import type { RosterPlayer } from '@/rotation/types'
 
 interface Props {
-  /** Player ids, Team A first and then Team B. Empty when no group can be formed. */
+  /** Player ids, Blue first and then Orange. Empty when no group can be formed. */
   nextUp: number[]
+  /**
+   * While no group can be formed: the spots staff pinned players into (Blue, then Orange), null for
+   * each open one. Missing means all open.
+   */
+  spots?: (number | null)[]
   players: Record<number, RosterPlayer>
   /** Shown when nobody can be listed, so people know what is being waited for. */
   emptyMessage: string
   /**
-   * Staff only: the other waiting players, in queue order, who could take a place in the group.
-   * Without `onReplace` the card is read-only, as on the players' live page.
+   * Staff only: everyone in the session with where they are; any of them can take a place in the
+   * group. Without `onReplace` the card is read-only, as on the players' live page.
    */
-  waiting?: RosterPlayer[]
+  candidates?: Candidate[]
+  /** Players per team (2 in doubles, 1 in singles), for the open spots while no group can be formed. */
+  slotsPerTeam?: number
   onReplace?: (outId: number, inId: number) => void
-  /** The group was chosen by staff, so it can be reset to the automatic one. */
+  /** Take a player out of the group (a stand-in takes their spot); they keep their queue place, or go on a break. */
+  onRemove?: (playerId: number) => void
+  onTakeBreak?: (playerId: number) => void
+  /** Why this player cannot be removed right now (nobody to stand in), or undefined when they can. */
+  removeBlocked?: (playerId: number) => string | undefined
+  /** Staff only: pin a player into an open spot of a lane's group (spots count Blue, then Orange). */
+  onFillSpot?: (lane: number, slot: number, playerId: number) => void
+  /** The group was chosen (or players pinned) by staff, so it can be reset to the automatic one. */
   picked?: boolean
   onReset?: () => void
   /** Staff only: change a player's skill level from their badge. */
@@ -31,7 +49,7 @@ interface Props {
   queuedAt?: Record<number, number>
   /**
    * While courts are kept for skill levels: one group per level, shown in place of `nextUp` (and its
-   * `emptyMessage` and `waiting`), each under its label such as "3.5+" or "Any level".
+   * `emptyMessage` and `spots`), each under its label such as "3.5+" or "Any level".
    */
   lanes?: NextUpLane[]
 }
@@ -40,22 +58,64 @@ export interface NextUpLane {
   label: string
   nextUp: number[]
   emptyMessage: string
-  /** Staff only: waiting players in this level's range who could take a place in its group. */
-  waiting?: RosterPlayer[]
+  spots?: (number | null)[]
 }
 
 type TeamsProps = Pick<
   Props,
-  'nextUp' | 'players' | 'waiting' | 'onReplace' | 'onSkillChange' | 'editable' | 'queuedAt'
->
-
-const TEAM_NAMES = ['Team A', 'Team B'] as const
+  | 'players'
+  | 'candidates'
+  | 'onReplace'
+  | 'onRemove'
+  | 'onTakeBreak'
+  | 'removeBlocked'
+  | 'onSkillChange'
+  | 'editable'
+  | 'queuedAt'
+> & {
+  /** One per spot, Blue then Orange: a player, or null for an open spot. */
+  spots: (number | null)[]
+  /** Which lane's group this is, so its own players read "In this group" when swapping. */
+  lane: number
+  /** Staff only: tap an open spot to choose who takes it. */
+  onOpenSpot?: (slot: number) => void
+}
 
 /**
  * The group that will play next, already split into teams. Staff read it to call
  * people up before starting a game; the live board shows the same card to players.
+ * While no group can be formed its spots are open, and staff can tap one to pin a player into it.
  */
-export function NextUpCard({ nextUp, emptyMessage, waiting, picked = false, onReset, lanes, ...shared }: Props) {
+export function NextUpCard({
+  nextUp,
+  spots,
+  emptyMessage,
+  picked = false,
+  onReset,
+  lanes,
+  slotsPerTeam = 2,
+  onFillSpot,
+  ...shared
+}: Props) {
+  // The open spot being filled; the pop-up to choose who is open while this is set.
+  const [filling, setFilling] = useState<{ lane: number; slot: number } | null>(null)
+  const openSpots = (pinned?: (number | null)[]) => pinned ?? Array<number | null>(slotsPerTeam * 2).fill(null)
+  const staff = !!shared.onReplace && !!onFillSpot
+  const group = (lane: number, ids: number[], pinned: (number | null)[] | undefined, message: string) =>
+    ids.length > 0 ? (
+      <GroupTeams {...shared} spots={ids} lane={lane} />
+    ) : (
+      <div className="space-y-2">
+        <GroupTeams
+          {...shared}
+          spots={openSpots(pinned)}
+          lane={lane}
+          onOpenSpot={staff ? (slot) => setFilling({ lane, slot }) : undefined}
+        />
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </div>
+    )
+
   return (
     <Card role="group" aria-label="Next up">
       <CardHeader>
@@ -74,49 +134,63 @@ export function NextUpCard({ nextUp, emptyMessage, waiting, picked = false, onRe
       <CardContent>
         {lanes ? (
           <div className="space-y-4">
-            {lanes.map((lane) => (
+            {lanes.map((lane, index) => (
               <section key={lane.label} aria-label={lane.label} className="space-y-2">
                 <p className="text-sm font-semibold">{lane.label}</p>
-                {lane.nextUp.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{lane.emptyMessage}</p>
-                ) : (
-                  <GroupTeams {...shared} nextUp={lane.nextUp} waiting={lane.waiting} />
-                )}
+                {group(index, lane.nextUp, lane.spots, lane.emptyMessage)}
               </section>
             ))}
           </div>
-        ) : nextUp.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         ) : (
-          <GroupTeams {...shared} nextUp={nextUp} waiting={waiting} />
+          group(0, nextUp, spots, emptyMessage)
+        )}
+        {staff && (
+          <ReplacePlayerDialog
+            mode="fill"
+            spot={`Next up, ${TEAM_NAMES[filling && filling.slot >= slotsPerTeam ? 1 : 0]}`}
+            candidates={shared.candidates ?? []}
+            open={filling !== null}
+            onOpenChange={(open) => !open && setFilling(null)}
+            onReplace={(inId) => filling && onFillSpot?.(filling.lane, filling.slot, inId)}
+          />
         )}
       </CardContent>
     </Card>
   )
 }
 
-/** One group, split into its two teams. */
+/** One group, split into its two teams (Blue, then Orange), with any open spots as dashed tiles. */
 function GroupTeams({
-  nextUp,
+  spots,
   players,
-  waiting = [],
+  candidates = [],
+  lane,
+  onOpenSpot,
   onReplace,
+  onRemove,
+  onTakeBreak,
+  removeBlocked,
   onSkillChange,
   editable = false,
   queuedAt,
 }: TeamsProps) {
   const now = useNow()
-  const half = nextUp.length / 2
-  const teams = [nextUp.slice(0, half), nextUp.slice(half)]
+  const half = spots.length / 2
+  const teams = [spots.slice(0, half), spots.slice(half)]
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
       {teams.map((team, i) => (
-        <div key={TEAM_NAMES[i]} className="rounded-lg border p-2">
-          <p className="text-xs font-medium text-muted-foreground">{TEAM_NAMES[i]}</p>
-          <ul>
-            {team.map((id) => (
-              <li key={id} className="flex items-center justify-between gap-2 py-1">
-                <span className="flex min-w-0 items-center gap-2">
+        <TeamBox key={i} team={i as 0 | 1}>
+          {team.map((id, k) =>
+            id === null ? (
+              <OpenTile
+                key={`open-${k}`}
+                onFill={onOpenSpot && (() => onOpenSpot(i * half + k))}
+                fillLabel={`Fill open spot on ${TEAM_NAMES[i]}`}
+              />
+            ) : (
+              <PlayerTile key={id}>
+                <span className="flex min-w-0 flex-1 items-center gap-2">
                   <PlayerAvatar name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
                   <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
                   {queuedAt?.[id] !== undefined && (
@@ -130,17 +204,21 @@ function GroupTeams({
                   />
                 )}
                 {onReplace && players[id] && (
-                  <ReplacePlayerDialog
+                  <PlayerMenu
                     mode="nextUp"
                     player={players[id]}
-                    waiting={waiting}
+                    candidates={candidates}
+                    lane={lane}
                     onReplace={(inId) => onReplace(id, inId)}
+                    onRemove={onRemove && (() => onRemove(id))}
+                    onTakeBreak={onTakeBreak && (() => onTakeBreak(id))}
+                    removeBlocked={removeBlocked?.(id)}
                   />
                 )}
-              </li>
-            ))}
-          </ul>
-        </div>
+              </PlayerTile>
+            ),
+          )}
+        </TeamBox>
       ))}
     </div>
   )

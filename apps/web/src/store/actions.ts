@@ -5,13 +5,17 @@ import {
   checkIn,
   checkOut,
   closeCourt,
+  dropFromNextUp,
   editMatch,
+  fillCourtSpot,
+  fillNextUpSpot,
   lockPartners,
   moveCourt,
   recordResult,
   recordScore,
   renameCourt,
   setCourtLevels,
+  removeFromCourt,
   renamePlayer,
   replaceNextUp,
   replacePlayer,
@@ -50,7 +54,11 @@ export type SessionAction =
   | { type: 'moveCourt'; courtId: number; offset: -1 | 1 }
   | { type: 'closeCourt'; courtId: number; now: number }
   | { type: 'replacePlayer'; courtId: number; outId: number; inId?: number; options?: ReplacePlayerOptions; now: number }
-  | { type: 'replaceNextUp'; outId: number; inId: number }
+  | { type: 'replaceNextUp'; outId: number; inId: number; now?: number }
+  | { type: 'dropFromNextUp'; playerId: number; onBreak: boolean }
+  | { type: 'removeFromCourt'; courtId: number; playerId: number; onBreak: boolean; now: number }
+  | { type: 'fillCourtSpot'; courtId: number; team: 0 | 1; playerId: number; now: number }
+  | { type: 'fillNextUpSpot'; lane: number; slot: number; playerId: number; now: number }
   | { type: 'resetNextUp' }
   | { type: 'lockPartners'; a: number; b: number }
   | { type: 'unlockPartners'; playerId: number }
@@ -127,7 +135,17 @@ export function applyAction(session: SessionState, action: SessionAction): Appli
         session: replacePlayer(session, action.courtId, action.outId, action.inId, { ...action.options, now: action.now }),
       }
     case 'replaceNextUp':
-      return { session: replaceNextUp(session, action.outId, action.inId) }
+      return { session: replaceNextUp(session, action.outId, action.inId, action.now) }
+    case 'dropFromNextUp':
+      return { session: dropFromNextUp(session, action.playerId, { onBreak: action.onBreak }) }
+    case 'removeFromCourt':
+      return {
+        session: removeFromCourt(session, action.courtId, action.playerId, { onBreak: action.onBreak, now: action.now }),
+      }
+    case 'fillCourtSpot':
+      return { session: fillCourtSpot(session, action.courtId, action.team, action.playerId, action.now) }
+    case 'fillNextUpSpot':
+      return { session: fillNextUpSpot(session, action.lane, action.slot, action.playerId, action.now) }
     case 'resetNextUp':
       return { session: resetNextUp(session) }
     case 'lockPartners':
@@ -156,6 +174,10 @@ export function remapAction(action: SessionAction, map: Map<number, number>): Se
     case 'renamePlayer':
     case 'checkOut':
     case 'unlockPartners':
+    case 'dropFromNextUp':
+    case 'removeFromCourt':
+    case 'fillCourtSpot':
+    case 'fillNextUpSpot':
       return { ...action, playerId: mapId(map, action.playerId) }
     case 'replacePlayer':
       return {

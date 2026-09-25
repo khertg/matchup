@@ -104,7 +104,7 @@ test.describe('renaming a court', () => {
     const court = page.getByRole('region', { name: 'Center Court' })
     await expect(court.getByText('Ann')).toBeVisible()
     await recordWin(page, 'Center Court')
-    await expect(page.getByText('Center Court: Team A won')).toBeVisible()
+    await expect(page.getByText('Center Court: Blue won')).toBeVisible()
   })
 
   test('explains why an empty or duplicate name is refused, and changes nothing', async ({ page }) => {
@@ -339,7 +339,7 @@ test.describe('skill levels per court', () => {
 
     await startGame(page, 'Court 2')
     for (const name of ['Bob', 'Dee', 'Fay', 'Hal']) {
-      await expect(court2.getByRole('group', { name: /Team/ }).filter({ hasText: name })).toHaveCount(1)
+      await expect(court2.getByRole('group', { name: /^(Blue|Orange)$/ }).filter({ hasText: name })).toHaveCount(1)
     }
     await startGame(page, 'Court 1')
     await expect(page.getByText('Queue (0)')).toBeVisible()

@@ -85,8 +85,8 @@ test.describe('live viewer', () => {
     await page.goto(`/club/${club.slug}/live`)
 
     const nextUp = page.getByRole('group', { name: 'Next up' })
-    await expect(nextUp.getByText('Team A', { exact: true })).toBeVisible()
-    await expect(nextUp.getByText('Team B', { exact: true })).toBeVisible()
+    await expect(nextUp.getByRole('group', { name: 'Blue' })).toBeVisible()
+    await expect(nextUp.getByRole('group', { name: 'Orange' })).toBeVisible()
     for (const name of ['Ann', 'Bob', 'Cy', 'Dee']) await expect(nextUp.getByText(name)).toBeVisible()
     await expect(nextUp.getByText('Eve')).toHaveCount(0)
     await expect(page.getByText('Next up', { exact: true })).toHaveCount(5) // card title + four queue badges
@@ -95,7 +95,7 @@ test.describe('live viewer', () => {
     const queueTop = (await page.getByText(/^Queue \(/).boundingBox())!.y
     expect(nextUpTop).toBeLessThan(queueTop)
     // Players can look but not change anything, including who is next up.
-    await expect(page.getByRole('button', { name: /in Next up$/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Options for / })).toHaveCount(0)
     // The only buttons are the ones that show a picture large.
     for (const button of await nextUp.getByRole('button').all()) {
       await expect(button).toHaveAccessibleName(/^View .*avatar$/)

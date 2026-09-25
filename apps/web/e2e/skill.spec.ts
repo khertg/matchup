@@ -129,7 +129,7 @@ test.describe('editing a level in a session', () => {
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
     await startGame(page)
     await recordWin(page)
-    await expect(page.getByText('Court 1: Team A won')).toBeVisible()
+    await expect(page.getByText('Court 1: Blue won')).toBeVisible()
 
     await levelButton(queueRow(page, 'Ann'), 'Ann').click()
     await pickLevel(page, 'Ann', EXPERT)

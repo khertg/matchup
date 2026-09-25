@@ -169,6 +169,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
                 court={court}
                 players={session.players}
                 partners={session.partners}
+                slotsPerTeam={snapshot.mode === 'doubles' ? 2 : 1}
                 readOnly
               />
             ))}
@@ -177,6 +178,7 @@ export function ViewerScreen({ slug }: { slug: string }) {
             nextUp={snapshot.nextUp}
             players={session.players}
             emptyMessage="No group is ready yet. Waiting for more players."
+            slotsPerTeam={snapshot.mode === 'doubles' ? 2 : 1}
             lanes={snapshot.nextUpLanes?.map((lane) => ({
               label: levelLabel(lane.levels ?? undefined) ?? 'Any level',
               nextUp: lane.players,

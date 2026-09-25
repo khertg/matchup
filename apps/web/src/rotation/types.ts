@@ -49,6 +49,20 @@ export interface Court {
    */
   startedAt?: number
   /**
+   * While a player has been removed and their spot is open (a team is short): when that started (ms
+   * since the epoch). The game's time is paused, and it cannot be finished until the spot is filled.
+   * Missing means the game is running.
+   */
+  pausedAt?: number
+  /**
+   * The players in `teams` were put on the court by staff, one spot at a time, and the game has not
+   * started: no time runs and it cannot be finished. Start game starts it once every spot is filled.
+   * Missing means a game in progress (or an open court).
+   */
+  notStarted?: true
+  /** Whole seconds this game has been paused so far, left out of its recorded time. Missing means none. */
+  pausedSeconds?: number
+  /**
    * Whole seconds each player on this court had waited before this game started. Missing per
    * player when their queue-join time was not known.
    */
@@ -108,7 +122,7 @@ export interface SessionState {
    * The next group as staff chose it (see replaceNextUp), overriding the automatic pick while every
    * one of them is still waiting. Missing means automatic.
    */
-  nextUpPick?: number[]
+  nextUpPick?: (number | null)[]
   /** Every game finished this session, oldest first. Missing in sessions saved before this was kept. */
   matches?: MatchRecord[]
   /**
