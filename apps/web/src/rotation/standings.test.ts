@@ -222,6 +222,11 @@ describe('rankPlayers', () => {
     const s = withStats([[1, 'Ann', { games: 2, wins: 2, secondsPlayed: 1260 }]])
     expect(rankPlayers(s)[0].secondsPlayed).toBe(1260)
   })
+
+  it('reports time waited', () => {
+    const s = withStats([[1, 'Ann', { games: 2, wins: 2, secondsWaited: 540 }]])
+    expect(rankPlayers(s)[0].secondsWaited).toBe(540)
+  })
 })
 
 describe('rankLifetime', () => {

@@ -51,6 +51,7 @@ export const EMPTY_STATS: Readonly<PlayerStats> = {
   pointsAgainst: 0,
   scoredGames: 0,
   secondsPlayed: 0,
+  secondsWaited: 0,
 }
 
 export interface SessionOptions {
@@ -551,7 +552,7 @@ function computeStats(matches: MatchRecord[], players: Record<number, RosterPlay
   const averageSkill = (ids: number[]) =>
     ids.reduce((sum, id) => sum + (players[id]?.skill ?? 0), 0) / ids.length
   for (const match of matches) {
-    const { teams, winner, score, seconds } = match
+    const { teams, winner, score, seconds, waited } = match
     const loser = winner === 0 ? 1 : 0
     const tally = (ids: number[], opponents: number[], won: boolean) => {
       const opponentSkill = averageSkill(opponents)
@@ -568,6 +569,7 @@ function computeStats(matches: MatchRecord[], players: Record<number, RosterPlay
           pointsAgainst: prev.pointsAgainst + pointsAgainst,
           scoredGames: prev.scoredGames + (score ? 1 : 0),
           secondsPlayed: prev.secondsPlayed + seconds,
+          secondsWaited: prev.secondsWaited + (waited?.[id] ?? 0),
         }
       }
     }

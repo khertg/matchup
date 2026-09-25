@@ -23,6 +23,8 @@ export interface Standing {
   scoredGames: number
   /** Total time on court, in whole seconds. */
   secondsPlayed: number
+  /** Total time waiting in the queue before those games, in whole seconds. */
+  secondsWaited: number
   /** Tied players share a rank (1, 1, 3, ...). */
   rank: number
   medal: Medal | null
@@ -73,6 +75,7 @@ export function rankPlayers(state: SessionState): Standing[] {
         diff: s.pointsFor - s.pointsAgainst,
         scoredGames: s.scoredGames,
         secondsPlayed: s.secondsPlayed,
+        secondsWaited: s.secondsWaited,
       }
     })
     .sort(

@@ -69,6 +69,9 @@ export function StandingsScreen({ session, location, readOnly = false, repeatSta
                   <TableHead className="text-right" title="Total time on court">
                     Time
                   </TableHead>
+                  <TableHead className="text-right" title="Total time waiting in the queue before games">
+                    Wait
+                  </TableHead>
                   {!readOnly && (
                     <TableHead className="w-12">
                       <span className="sr-only">Share</span>
@@ -99,6 +102,9 @@ export function StandingsScreen({ session, location, readOnly = false, repeatSta
                     <TableCell className="text-right">{row.avgOpponentSkill.toFixed(1)}</TableCell>
                     <TableCell className="whitespace-nowrap text-right">
                       {row.secondsPlayed > 0 ? formatDuration(row.secondsPlayed) : '-'}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {row.secondsWaited > 0 ? formatDuration(row.secondsWaited) : '-'}
                     </TableCell>
                     {!readOnly && (
                       <TableCell>

@@ -62,7 +62,7 @@ describe('migrateSession', () => {
 
     it('gives every existing stats entry zero points, scored games and time', () => {
       const migrated = migrateSession(v6() as never, 6)
-      expect(migrated?.stats[1]).toEqual({ ...v6Stats, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0 })
+      expect(migrated?.stats[1]).toEqual({ ...v6Stats, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0, secondsWaited: 0 })
       expect(migrated?.stats[2]).toEqual({
         games: 1,
         wins: 0,
@@ -72,6 +72,7 @@ describe('migrateSession', () => {
         pointsAgainst: 0,
         scoredGames: 0,
         secondsPlayed: 0,
+        secondsWaited: 0,
       })
     })
 
@@ -84,7 +85,7 @@ describe('migrateSession', () => {
     })
 
     it('does not touch stats that already have the new fields', () => {
-      const current = { ...v6Stats, pointsFor: 30, pointsAgainst: 20, scoredGames: 3, secondsPlayed: 900 }
+      const current = { ...v6Stats, pointsFor: 30, pointsAgainst: 20, scoredGames: 3, secondsPlayed: 900, secondsWaited: 120 }
       const session = { ...createSession('doubles', 1), stats: { 1: current } }
       expect(migrateSession(session, SESSION_STORE_VERSION)?.stats[1]).toEqual(current)
     })
@@ -101,10 +102,39 @@ describe('migrateSession', () => {
       const v4 = { ...v6(), courts: [{ id: 1, teams: null }] }
       const migrated = migrateSession(v4 as never, 4)
       expect(migrated?.courts[0].name).toBe('Court 1')
-      expect(migrated?.stats[1]).toMatchObject({ games: 3, pointsFor: 0, scoredGames: 0, secondsPlayed: 0 })
+      expect(migrated?.stats[1]).toMatchObject({ games: 3, pointsFor: 0, scoredGames: 0, secondsPlayed: 0, secondsWaited: 0 })
       // Before v4 there were no stats at all.
       const { stats: _s, ...v3 } = createSession('doubles', 1)
       expect(migrateSession(v3 as never, 3)?.stats).toEqual({})
+    })
+  })
+
+  describe('v7 to v8: time waited', () => {
+    const v7Stats = { games: 2, wins: 1, losses: 1, opponentSkill: 6, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 600 }
+    const match = (waited?: Record<number, number>) => ({
+      courtName: 'Court 1',
+      teams: [[1, 2], [3, 4]] as [number[], number[]],
+      winner: 0 as const,
+      seconds: 300,
+      ...(waited ? { waited } : {}),
+    })
+
+    it('adds up the waits the finished games recorded', () => {
+      const session = {
+        ...createSession('doubles', 1),
+        stats: { 1: v7Stats, 2: v7Stats, 3: v7Stats, 4: v7Stats },
+        matches: [match({ 1: 60, 2: 30 }), match(), match({ 1: 90, 3: 45 })],
+      }
+      const migrated = migrateSession(session as never, 7)
+      expect(migrated?.stats[1]).toEqual({ ...v7Stats, secondsWaited: 150 })
+      expect(migrated?.stats[2].secondsWaited).toBe(30)
+      expect(migrated?.stats[3].secondsWaited).toBe(45)
+      expect(migrated?.stats[4].secondsWaited).toBe(0)
+    })
+
+    it('gives zero when no games were kept', () => {
+      const { matches: _m, ...session } = { ...createSession('doubles', 1), stats: { 1: v7Stats } }
+      expect(migrateSession(session as never, 7)?.stats[1]).toEqual({ ...v7Stats, secondsWaited: 0 })
     })
   })
 

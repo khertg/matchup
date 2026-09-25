@@ -651,6 +651,21 @@ describe('queue wait time', () => {
     expect(state.queuedAt).toEqual({ 1: 40_000, 2: 40_000, 3: 40_000, 4: 40_000 })
   })
 
+  it('adds up each player\'s waits over the games they finished, and keeps them when a match is edited', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 5; id++) s = checkIn(s, player(id), id * 1000)
+    s = startGame(s, 1, { now: 10_000 }) // 1..4 waited 9, 8, 7, 6
+    s = recordScore(s, 1, 11, 5, { now: 70_000 }).state // they rejoin behind 5 at 70 s
+    s = startGame(s, 1, { now: 100_000 }) // 5 waited 95; 1, 2, 3 waited 30
+    const players = s.courts[0].teams!.flat()
+    s = recordScore(s, 1, 11, 7, { now: 160_000 }).state
+    const expected: Record<number, number> = { 1: 9, 2: 8, 3: 7, 4: 6 }
+    for (const id of players) expected[id] = (expected[id] ?? 0) + (id === 5 ? 95 : 30)
+    for (let id = 1; id <= 5; id++) expect(s.stats[id].secondsWaited, `player ${id}`).toBe(expected[id])
+    const edited = editMatch(s, 0, { score: [11, 9] })
+    for (let id = 1; id <= 5; id++) expect(edited.stats[id].secondsWaited).toBe(expected[id])
+  })
+
   it('cancelMatch restarts the wait for the returning players', () => {
     let s = createSession('doubles', 1)
     for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)

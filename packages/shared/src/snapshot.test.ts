@@ -23,7 +23,7 @@ const good = (): PublicSnapshot => ({
   onBreak: [],
   partners: [[5, 6]],
   stats: {
-    1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 9, scoredGames: 2, secondsPlayed: 1260 },
+    1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 9, scoredGames: 2, secondsPlayed: 1260, secondsWaited: 480 },
   },
   players: {
     1: { id: 1, name: 'Ann', skill: 3 },
@@ -51,21 +51,22 @@ describe('parsePublicSnapshot', () => {
         pointsAgainst: 9,
         scoredGames: 2,
         secondsPlayed: 1260,
+        secondsWaited: 480,
       })
     })
 
     it('accepts stats from before scores existed and reads the new fields as 0', () => {
       const parsed = parsePublicSnapshot(withStats(base))!
-      expect(parsed.stats[1]).toEqual({ ...base, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0 })
+      expect(parsed.stats[1]).toEqual({ ...base, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0, secondsWaited: 0 })
     })
 
     it('fills only the fields that are missing', () => {
       const parsed = parsePublicSnapshot(withStats({ ...base, secondsPlayed: 300 }))!
-      expect(parsed.stats[1]).toMatchObject({ pointsFor: 0, scoredGames: 0, secondsPlayed: 300 })
+      expect(parsed.stats[1]).toMatchObject({ pointsFor: 0, scoredGames: 0, secondsPlayed: 300, secondsWaited: 0 })
     })
 
     it('rejects negative, non-finite, non-numeric and huge values', () => {
-      for (const field of ['pointsFor', 'pointsAgainst', 'scoredGames', 'secondsPlayed']) {
+      for (const field of ['pointsFor', 'pointsAgainst', 'scoredGames', 'secondsPlayed', 'secondsWaited']) {
         for (const value of [-1, NaN, Infinity, '5', null, 1_000_001]) {
           expect(parsePublicSnapshot(withStats({ ...base, [field]: value })), `${field}=${String(value)}`).toBeNull()
         }

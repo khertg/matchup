@@ -39,6 +39,24 @@ test('ranks players by wins and awards medals', async ({ page }) => {
   await expect(rows.nth(2)).toContainText('0%')
 })
 
+test('shows each player\'s total wait before their games', async ({ page }) => {
+  await page.clock.install()
+  await startSession(page, { mode: 'Singles' })
+  await checkIn(page, ['Ann', 'Bob'])
+  await page.clock.fastForward('05:00')
+  await startGame(page)
+  await recordWin(page)
+  await page.clock.fastForward('03:00')
+  await startGame(page)
+  await recordWin(page)
+  await openStandings(page)
+
+  const rows = page.getByRole('table').first().getByRole('row')
+  await expect(rows.first().getByRole('columnheader').nth(9)).toHaveText('Wait')
+  await expect(rows.nth(1).getByRole('cell').nth(9)).toHaveText('0:08')
+  await expect(rows.nth(2).getByRole('cell').nth(9)).toHaveText('0:08')
+})
+
 test('removes an undone result from the standings', async ({ page }) => {
   await singlesWithGames(page, 1)
   await page.getByRole('button', { name: 'Undo' }).click()
@@ -182,7 +200,7 @@ test('splits a large roster into several images of up to 10 players each', async
     for (let i = 1; i <= 25; i++) {
       const id = 1000 + i
       session.players[id] = { id, name: `Extra${i}`, skill: 3 }
-      session.stats[id] = { games: 1, wins: 1, losses: 0, opponentSkill: 3, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0 }
+      session.stats[id] = { games: 1, wins: 1, losses: 0, opponentSkill: 3, pointsFor: 0, pointsAgainst: 0, scoredGames: 0, secondsPlayed: 0, secondsWaited: 0 }
     }
     localStorage.setItem('q2dink-session', JSON.stringify(saved))
   })

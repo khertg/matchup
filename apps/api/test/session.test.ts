@@ -150,6 +150,7 @@ describe('publishing a session', () => {
       pointsAgainst: 9,
       scoredGames: 2,
       secondsPlayed: 1260,
+      secondsWaited: 0,
     })
   })
 
@@ -166,13 +167,14 @@ describe('publishing a session', () => {
       pointsAgainst: 0,
       scoredGames: 0,
       secondsPlayed: 0,
+      secondsWaited: 0,
     })
   })
 
   it('rejects scores and times that are negative or not numbers', async () => {
     const { token } = await createClub(app)
     const stats = sampleSnapshot().stats[1]
-    for (const bad of [{ pointsFor: -1 }, { pointsAgainst: 'x' }, { scoredGames: null }, { secondsPlayed: 1e9 }]) {
+    for (const bad of [{ pointsFor: -1 }, { pointsAgainst: 'x' }, { scoredGames: null }, { secondsPlayed: 1e9 }, { secondsWaited: -5 }]) {
       const response = await put(token, {
         public: { ...sampleSnapshot(), stats: { 1: { ...stats, ...bad } } },
         full: sampleBackup(),

@@ -92,7 +92,7 @@ export function sampleSnapshot(location = 'Sunset Courts'): PublicSnapshot {
     onBreak: [],
     partners: [[5, 6]],
     stats: {
-      1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 9, scoredGames: 2, secondsPlayed: 1260 },
+      1: { games: 2, wins: 2, losses: 0, opponentSkill: 6, pointsFor: 22, pointsAgainst: 9, scoredGames: 2, secondsPlayed: 1260, secondsWaited: 0 },
     },
     players: {
       1: { id: 1, name: 'Ann', skill: 3 },

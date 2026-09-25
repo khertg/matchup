@@ -53,6 +53,8 @@ export interface WireStats {
   scoredGames: number
   /** Total time on court, in whole seconds. */
   secondsPlayed: number
+  /** Total time waiting in the queue before the games played, in whole seconds. */
+  secondsWaited: number
 }
 
 export interface WirePlayer {
@@ -154,7 +156,7 @@ function validPlayers(v: unknown): v is Record<number, WirePlayer> {
 }
 
 /** The stats added after the first release: optional on input, and 0 in the copy when missing. */
-const OPTIONAL_STAT_FIELDS = ['pointsFor', 'pointsAgainst', 'scoredGames', 'secondsPlayed'] as const
+const OPTIONAL_STAT_FIELDS = ['pointsFor', 'pointsAgainst', 'scoredGames', 'secondsPlayed', 'secondsWaited'] as const
 
 function validStats(v: unknown): v is Record<number, WireStats> {
   if (!isObject(v)) return false
@@ -240,6 +242,7 @@ function copyPublicSnapshot(s: PublicSnapshot): PublicSnapshot {
           pointsAgainst: st.pointsAgainst ?? 0,
           scoredGames: st.scoredGames ?? 0,
           secondsPlayed: st.secondsPlayed ?? 0,
+          secondsWaited: st.secondsWaited ?? 0,
         },
       ]),
     ),

@@ -5,9 +5,9 @@ import type { SessionState } from '@/rotation/types'
  * Bump whenever the persisted session shape changes, and extend migrateSession. Version 6 added the
  * session's identity (id, start time, all-time totals already counted) beside the session; that lives
  * in the store's own migrate, not in SessionState. Version 7 added scores and time played to each
- * player's stats.
+ * player's stats. Version 8 added time spent waiting in the queue to each player's stats.
  */
-export const SESSION_STORE_VERSION = 7
+export const SESSION_STORE_VERSION = 8
 
 /** Upgrade a session saved by an older build to the current shape. */
 export function migrateSession(
@@ -32,6 +32,21 @@ export function migrateSession(
       ...next,
       stats: Object.fromEntries(
         Object.entries(next.stats).map(([id, stats]) => [id, { ...EMPTY_STATS, ...stats }]),
+      ),
+    }
+  }
+  // Stats gained time waited, which the finished games already recorded (0 where they did not).
+  if (fromVersion < 8) {
+    const waited: Record<number, number> = {}
+    for (const match of next.matches ?? []) {
+      for (const [id, seconds] of Object.entries(match.waited ?? {})) {
+        waited[Number(id)] = (waited[Number(id)] ?? 0) + seconds
+      }
+    }
+    next = {
+      ...next,
+      stats: Object.fromEntries(
+        Object.entries(next.stats).map(([id, stats]) => [id, { ...stats, secondsWaited: waited[Number(id)] ?? 0 }]),
       ),
     }
   }

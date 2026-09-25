@@ -24,6 +24,8 @@ export interface PlayerStats {
   scoredGames: number
   /** Total time on court, in whole seconds. */
   secondsPlayed: number
+  /** Total time waiting in the queue before the games played, in whole seconds (0 where not known). */
+  secondsWaited: number
 }
 
 /** Two sides of player ids. Doubles: 2 per side. Singles: 1 per side. */
