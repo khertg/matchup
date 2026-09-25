@@ -1,5 +1,6 @@
 import { MedalBadge } from '@/components/MedalBadge'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { Podium } from '@/components/Podium'
 import { RepeatStats } from '@/components/RepeatStats'
 import { ShareStandingsDialog } from '@/components/ShareStandingsDialog'
 import { StatsCardDialog } from '@/components/StatsCardDialog'
@@ -13,7 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDuration } from '@/lib/time'
-import { formatDiff, rankPlayers } from '@/rotation/standings'
+import { formatDiff, podium, rankPlayers } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
 
 interface Props {
@@ -49,6 +50,7 @@ export function StandingsScreen({ session, location, readOnly = false, repeatSta
           </p>
         ) : (
           <>
+            <Podium places={podium(standings)} />
             <Table>
               <TableHeader>
                 <TableRow>

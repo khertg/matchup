@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Player } from '@/db/db'
 import { checkIn, createSession, EMPTY_STATS, recordResult, recordScore, startGame } from './engine'
 import { fillCourts } from './testing'
-import { pageStandings, rankLifetime, rankPlayers } from './standings'
+import { pageStandings, podium, rankLifetime, rankPlayers, type Standing } from './standings'
 import type { PlayerStats, RosterPlayer, SessionState } from './types'
 
 const player = (id: number, name: string, skill: RosterPlayer['skill'] = 3): RosterPlayer => ({
@@ -270,5 +270,33 @@ describe('pageStandings', () => {
 
   it('has no pages for an empty list', () => {
     expect(pageStandings([])).toEqual([])
+  })
+})
+
+describe('podium', () => {
+  /** Just what podium() reads: rank and medal. */
+  const at = (id: number, rank: number): Standing =>
+    ({ id, name: `P${id}`, rank, medal: rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : null }) as Standing
+
+  it('lists gold, silver and bronze in that order, leaving the rest out', () => {
+    const places = podium([at(1, 1), at(2, 2), at(3, 3), at(4, 4)])
+    expect(places.map((p) => [p.medal, p.rank, p.players.map((s) => s.id)])).toEqual([
+      ['gold', 1, [1]],
+      ['silver', 2, [2]],
+      ['bronze', 3, [3]],
+    ])
+  })
+
+  it('puts tied players on one place, and leaves out a medal nobody won', () => {
+    const places = podium([at(1, 1), at(2, 1), at(3, 3)])
+    expect(places.map((p) => [p.medal, p.players.map((s) => s.id)])).toEqual([
+      ['gold', [1, 2]],
+      ['bronze', [3]],
+    ])
+  })
+
+  it('has fewer places with fewer players, and none with nobody', () => {
+    expect(podium([at(1, 1), at(2, 2)]).map((p) => p.medal)).toEqual(['gold', 'silver'])
+    expect(podium([])).toEqual([])
   })
 })

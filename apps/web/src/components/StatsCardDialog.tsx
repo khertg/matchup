@@ -1,9 +1,8 @@
 import { Download, Share2 } from 'lucide-react'
-import { toBlob } from 'html-to-image'
 import { useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { CardColorPicker } from '@/components/CardColorPicker'
 import { StatsCard } from '@/components/StatsCard'
+import { useCardGifs } from '@/components/useCardGifs'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { cardColors, useCardChoice } from '@/lib/cardPalette'
 import { canShareNatively, downloadImages, shareImages } from '@/lib/share'
+import { STATS_TIMING } from '@/lib/statsAnimation'
 import type { Standing } from '@/rotation/standings'
 
 interface Props {
@@ -25,67 +25,80 @@ interface Props {
 
 const fileSafe = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
+/** A player's stats card, shared as a looping animated GIF (see useCardGifs). */
 export function StatsCardDialog({ standing, location, date }: Props) {
   const cardRef = useRef<HTMLDivElement>(null)
-  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
   const native = canShareNatively()
   const colors = cardColors(useCardChoice((s) => s.choice))
+  const { name, rank, medal, wins, losses, games, winRate } = standing
+  const { frame, piecesHidden, files, failed, retry, restart } = useCardGifs({
+    open,
+    timing: STATS_TIMING,
+    // What the card shows, so a GIF made for other colours or results is never shared.
+    imageKey: JSON.stringify([colors.from, colors.to, colors.text, location, date, name, rank, medal, wins, losses, games, winRate]),
+    cards: () => [cardRef.current],
+    fileNames: () => [`${fileSafe(name) || 'player'}-q2dink-stats.gif`],
+  })
 
-  async function buildFile(): Promise<File> {
-    if (!cardRef.current) throw new Error('no card')
-    const blob = await toBlob(cardRef.current, { pixelRatio: 3, cacheBust: true })
-    if (!blob) throw new Error('no image')
-    return new File([blob], `${fileSafe(standing.name) || 'player'}-q2dink-stats.png`, { type: 'image/png' })
+  // Nothing is awaited before the share sheet opens, so the tap still counts when it does.
+  function handleShare() {
+    if (files) void shareImages({ files, title: `${name}'s Q2Dink stats`, text: `Finished #${rank} at ${location}` })
   }
 
-  async function handleShare() {
-    setBusy(true)
-    try {
-      const file = await buildFile()
-      await shareImages({ files: [file], title: `${standing.name}'s Q2Dink stats`, text: `Finished #${standing.rank} at ${location}` })
-    } catch {
-      toast.error('Could not create the image. Try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleDownload() {
-    setBusy(true)
-    try {
-      downloadImages([await buildFile()])
-    } catch {
-      toast.error('Could not create the image. Try again.')
-    } finally {
-      setBusy(false)
-    }
+  function handleDownload() {
+    if (files) downloadImages(files)
   }
 
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        restart()
+      }}
+    >
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Share card for ${standing.name}`}>
+        <Button variant="ghost" size="icon" aria-label={`Share card for ${name}`}>
           <Share2 />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Stats card</DialogTitle>
-          <DialogDescription>
-            A square image for Instagram, Facebook or WhatsApp.
-          </DialogDescription>
+          <DialogDescription>A square animated image for Instagram, Facebook, Messenger or WhatsApp.</DialogDescription>
         </DialogHeader>
         <CardColorPicker />
         <div className="flex justify-center overflow-hidden rounded-lg">
-          <StatsCard ref={cardRef} standing={standing} location={location} date={date} colors={colors} />
+          <StatsCard
+            ref={cardRef}
+            standing={standing}
+            location={location}
+            date={date}
+            colors={colors}
+            frame={frame}
+            piecesHidden={piecesHidden}
+          />
         </div>
-        <Button className="h-11 w-full" onClick={handleShare} disabled={busy}>
-          {native ? <Share2 /> : <Download />} {busy ? 'Creating image…' : native ? 'Share card' : 'Download image'}
-        </Button>
-        {native && (
-          <Button type="button" variant="ghost" className="w-full" onClick={handleDownload} disabled={busy}>
-            <Download /> Download image instead
-          </Button>
+        {failed ? (
+          <div role="alert" className="space-y-2 text-center text-sm">
+            <p className="text-destructive">Could not create the animation.</p>
+            <Button type="button" variant="outline" onClick={retry}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Button className="h-11 w-full" onClick={handleShare} disabled={!files}>
+              {native ? <Share2 /> : <Download />}{' '}
+              {!files ? 'Preparing animation…' : native ? 'Share card' : 'Download image'}
+            </Button>
+            {native && (
+              <Button type="button" variant="ghost" className="w-full" onClick={handleDownload} disabled={!files}>
+                <Download /> Download image instead
+              </Button>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>

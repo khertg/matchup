@@ -113,6 +113,16 @@ test.describe('live viewer', () => {
     await expect(page.getByRole('button', { name: /^Share card/ })).toHaveCount(0)
   })
 
+  test('shows the podium, with tied players sharing a place', async ({ page, request }) => {
+    const { club } = await runningClub(request)
+    await page.goto(`/club/${club.slug}`)
+    await page.getByRole('tab', { name: 'Standings' }).click()
+    // Ann and Bob both won both games: they share gold, so the next place is bronze.
+    await expect(page.getByRole('listitem', { name: /^1st place: Ann and Bob,/ })).toBeVisible()
+    await expect(page.getByRole('listitem', { name: /^3rd place: Cy and Dee,/ })).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Podium' }).getByRole('listitem')).toHaveCount(2)
+  })
+
   test('does not show the partners and opponents card: the live page carries no game history', async ({ page, request }) => {
     const { club } = await runningClub(request)
     await page.goto(`/club/${club.slug}`)

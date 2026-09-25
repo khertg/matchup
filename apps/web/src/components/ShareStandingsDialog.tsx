@@ -1,11 +1,11 @@
 import { Download, Share2 } from 'lucide-react'
-import { toBlob } from 'html-to-image'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useClubAuth } from '@/cloud/auth'
 import { viewerUrl } from '@/cloud/url'
 import { CardColorPicker } from '@/components/CardColorPicker'
 import { StandingsCard } from '@/components/StandingsCard'
+import { useCardGifs } from '@/components/useCardGifs'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { cardColors, useCardChoice } from '@/lib/cardPalette'
+import { STANDINGS_TIMING } from '@/lib/standingsAnimation'
 import { canShareNatively, downloadImages, shareImages } from '@/lib/share'
 import { pageStandings, type Standing } from '@/rotation/standings'
 import type { SessionState } from '@/rotation/types'
@@ -36,53 +37,39 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
   const url = club ? viewerUrl(club.slug) : undefined
   const pages = pageStandings(standings)
   const refs = useRef<(HTMLDivElement | null)[]>([])
-  const [busy, setBusy] = useState(false)
   const colors = cardColors(useCardChoice((s) => s.choice))
-
   const top = withRepeats ? repeatStats(session).summary.topPartnership : undefined
   const topPartnership = top
     ? { names: [session.players[top.a]?.name ?? 'Unknown', session.players[top.b]?.name ?? 'Unknown'] as [string, string], count: top.count }
     : undefined
+  const [open, setOpen] = useState(false)
+  // What the cards show, so a GIF made for other colours or results is never shared.
+  const imageKey = JSON.stringify([
+    colors.from,
+    colors.to,
+    colors.text,
+    location,
+    date,
+    topPartnership?.names,
+    pages.map((page) => page.map((row) => [row.id, row.name, row.rank, row.wins, row.losses, row.diff, row.scoredGames])),
+  ])
+  const { frame, piecesHidden, files, failed, retry, restart } = useCardGifs({
+    open,
+    timing: STANDINGS_TIMING,
+    imageKey,
+    cards: () => pages.map((_, i) => refs.current[i]),
+    fileNames: (count) =>
+      Array.from({ length: count }, (_, i) => `q2dink-standings${count > 1 ? `-${i + 1}-of-${count}` : ''}.gif`),
+  })
 
-  async function buildFiles(): Promise<File[]> {
-    const files: File[] = []
-    for (let i = 0; i < pages.length; i++) {
-      const node = refs.current[i]
-      if (!node) continue
-      const blob = await toBlob(node, { pixelRatio: 3, cacheBust: true })
-      if (!blob) throw new Error('no image')
-      const suffix = pages.length > 1 ? `-${i + 1}-of-${pages.length}` : ''
-      files.push(new File([blob], `q2dink-standings${suffix}.png`, { type: 'image/png' }))
-    }
-    return files
+  // Nothing is awaited before the share sheet opens, so the tap still counts when it does.
+  function handleShare() {
+    if (!files) return
+    void shareImages({ files, title: 'Q2Dink standings', text: `Standings at ${location}`, url })
   }
 
-  async function handleShare() {
-    setBusy(true)
-    try {
-      const files = await buildFiles()
-      await shareImages({
-        files,
-        title: 'Q2Dink standings',
-        text: `Standings at ${location}`,
-        url,
-      })
-    } catch {
-      toast.error('Could not create the image. Try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleDownload() {
-    setBusy(true)
-    try {
-      downloadImages(await buildFiles())
-    } catch {
-      toast.error('Could not create the image. Try again.')
-    } finally {
-      setBusy(false)
-    }
+  function handleDownload() {
+    if (files) downloadImages(files)
   }
 
   async function copyLink() {
@@ -100,7 +87,13 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
   const downloadLabel = pages.length > 1 ? `Download ${pages.length} images instead` : 'Download image instead'
 
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        restart()
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <Share2 /> Share standings
@@ -111,8 +104,8 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
           <DialogTitle>Share standings</DialogTitle>
           <DialogDescription>
             {pages.length > 1
-              ? `${pages.length} images of up to 10 players each, ready for a group chat.`
-              : 'An image of the standings, ready for a group chat.'}
+              ? `${pages.length} animated images of up to 10 players each, ready for a group chat.`
+              : 'An animated image of the standings, ready for a group chat.'}
           </DialogDescription>
         </DialogHeader>
         <CardColorPicker />
@@ -130,16 +123,29 @@ export function ShareStandingsDialog({ session, location, standings, date, repea
               date={date}
               topPartnership={i === pages.length - 1 ? topPartnership : undefined}
               colors={colors}
+              frame={frame}
+              piecesHidden={piecesHidden}
             />
           ))}
         </div>
-        <Button className="h-11 w-full" onClick={handleShare} disabled={busy}>
-          {native ? <Share2 /> : <Download />} {busy ? 'Creating image…' : label}
-        </Button>
-        {native && (
-          <Button type="button" variant="ghost" className="w-full" onClick={handleDownload} disabled={busy}>
-            <Download /> {downloadLabel}
-          </Button>
+        {failed ? (
+          <div role="alert" className="space-y-2 text-center text-sm">
+            <p className="text-destructive">Could not create the animation.</p>
+            <Button type="button" variant="outline" onClick={retry}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Button className="h-11 w-full" onClick={handleShare} disabled={!files}>
+              {native ? <Share2 /> : <Download />} {files ? label : 'Preparing animation…'}
+            </Button>
+            {native && (
+              <Button type="button" variant="ghost" className="w-full" onClick={handleDownload} disabled={!files}>
+                <Download /> {downloadLabel}
+              </Button>
+            )}
+          </>
         )}
         {url && (
           <div className="flex gap-2">

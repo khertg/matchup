@@ -147,3 +147,23 @@ export function rankLifetime(players: Player[], minGames: number): LifetimeRow[]
   })
   return ranked
 }
+
+export interface PodiumPlace {
+  medal: Medal
+  /** The rank the medal is for (1, 2 or 3). Tied players share a place. */
+  rank: number
+  players: Standing[]
+}
+
+const PODIUM_MEDALS: Medal[] = ['gold', 'silver', 'bronze']
+
+/**
+ * The top three places, gold first, from ranked standings. Tied players share a place (two golds are
+ * one place with two players), and a medal nobody won (silver, after a tie for first) is left out.
+ */
+export function podium(standings: Standing[]): PodiumPlace[] {
+  return PODIUM_MEDALS.flatMap((medal) => {
+    const players = standings.filter((row) => row.medal === medal)
+    return players.length > 0 ? [{ medal, rank: players[0].rank, players }] : []
+  })
+}

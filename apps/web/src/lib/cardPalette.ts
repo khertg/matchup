@@ -24,6 +24,9 @@ export type CardChoice = { preset: string } | { custom: string }
 
 export interface CardColors {
   background: string
+  /** The gradient's two ends (top left, bottom right), for drawing it on a canvas. */
+  from: string
+  to: string
   text: string
   /** Behind rows and stat boxes. */
   panel: string
@@ -33,8 +36,8 @@ export interface CardColors {
 
 export const DEFAULT_CARD_CHOICE: CardChoice = { preset: 'court' }
 
-const WHITE: Omit<CardColors, 'background'> = { text: '#ffffff', panel: 'rgba(255,255,255,0.15)', lightText: true }
-const DARK: Omit<CardColors, 'background'> = { text: '#0f172a', panel: 'rgba(0,0,0,0.08)', lightText: false }
+const WHITE: Omit<CardColors, 'background' | 'from' | 'to'> = { text: '#ffffff', panel: 'rgba(255,255,255,0.15)', lightText: true }
+const DARK: Omit<CardColors, 'background' | 'from' | 'to'> = { text: '#0f172a', panel: 'rgba(0,0,0,0.08)', lightText: false }
 
 const gradient = (from: string, to: string) => `linear-gradient(135deg, ${from} 0%, ${to} 100%)`
 
@@ -70,10 +73,10 @@ export function cardColors(choice: CardChoice): CardColors {
     const from = darken(to, 0.55)
     // White text needs a dark enough background: judge by the lighter end of the gradient.
     const base = luminance(to) > 0.4 ? DARK : WHITE
-    return { background: gradient(from, to), ...base }
+    return { background: gradient(from, to), from, to, ...base }
   }
   const preset = CARD_PRESETS.find((p) => 'preset' in choice && p.id === choice.preset) ?? CARD_PRESETS[0]
-  return { background: gradient(preset.from, preset.to), ...WHITE }
+  return { background: gradient(preset.from, preset.to), from: preset.from, to: preset.to, ...WHITE }
 }
 
 const STORAGE_KEY = 'q2dink-card-colors'

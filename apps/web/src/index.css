@@ -13,6 +13,20 @@
         0%, 75% { transform: rotate(0deg); }
         100% { transform: rotate(180deg); }
     }
+
+    /* The standings podium: each step rises in once (staggered by delay), then gold glows softly. */
+    --animate-podium-rise: podium-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    --animate-podium-glow: podium-glow 3s ease-in-out 1s infinite;
+
+    @keyframes podium-rise {
+        from { opacity: 0; transform: translateY(24px); }
+        to { opacity: 1; transform: none; }
+    }
+
+    @keyframes podium-glow {
+        0%, 100% { box-shadow: 0 0 0 0 rgb(251 191 36 / 0); }
+        50% { box-shadow: 0 0 18px 4px rgb(251 191 36 / 0.6); }
+    }
 }
 
 @theme inline {
