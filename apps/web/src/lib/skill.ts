@@ -37,3 +37,15 @@ export function levelLabel(levels: readonly [SkillLevel, SkillLevel] | undefined
   return `${low}–${parts[parts.length - 1]}`
 }
 
+/** How many of these players are at each level, lowest level first, leaving out levels with nobody. */
+export function countBySkill(
+  ids: readonly number[],
+  players: Readonly<Record<number, { skill: SkillLevel } | undefined>>,
+): { level: SkillLevel; count: number }[] {
+  const counts = new Map<SkillLevel, number>()
+  for (const id of ids) {
+    const skill = players[id]?.skill
+    if (skill !== undefined) counts.set(skill, (counts.get(skill) ?? 0) + 1)
+  }
+  return SKILL_LEVELS.flatMap(({ value }) => (counts.get(value) ? [{ level: value, count: counts.get(value)! }] : []))
+}

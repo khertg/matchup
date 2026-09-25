@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillLevel } from '@/db/db'
-import { DEFAULT_SKILL, SKILL_LEVELS, levelLabel, skillLabel, skillOptionLabel } from './skill'
+import { DEFAULT_SKILL, SKILL_LEVELS, countBySkill, levelLabel, skillLabel, skillOptionLabel } from './skill'
 
 describe('skill levels', () => {
   it('are the six levels, named from Beginner up to Expert', () => {
@@ -53,3 +53,24 @@ describe('levelLabel', () => {
   })
 })
 
+describe('countBySkill', () => {
+  const players = {
+    1: { skill: 3 as SkillLevel },
+    2: { skill: 5 as SkillLevel },
+    3: { skill: 3 as SkillLevel },
+    4: { skill: 1 as SkillLevel },
+  }
+
+  it('counts players per level, lowest level first, leaving out levels with nobody', () => {
+    expect(countBySkill([2, 1, 3, 4], players)).toEqual([
+      { level: 1, count: 1 },
+      { level: 3, count: 2 },
+      { level: 5, count: 1 },
+    ])
+  })
+
+  it('is empty for nobody, and skips unknown players', () => {
+    expect(countBySkill([], players)).toEqual([])
+    expect(countBySkill([99, 2], players)).toEqual([{ level: 5, count: 1 }])
+  })
+})

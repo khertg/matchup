@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
+import { SkillCountPills } from '@/components/SkillCountPills'
 import { WaitingTime } from '@/components/WaitingTime'
 import type { SkillLevel } from '@/db/db'
 import { useNow } from '@/lib/time'
@@ -29,6 +30,7 @@ export function QueueList({ session, nextUp = [], onSkillChange, onTakeBreak, ed
     <Card>
       <CardHeader>
         <CardTitle>Queue ({session.queue.length})</CardTitle>
+        <SkillCountPills ids={session.queue} players={session.players} label="Waiting per level" />
       </CardHeader>
       <CardContent>
         {session.queue.length === 0 ? (

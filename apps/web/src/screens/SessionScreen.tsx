@@ -3,12 +3,14 @@ import { useMemo } from 'react'
 import { parseFullBackup } from '@/cloud/snapshot'
 import { joinClubSession, keepMySession, useSyncStore } from '@/cloud/sync'
 import { SessionMenu } from '@/components/SessionMenu'
+import { SkillCountPills } from '@/components/SkillCountPills'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useClubName } from '@/lib/avatars'
 import { matchmakingLabel } from '@/lib/matchmaking'
 import { cn } from '@/lib/utils'
+import { playingIds } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { BoardScreen } from './BoardScreen'
@@ -64,6 +66,14 @@ export function SessionScreen({ session }: { session: SessionState }) {
             <Badge variant="secondary">
               {session.courts.length} {session.courts.length === 1 ? 'court' : 'courts'}
             </Badge>
+          </div>
+          {/* Everyone checked in (waiting or playing; not those on a break). */}
+          <div className="mt-2">
+            <SkillCountPills
+              ids={[...session.queue, ...playingIds(session)]}
+              players={session.players}
+              label="Checked in per level"
+            />
           </div>
         </div>
 

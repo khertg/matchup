@@ -185,3 +185,29 @@ test.describe('editing a level on the saved roster', () => {
     await expect(levelButton(page.getByRole('group', { name: 'Check in from the roster' }), 'Zed')).toHaveText('Lv 5')
   })
 })
+
+test.describe('players per level', () => {
+  const pills = (page: Page, label: string) => page.getByRole('list', { name: label }).getByRole('listitem')
+
+  test('counts everyone checked in and everyone waiting, leaving out levels with nobody', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, [
+      'Ann',
+      'Bob',
+      { name: 'Cy', skill: '5 · Advanced (4.0-4.5)' },
+      'Dee',
+      { name: 'Eve', skill: BEGINNER },
+    ])
+
+    await expect(pills(page, 'Checked in per level')).toHaveText(['Lv 1 · 1', 'Lv 3 · 3', 'Lv 5 · 1'])
+    await expect(pills(page, 'Waiting per level')).toHaveText(['Lv 1 · 1', 'Lv 3 · 3', 'Lv 5 · 1'])
+    await expect(page.getByRole('list', { name: 'Checked in per level' })).not.toContainText('Lv 6')
+    await expect(page.getByTitle('Intermediate (3.0): 3 players')).toHaveCount(2)
+
+    // Four go on court: they still count as checked in, but no longer as waiting.
+    await startGame(page)
+    await expect(pills(page, 'Checked in per level')).toHaveText(['Lv 1 · 1', 'Lv 3 · 3', 'Lv 5 · 1'])
+    await expect(pills(page, 'Waiting per level')).toHaveCount(1)
+    await expect(pills(page, 'Waiting per level')).toHaveText([/^Lv \d · 1$/])
+  })
+})

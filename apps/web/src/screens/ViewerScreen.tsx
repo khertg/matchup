@@ -7,11 +7,13 @@ import { CourtCard } from '@/components/CourtCard'
 import { CourtGrid } from '@/components/CourtGrid'
 import { NextUpCard } from '@/components/NextUpCard'
 import { QueueList } from '@/components/QueueList'
+import { SkillCountPills } from '@/components/SkillCountPills'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useClubName } from '@/lib/avatars'
 import { levelLabel } from '@/lib/skill'
+import { playingIds } from '@/rotation/engine'
 import { matchmakingLabel } from '@/lib/matchmaking'
 import { cn } from '@/lib/utils'
 import { StandingsScreen } from './StandingsScreen'
@@ -138,6 +140,13 @@ export function ViewerScreen({ slug }: { slug: string }) {
           <span className="text-sm text-muted-foreground">
             {offline ? `Offline. Showing the update from ${updated}` : `Updated ${updated}`}
           </span>
+        </div>
+        <div className="mt-2">
+          <SkillCountPills
+            ids={[...session.queue, ...playingIds(session)]}
+            players={session.players}
+            label="Checked in per level"
+          />
         </div>
       </header>
 
