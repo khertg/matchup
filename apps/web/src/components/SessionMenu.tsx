@@ -1,7 +1,8 @@
 import { MAX_LOCATION_LENGTH } from '@q2dink/shared'
-import { LogOutIcon, MoreVerticalIcon, PencilIcon, QrCodeIcon, SlidersHorizontalIcon } from 'lucide-react'
+import { HistoryIcon, LogOutIcon, MoreVerticalIcon, PencilIcon, QrCodeIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useClubAuth } from '@/cloud/auth'
+import { ActivityDialog } from '@/components/ActivityDialog'
 import { EndSessionDialog } from '@/components/EndSessionDialog'
 import { ManageCourtsDialog } from '@/components/ManageCourtsDialog'
 import { RenameDialog } from '@/components/RenameDialog'
@@ -11,13 +12,14 @@ import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/compone
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
-type ActiveDialog = 'rename' | 'courts' | 'share' | 'end' | null
+type ActiveDialog = 'rename' | 'courts' | 'share' | 'activity' | 'end' | null
 
 /** Rename the session, manage courts, share the live view and end the session, tucked behind one button. */
 export function SessionMenu({ session }: { session: SessionState }) {
   const club = useClubAuth((s) => s.club)
   const [active, setActive] = useState<ActiveDialog>(null)
   const location = useSessionStore((s) => s.location)
+  const sessionId = useSessionStore((s) => s.sessionId)
 
   return (
     <>
@@ -60,6 +62,18 @@ export function SessionMenu({ session }: { session: SessionState }) {
               </Button>
             </PopoverClose>
           )}
+          {club && (
+            <PopoverClose asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => setActive('activity')}
+              >
+                <HistoryIcon aria-hidden="true" /> Activity
+              </Button>
+            </PopoverClose>
+          )}
           <div className="border-t pt-1">
             <PopoverClose asChild>
               <Button
@@ -74,6 +88,12 @@ export function SessionMenu({ session }: { session: SessionState }) {
           </div>
         </PopoverContent>
       </Popover>
+
+      <ActivityDialog
+        sessionId={sessionId}
+        open={active === 'activity'}
+        onOpenChange={(open) => setActive(open ? 'activity' : null)}
+      />
 
       <RenameDialog
         open={active === 'rename'}

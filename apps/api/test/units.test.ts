@@ -213,7 +213,9 @@ describe('migrations', () => {
       "select table_name from information_schema.tables where table_schema = 'public' order by table_name",
     )
     expect(tables.rows.map((t) => t.table_name)).toEqual([
+      'audit_log',
       'club_avatars',
+      'club_devices',
       'club_logos',
       'club_players',
       'club_roster',

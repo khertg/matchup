@@ -1,3 +1,4 @@
+import type { AuditEntry } from '@q2dink/shared'
 import type { SkillLevel } from '@/db/db'
 import {
   addCourt,
@@ -162,6 +163,8 @@ export function applyAction(session: SessionState, action: SessionAction): Appli
 export interface PendingAction {
   action: SessionAction
   ids?: number[]
+  /** Its audit log entry, sent once the club has taken the change (never for one it did not take). */
+  audit?: AuditEntry
 }
 
 const mapId = (map: Map<number, number>, id: number) => map.get(id) ?? id
@@ -209,7 +212,7 @@ export interface Rebased {
   session: SessionState
   pending: PendingAction[]
   /** The changes that no longer applied (another device got there first), and why. */
-  dropped: { action: SessionAction; reason: string }[]
+  dropped: { action: SessionAction; reason: string; audit?: AuditEntry }[]
 }
 
 /**
@@ -233,9 +236,13 @@ export function rebase(base: SessionState, pending: PendingAction[]): Rebased {
         })
       }
       session = applied.session
-      kept.push({ action, ...(applied.ids ? { ids: applied.ids } : {}) })
+      kept.push({ action, ...(applied.ids ? { ids: applied.ids } : {}), ...(entry.audit ? { audit: entry.audit } : {}) })
     } catch (error) {
-      dropped.push({ action, reason: error instanceof Error ? error.message : String(error) })
+      dropped.push({
+        action,
+        reason: error instanceof Error ? error.message : String(error),
+        ...(entry.audit ? { audit: entry.audit } : {}),
+      })
     }
   }
   return { session, pending: kept, dropped }

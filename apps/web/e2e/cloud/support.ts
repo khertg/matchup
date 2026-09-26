@@ -100,6 +100,7 @@ export async function confirmRecoveryCode(page: Page): Promise<string> {
   await dialog.getByLabel('I have saved this code somewhere safe').check()
   await dialog.getByRole('button', { name: 'Continue' }).click()
   await expect(dialog).toHaveCount(0)
+  await expectSignedIn(page)
   return code
 }
 
@@ -119,8 +120,26 @@ export async function uiLogin(page: Page, club: Pick<TestClub, 'slug' | 'passwor
   await dialog.getByLabel('Club link name').fill(club.slug)
   await dialog.getByLabel('Password').fill(club.password)
   await dialog.getByRole('button', { name: 'Log in' }).click()
+  // Refused (the test goes on to check why), or in: then the device is named if it asks.
+  const refused = dialog.getByRole('alert')
+  await expect(refused.or(page.getByRole('button', { name: 'Log out' })).or(page.getByLabel('Device name')).first()).toBeVisible()
+  if (!(await refused.isVisible())) await expectSignedIn(page)
 }
 
-/** Wait until the app shows the signed-in club panel. */
-export const expectSignedIn = (page: Page) =>
-  expect(page.getByRole('button', { name: 'Log out' })).toBeVisible()
+let devices = 0
+
+/** Give this device a name (unique unless one is given), as the app asks right after logging in. */
+export async function nameDevice(page: Page, name = `Device ${Date.now().toString(36)}${(devices++).toString(36)}`) {
+  await page.getByLabel('Device name').fill(name)
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await expect(page.getByLabel('Device name')).toHaveCount(0)
+}
+
+/** Wait until the app shows the signed-in club panel, naming the device first if it asks. */
+export async function expectSignedIn(page: Page) {
+  const logOut = page.getByRole('button', { name: 'Log out' })
+  const naming = page.getByLabel('Device name')
+  await expect(logOut.or(naming).first()).toBeVisible()
+  if (await naming.isVisible()) await nameDevice(page)
+  await expect(logOut).toBeVisible()
+}

@@ -5,6 +5,7 @@ import { ClubPanel } from '@/components/ClubPanel'
 import { LifetimeLeaderboard } from '@/components/LifetimeLeaderboard'
 import { PastSessionsDialog } from '@/components/PastSessionsDialog'
 import { SavedPlayersDialog } from '@/components/SavedPlayersDialog'
+import { ActivityDialog } from '@/components/ActivityDialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -160,6 +161,7 @@ function SetupCard() {
           <SavedPlayersDialog />
           <PastSessionsDialog />
           <LifetimeLeaderboard />
+          <ActivityDialog label="Club activity" />
         </div>
       </CardContent>
     </Card>

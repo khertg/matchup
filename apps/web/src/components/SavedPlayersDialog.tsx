@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { toast } from 'sonner'
+import { recordAudit } from '@/cloud/audit'
 import { useClubAuth } from '@/cloud/auth'
 import { requestRosterSync } from '@/cloud/sync'
 import { AddPlayerForm } from '@/components/AddPlayerForm'
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import type { Gender, SkillLevel } from '@/db/db'
 import { listRoster, savePlayer, setRosterSkill } from '@/db/roster'
+import { skillLabel } from '@/lib/skill'
 
 /**
  * The club's saved players, and a way to add more before any session has started. Saving only puts
@@ -28,13 +30,18 @@ export function SavedPlayersDialog() {
   async function handleAdd(name: string, skill: SkillLevel, gender: Gender | undefined) {
     const { player, added } = await savePlayer(name, skill, gender, clubSlug)
     requestRosterSync()
+    recordAudit(
+      added ? 'rosterAdd' : 'rosterUpdate',
+      `${added ? 'Saved' : 'Updated'} player ${player.name} (${skillLabel(player.skill)})`,
+    )
     toast(added ? `${player.name} saved` : `${player.name} is already saved`)
     return true
   }
 
-  async function changeSkill(id: number, skill: SkillLevel) {
+  async function changeSkill(id: number, name: string, skill: SkillLevel) {
     await setRosterSkill(id, skill)
     requestRosterSync()
+    recordAudit('rosterSkill', `Changed saved player ${name}'s level to ${skillLabel(skill)}`)
   }
 
   return (
@@ -64,7 +71,7 @@ export function SavedPlayersDialog() {
                   <PlayerAvatar name={p.name} editable />
                   <span className="min-w-0 truncate">{p.name}</span>
                 </span>
-                <SkillBadge player={p} display="name" onChange={(skill) => void changeSkill(p.id!, skill)} />
+                <SkillBadge player={p} display="name" onChange={(skill) => void changeSkill(p.id!, p.name, skill)} />
               </li>
             ))}
           </ul>

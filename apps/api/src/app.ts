@@ -6,6 +6,7 @@ import type { Config } from './config'
 import type { Db } from './db'
 import { AppError, defaultMessage } from './errors'
 import { LiveHub } from './realtime'
+import { registerAuditRoutes } from './routes/audit'
 import { registerClubRoutes } from './routes/clubs'
 import { registerLiveRoutes } from './routes/live'
 import { registerMediaRoutes } from './routes/media'
@@ -116,6 +117,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       registerSessionRoutes(api, routeDeps)
       registerLiveRoutes(api, routeDeps)
       registerMediaRoutes(api, routeDeps)
+      registerAuditRoutes(api, routeDeps)
     },
     { prefix: '/api' },
   )

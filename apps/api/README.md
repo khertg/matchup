@@ -28,6 +28,7 @@ All settings are environment variables. Nothing is required in development.
 | `ALLOWED_ORIGINS` | none | Comma-separated origins allowed to call the API from a browser. Leave empty when the web app and API share one origin (the normal setup). |
 | `TOKEN_TTL_DAYS` | `30` | How long a staff login lasts. |
 | `LIVE_TTL_HOURS` | `24` | A live board nobody has updated for this long counts as ended. |
+| `AUDIT_RETENTION_DAYS` | `180` | How long the club's activity log keeps an entry. |
 | `RATE_LIMIT_MAX` | `300` | Requests per minute per address, all routes. |
 | `RATE_LIMIT_AUTH_MAX` | `10` | Create club, login and password reset, per 15 minutes per address (each has its own budget). |
 | `RATE_LIMIT_WRITE_MAX` | `240` | Publish and clear, per minute per address. |
@@ -65,6 +66,10 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `GET /clubs/:slug/logo` | none | The logo image (`ETag`; cached for a year when the URL carries `?v=`). `404` for an unknown club and a club with no logo, identically. |
 | `GET /clubs/:slug/avatars` | none | `{avatars, logo}`: every avatar by name (without photos) and the logo's version, with `ETag`. |
 | `GET /clubs/:slug/avatars/:key/photo` | none | A player's photo image. |
+| `POST /audit` `{entries[]}` | staff | Add to the club's activity log (at most 100 per request). Each entry's `id` is a UUID made on the device, so sending it again stores it once. |
+| `GET /audit?sessionId&deviceId&before&limit` | staff | The activity log, newest first, `{entries, next}`; pass `next` as `before` for the following page. |
+| `PUT /devices/me` `{id, name, label}` | staff | Name this staff device. `409 name_taken` when another device of the club has the name (ignoring case). |
+| `GET /devices` | staff | The club's named devices, `{devices}`. |
 | `GET /health` | none | Liveness, checks the database, and reports the build: `{ok, version, commit}` (`dev` when run from source or built without `GIT_SHA`). |
 
 There is deliberately **no endpoint that lists clubs**.

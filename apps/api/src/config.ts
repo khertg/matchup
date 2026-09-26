@@ -15,6 +15,8 @@ export interface Config {
   tokenTtlDays: number
   /** A live session that has not been republished for this long is treated as ended. */
   liveTtlHours: number
+  /** How long the audit log keeps an entry. */
+  auditRetentionDays: number
   bodyLimitBytes: number
   sseHeartbeatMs: number
   maxSubscribersPerIp: number
@@ -89,6 +91,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     logLevel: env.LOG_LEVEL || 'info',
     tokenTtlDays: int(env, 'TOKEN_TTL_DAYS', 30, 1),
     liveTtlHours: int(env, 'LIVE_TTL_HOURS', 24, 1),
+    auditRetentionDays: int(env, 'AUDIT_RETENTION_DAYS', 180, 1),
     bodyLimitBytes: 512 * 1024,
     sseHeartbeatMs: int(env, 'SSE_HEARTBEAT_MS', 25_000, 10),
     maxSubscribersPerIp: int(env, 'MAX_SUBSCRIBERS_PER_IP', 20, 1),

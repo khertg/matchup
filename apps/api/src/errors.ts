@@ -15,6 +15,7 @@ const STATUS: Record<ErrorCode, number> = {
   payload_too_large: 413,
   internal_error: 500,
   conflict: 409,
+  name_taken: 409,
 }
 
 const MESSAGE: Record<ErrorCode, string> = {
@@ -32,6 +33,7 @@ const MESSAGE: Record<ErrorCode, string> = {
   payload_too_large: 'That request is too large.',
   internal_error: 'Something went wrong on the server.',
   conflict: 'The session changed on another staff device.',
+  name_taken: 'Another device of this club is already called that.',
 }
 
 /** An expected failure that maps to a specific HTTP status and error code. */

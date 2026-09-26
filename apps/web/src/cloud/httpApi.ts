@@ -1,5 +1,7 @@
 import {
   isErrorCode,
+  type AuditPage,
+  type ClubDevice,
   type AuthGrant,
   type AvatarIndex,
   type HistorySummary,
@@ -148,6 +150,25 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
 
     async deleteHistory(token, id) {
       await request('DELETE', `/history/${encodeURIComponent(id)}`, { token })
+    },
+
+    async postAudit(token, entries) {
+      await request('POST', '/audit', { token, body: { entries } })
+    },
+
+    listAudit(token, query = {}) {
+      const params = new URLSearchParams()
+      for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value))
+      const search = params.toString()
+      return request<AuditPage>('GET', `/audit${search ? `?${search}` : ''}`, { token })
+    },
+
+    async registerDevice(token, device) {
+      await request('PUT', '/devices/me', { token, body: device })
+    },
+
+    async listDevices(token) {
+      return (await request<{ devices: ClubDevice[] }>('GET', '/devices', { token })).devices
     },
 
     async putLogo(token, data) {

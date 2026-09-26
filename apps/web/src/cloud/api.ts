@@ -1,5 +1,8 @@
 import type {
+  AuditEntry,
+  AuditPage,
   AuthGrant,
+  ClubDevice,
   AvatarIndex,
   ClubRosterPlayer,
   ErrorCode,
@@ -97,6 +100,24 @@ export interface CloudApi {
    * an unsubscribe function. Callers should still poll as a fallback.
    */
   subscribeLive(slug: string, onChange: (row: LiveRow | null) => void): () => void
+
+  /** Store entries of the audit log. Sending one again stores it once. */
+  postAudit(token: string, entries: AuditEntry[]): Promise<void>
+  /** One page of the club's audit log, newest first. */
+  listAudit(token: string, query?: AuditQuery): Promise<AuditPage>
+  /** Name this device for its club. Fails with `name_taken` when another device has that name. */
+  registerDevice(token: string, device: { id: string; name: string; label: string }): Promise<void>
+  /** The club's named devices. */
+  listDevices(token: string): Promise<ClubDevice[]>
+}
+
+/** Which part of the audit log to read. */
+export interface AuditQuery {
+  sessionId?: string
+  deviceId?: string
+  /** Only entries before this time: the `next` of the previous page. */
+  before?: string
+  limit?: number
 }
 
 export type CloudErrorCode = ErrorCode | 'network' | 'unknown'
@@ -116,6 +137,7 @@ const MESSAGES: Record<Exclude<CloudErrorCode, 'unknown'>, string> = {
   payload_too_large: 'This session is too large to sync.',
   internal_error: 'Something went wrong on the server. Please try again.',
   conflict: 'The session changed on another staff device.',
+  name_taken: 'Another device of this club already has that name. Pick another one.',
   network: 'Cannot reach the server. Check your connection and try again.',
 }
 

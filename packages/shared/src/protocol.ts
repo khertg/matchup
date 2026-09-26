@@ -19,6 +19,7 @@ export const ERROR_CODES = [
   'payload_too_large',
   'internal_error',
   'conflict',
+  'name_taken',
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

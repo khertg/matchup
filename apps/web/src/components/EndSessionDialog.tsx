@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { recordAudit } from '@/cloud/audit'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { newBatchId } from '@/cloud/id'
@@ -83,6 +84,11 @@ export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDial
       return
     }
 
+    recordAudit(
+      'sessionEnded',
+      saveResults ? `Ended “${location}” and saved the results to the all-time totals` : `Ended “${location}”`,
+      sessionId,
+    )
     endSession()
     void syncHistory()
     const message = !saveResults
@@ -94,10 +100,12 @@ export function EndSessionDialog({ session, open, onOpenChange }: EndSessionDial
       duration: 30_000,
       action: {
         label: 'Resume',
-        onClick: () =>
+        onClick: () => {
           useSessionStore
             .getState()
-            .loadSession(location, session, { sessionId, startedAt, lifetimeCounted, endedAt: record?.endedAt }),
+            .loadSession(location, session, { sessionId, startedAt, lifetimeCounted, endedAt: record?.endedAt })
+          recordAudit('sessionResumed', `Resumed “${location}”`, sessionId)
+        },
       },
     })
   }

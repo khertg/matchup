@@ -34,6 +34,7 @@ import { lastActivityAt } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi, type PutAvatarRequest } from './api'
+import { dropAuditOfOtherClubs, onAuditQueued, recordAudit, removeSentAudit, unsentAudit } from './audit'
 import { useClubAuth } from './auth'
 import { cloud } from './client'
 import { createPublisher, type SyncStatus } from './publisher'
@@ -218,11 +219,47 @@ export async function queueClubRename(from: string, to: string, api: CloudApi | 
 async function runSync(api: CloudApi): Promise<void> {
   const renamed = await flushRenames(api)
   await Promise.all([
+    flushAudit(api),
     flushPendingLifetime(api),
     syncHistory(api),
     syncMedia(api),
     renamed ? exchangeRoster(api) : Promise.resolve(false),
   ])
+}
+
+/** Entries per POST /audit. */
+const AUDIT_BATCH = 100
+
+let auditFlush: Promise<boolean> | null = null
+
+/**
+ * Send the audit log entries made here to the club, oldest first, and forget each batch once the club has
+ * it. Entries queued for another club are dropped. One flush at a time; a failed batch waits for the next.
+ * Returns true when nothing is left to send.
+ */
+export function flushAudit(api: CloudApi | null = cloud): Promise<boolean> {
+  auditFlush ??= sendAudit(api).finally(() => {
+    auditFlush = null
+  })
+  return auditFlush
+}
+
+async function sendAudit(api: CloudApi | null): Promise<boolean> {
+  const club = useClubAuth.getState().club
+  if (!api || !club) return false
+  try {
+    await dropAuditOfOtherClubs(club.slug)
+    const entries = await unsentAudit(club.slug)
+    for (let i = 0; i < entries.length; i += AUDIT_BATCH) {
+      const batch = entries.slice(i, i + AUDIT_BATCH)
+      await api.postAudit(club.token, batch)
+      await removeSentAudit(batch.map((e) => e.id))
+    }
+    return true
+  } catch (error) {
+    handleAuthError(error)
+    return false
+  }
 }
 
 /**
@@ -374,6 +411,7 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
  * soon as it is reachable). The photos stay with the club's staff devices either way.
  */
 export async function setPhotoSharing(on: boolean, api: CloudApi | null = cloud): Promise<void> {
+  recordAudit('photoSharing', on ? 'Turned on player photos on the live page' : 'Turned off player photos on the live page')
   await setSharePhotos(on)
   await setPhotoSharingPending(true)
   await syncMedia(api)
@@ -485,12 +523,15 @@ export function joinClubSession(row: SessionStateRow): boolean {
     row.revision,
   )
   useSyncStore.setState({ otherSession: null, keepMine: false })
+  recordAudit('sessionJoined', `Joined “${parsed.location}”, running on another device`, row.sessionId ?? undefined)
   return true
 }
 
 /** Keep running this device's session: the next send replaces the other device's on the club. */
 export function keepMySession(): void {
   useSyncStore.setState({ otherSession: null, keepMine: true })
+  const { location, sessionId } = useSessionStore.getState()
+  recordAudit('sessionKeptMine', `Kept “${location}” on this device over another device's session`, sessionId)
   // Sending again is what makes it stick; any change triggers it, so poke the store.
   useSessionStore.setState((s) => ({ session: s.session && { ...s.session } }))
 }
@@ -591,6 +632,15 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     else if (endedSessionId) publisher.push(location, null)
   }
 
+  // A change logged here goes to the club shortly after (a burst of changes goes up together).
+  let auditTimer: ReturnType<typeof setTimeout> | undefined
+  const stopAuditHook = onAuditQueued(() => {
+    clearTimeout(auditTimer)
+    auditTimer = setTimeout(() => {
+      if (signedIn() && navigator.onLine) void flushAudit(api)
+    }, 1000)
+  })
+
   const unsubscribeSession = useSessionStore.subscribe((state, prev) => {
     if (!signedIn()) return
     if (state.session !== prev.session || state.location !== prev.location) {
@@ -627,6 +677,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
 
   const unsubscribeAuth = useClubAuth.subscribe((state, prev) => {
     if (state.club && !prev.club) {
+      recordAudit('signedIn', 'Logged in on this device')
       setStatus('idle')
       pushIfRunning()
       follow()
@@ -665,6 +716,8 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
 
   return () => {
     publisher.dispose()
+    stopAuditHook()
+    clearTimeout(auditTimer)
     unsubscribeSession()
     unsubscribeAuth()
     unsubscribeLive()

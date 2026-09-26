@@ -16,7 +16,9 @@ import {
 import { applyAction, rebase, type PendingAction, type Rebased, type SessionAction } from './actions'
 import type { SkillLevel } from '@/db/db'
 import type { GameMode, RosterPlayer, SessionState } from '@/rotation/types'
+import { newAuditEntry, queueAudit, recordAudit } from '@/cloud/audit'
 import { newBatchId } from '@/cloud/id'
+import { describeAction } from './auditText'
 import type { LifetimeCounts } from '@/rotation/lifetime'
 import { migrateSession, SESSION_STORE_VERSION } from './migrate'
 
@@ -171,12 +173,18 @@ export const useSessionStore = create<SessionStore>()(
       const dispatch = (action: SessionAction, previous: SessionState | null) => {
         const session = requireSession(get().session)
         const applied = applyAction(session, action)
-        const { base, pending } = get()
+        const { base, pending, sessionId } = get()
+        const text = describeAction(session, action, applied.session)
+        const audit = newAuditEntry(text.kind, text.summary, sessionId)
         set({
           session: applied.session,
           previous,
-          ...(base ? { pending: [...pending, { action, ...(applied.ids ? { ids: applied.ids } : {}) }] } : {}),
+          ...(base
+            ? { pending: [...pending, { action, ...(applied.ids ? { ids: applied.ids } : {}), ...(audit ? { audit } : {}) }] }
+            : {}),
         })
+        // Not shared with the club yet: nothing can refuse it, so it goes straight into the log.
+        if (!base && audit) void queueAudit([audit])
       }
 
       return {
@@ -191,18 +199,22 @@ export const useSessionStore = create<SessionStore>()(
         endedSessionId: '',
         locationPending: false,
 
-        startSession: (location, mode, courtCount, options) =>
+        startSession: (location, mode, courtCount, options) => {
+          const sessionId = newBatchId()
           set({
             location,
             session: createSession(mode, courtCount, options),
             previous: null,
-            sessionId: newBatchId(),
+            sessionId,
             startedAt: Date.now(),
             lifetimeCounted: {},
             base: null,
             pending: [],
             locationPending: false,
-          }),
+          })
+          const courts = `${courtCount} court${courtCount === 1 ? '' : 's'}`
+          recordAudit('sessionStarted', `Started “${location}” (${mode === 'doubles' ? 'Doubles' : 'Singles'}, ${courts})`, sessionId)
+        },
 
         renameSession: (name) => {
           requireSession(get().session)
@@ -211,9 +223,11 @@ export const useSessionStore = create<SessionStore>()(
           if (trimmed.length > MAX_LOCATION_LENGTH) {
             throw new RangeError(`Keep the name to ${MAX_LOCATION_LENGTH} characters or fewer.`)
           }
-          if (trimmed === get().location) return
+          const { location: was, sessionId } = get()
+          if (trimmed === was) return
           // While shared, the club has to be sent the new name even with no other change pending.
           set((state) => ({ location: trimmed, locationPending: state.base !== null }))
+          recordAudit('sessionRenamed', `Renamed the session “${was}” to “${trimmed}”`, sessionId)
         },
 
         setAvgGameMinutes: (minutes) => {
@@ -345,17 +359,26 @@ export const useSessionStore = create<SessionStore>()(
           if (session && !base) set({ base: { revision: 0, session }, pending: [] })
         },
 
-        confirmPublished: (count, sent, revision, sentLocation) =>
+        confirmPublished: (count, sent, revision, sentLocation) => {
+          // The club has these changes now: they go into the log.
+          const confirmed = get().pending.slice(0, count).flatMap((p) => (p.audit ? [p.audit] : []))
+          if (confirmed.length > 0) void queueAudit(confirmed)
           set((state) => ({
             base: { revision, session: sent },
             pending: state.pending.slice(count),
             locationPending: state.locationPending && sentLocation !== state.location,
-          })),
+          }))
+        },
 
         rebaseOnto: (revision, clubSession, clubLocation) => {
           const { session, pending, locationPending } = get()
           if (!session) return []
           const rebased = rebase(clubSession, pending)
+          // What another device got to first is logged as not done, so the log never claims it happened.
+          const notApplied = rebased.dropped.flatMap(({ audit }) =>
+            audit ? [{ ...audit, kind: `${audit.kind}NotApplied`, summary: `Not applied (changed on another device): ${audit.summary}`.slice(0, 300) }] : [],
+          )
+          if (notApplied.length > 0) void queueAudit(notApplied)
           set({
             base: { revision, session: clubSession },
             session: rebased.session,

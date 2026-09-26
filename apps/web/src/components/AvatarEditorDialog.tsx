@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { recordAudit } from '@/cloud/audit'
 import { syncMedia } from '@/cloud/sync'
 import { AvatarView } from '@/components/PlayerAvatar'
 import { CameraCapture } from '@/components/CameraCapture'
@@ -118,6 +119,7 @@ function Editor({
     setBusy(true)
     try {
       await setRosterAvatar(playerId, next)
+      recordAudit(next ? 'avatarChanged' : 'avatarRemoved', next ? `Changed ${name}'s avatar (${next.kind})` : `Removed ${name}'s avatar`)
       toast(next ? `${name}'s avatar updated` : `${name}'s avatar removed`)
       close()
       void syncMedia()

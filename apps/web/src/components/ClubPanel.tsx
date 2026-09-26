@@ -14,7 +14,8 @@ import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { useRecoveryCode } from '@/cloud/recovery'
 import { parseFullBackup } from '@/cloud/snapshot'
-import { joinClubSession, useSyncStore } from '@/cloud/sync'
+import { recordAudit } from '@/cloud/audit'
+import { flushAudit, joinClubSession, useSyncStore } from '@/cloud/sync'
 import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
 import { RenameDialog } from '@/components/RenameDialog'
 import { SharePanel } from '@/components/SharePanel'
@@ -266,6 +267,7 @@ function SignedIn() {
     try {
       const saved = await cloud.renameClub(current.token, name)
       useClubAuth.getState().setClubName(saved.name)
+      recordAudit('clubRenamed', `Renamed the club to “${saved.name}”`)
       toast(`Club renamed to “${saved.name}”`)
       return null
     } catch (error) {
@@ -275,6 +277,9 @@ function SignedIn() {
 
   async function handleLogOut() {
     const token = club?.token
+    // Logged, and sent while this device can still reach the club.
+    recordAudit('signedOut', 'Logged out on this device')
+    await flushAudit().catch(() => false)
     signOut()
     // Best effort: the token also expires by itself after 30 days.
     if (cloud && token) await cloud.logout(token).catch(() => undefined)

@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { clubSlugFromPath } from '@q2dink/shared'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
-import { requiresLogin } from '@/cloud/gate'
+import { requiresDeviceName, requiresLogin } from '@/cloud/gate'
 import { startCloudSync } from '@/cloud/sync'
 import { AvatarProvider } from '@/components/AvatarProvider'
+import { DeviceNameGate } from '@/components/DeviceNameForm'
 import { InstallBanner } from '@/components/InstallBanner'
 import { LoginGate } from '@/components/LoginGate'
 import { NavBar } from '@/components/NavBar'
@@ -12,18 +13,33 @@ import { RecoveryCodeHost } from '@/components/RecoveryCodeHost'
 import { Toaster } from '@/components/ui/sonner'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { SetupScreen } from '@/screens/SetupScreen'
+import { useDevice } from '@/lib/device'
 import { ViewerScreen } from '@/screens/ViewerScreen'
 import { useSessionStore } from '@/store/session'
+
+const subscribeOnline = (onChange: () => void) => {
+  window.addEventListener('online', onChange)
+  window.addEventListener('offline', onChange)
+  return () => {
+    window.removeEventListener('online', onChange)
+    window.removeEventListener('offline', onChange)
+  }
+}
 
 export default function App() {
   const session = useSessionStore((s) => s.session)
   const signedIn = useClubAuth((s) => s.club !== null)
+  const clubSlug = useClubAuth((s) => s.club?.slug ?? null)
+  const namedFor = useDevice((s) => s.namedFor)
+  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine)
   const path = window.location.pathname
   // Anything under /club is the public viewer, which never runs staff features.
   const isViewerPath = path === '/club' || path.startsWith('/club/')
   const viewerSlug = clubSlugFromPath(path)
   // With a cloud set up, staff log in to a club first; the saved login keeps the app working offline.
   const mustLogIn = requiresLogin({ cloudConfigured: cloud !== null, signedIn, isViewerPath })
+  // Then the device gets a name, so the club's activity log can tell its devices apart.
+  const mustNameDevice = requiresDeviceName({ cloudConfigured: cloud !== null, signedIn, isViewerPath, clubSlug, namedFor, online })
 
   useEffect(() => {
     if (isViewerPath) return
@@ -48,6 +64,8 @@ export default function App() {
         )
       ) : mustLogIn ? (
         <LoginGate />
+      ) : mustNameDevice ? (
+        <DeviceNameGate />
       ) : session ? (
         <SessionScreen session={session} />
       ) : (

@@ -305,9 +305,17 @@ test.describe('publishing the live session', () => {
     await apiCreateClub(request, club)
     await signInAndStart(page, club)
     await expect.poll(async () => (await apiLive(request, club.slug)).status()).toBe(200)
+    // Let the device send its activity log first, so the next thing it sends is the check-in below.
+    const token = await storedToken(page)
+    await expect
+      .poll(async () => {
+        const log = await (await request.get('/api/audit', { headers: bearer(token) })).json()
+        return log.entries.some((e: { kind: string }) => e.kind === 'sessionStarted')
+      })
+      .toBe(true)
 
     // Someone (another device, or expiry) ends this login on the server.
-    await request.post('/api/logout', { headers: bearer(await storedToken(page)) })
+    await request.post('/api/logout', { headers: bearer(token) })
     await checkIn(page, ['Ann'])
 
     await expect(page.getByText('Your club login expired. Please log in again.').first()).toBeVisible()

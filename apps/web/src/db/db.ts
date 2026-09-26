@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { AuditEntry } from '@q2dink/shared'
 import type { PlayerAvatar } from '@/lib/avatar'
 import type { HistoryRecord } from './history'
 import { migrateLegacyDatabase } from './legacyMigration'
@@ -52,12 +53,19 @@ export interface Setting {
   value: unknown
 }
 
+/** An audit log entry made here and not sent to the club yet, for the club that was signed in. */
+export interface QueuedAudit extends AuditEntry {
+  clubSlug: string
+}
+
 export const db = new Dexie('q2dink') as Dexie & {
   players: EntityTable<Player, 'id'>
   sessions: EntityTable<Session, 'id'>
   /** Ended sessions, kept so they can be viewed and resumed. */
   history: EntityTable<HistoryRecord, 'id'>
   settings: EntityTable<Setting, 'key'>
+  /** Audit log entries waiting to be sent to the club (see cloud/audit.ts). */
+  auditQueue: EntityTable<QueuedAudit, 'id'>
 }
 
 db.version(1).stores({
@@ -87,6 +95,15 @@ db.version(4).stores({
   sessions: '++id, createdAt',
   history: 'id, endedAt',
   settings: 'key',
+})
+
+// Version 5 adds the queue of audit log entries not sent to the club yet.
+db.version(5).stores({
+  players: '++id, name, clubSlug',
+  sessions: '++id, createdAt',
+  history: 'id, endedAt',
+  settings: 'key',
+  auditQueue: 'id, at, clubSlug',
 })
 
 // A device that used the app under its old name brings its data across (see legacyMigration.ts) before the

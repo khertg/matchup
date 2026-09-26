@@ -147,4 +147,36 @@ export const MIGRATIONS: Migration[] = [
         add column started_at timestamptz;
     `,
   },
+  {
+    id: '007_audit_log',
+    sql: `
+      -- Which staff device did what. Staff share one club password, so a device is known by its own
+      -- random id, what its browser says about it (label) and the name staff gave it.
+      create table club_devices (
+        club_slug text not null references clubs (slug) on delete cascade,
+        device_id text not null check (char_length(device_id) between 1 and 64),
+        name      text not null check (char_length(name) between 1 and 40),
+        label     text not null check (char_length(label) between 1 and 80),
+        last_seen timestamptz not null default now(),
+        primary key (club_slug, device_id)
+      );
+      -- Two identical phones must be told apart: no two devices of a club share a name.
+      create unique index club_devices_name on club_devices (club_slug, lower(name));
+
+      create table audit_log (
+        id           uuid primary key,
+        club_slug    text not null references clubs (slug) on delete cascade,
+        at           timestamptz not null,
+        received_at  timestamptz not null default now(),
+        device_id    text not null,
+        device_label text not null,
+        device_name  text,
+        kind         text not null,
+        summary      text not null,
+        session_id   uuid
+      );
+      create index audit_log_club_at on audit_log (club_slug, at desc);
+      create index audit_log_session on audit_log (club_slug, session_id, at desc);
+    `,
+  },
 ]

@@ -1,3 +1,4 @@
+import { recordAudit } from '@/cloud/audit'
 import { useClubAuth } from '@/cloud/auth'
 import { queueClubRename } from '@/cloud/sync'
 import { findSavedPlayer, renameRosterPlayer } from '@/db/roster'
@@ -33,5 +34,9 @@ export async function renamePlayer(current: string, name: string): Promise<{ fro
   const stillThere = sessionPlayerId(current)
   if (stillThere !== undefined) renameNow(stillThere, renamed.to)
   if (renamed.from !== renamed.to) await queueClubRename(renamed.from, renamed.to)
+  // A rename in the running session is logged with the session's changes; this one only touched the roster.
+  if (renamed.from !== renamed.to && inSession === undefined) {
+    recordAudit('rosterRename', `Renamed saved player ${renamed.from} to ${renamed.to}`)
+  }
   return renamed
 }

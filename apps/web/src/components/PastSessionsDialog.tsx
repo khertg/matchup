@@ -28,6 +28,8 @@ import type { SessionState } from '@/rotation/types'
 import { StandingsScreen } from '@/screens/StandingsScreen'
 import { migrateSession } from '@/store/migrate'
 import { useSessionStore } from '@/store/session'
+import { recordAudit } from '@/cloud/audit'
+import { ActivityDialog } from '@/components/ActivityDialog'
 
 interface Entry {
   id: string
@@ -191,6 +193,7 @@ export function PastSessionsDialog() {
         lifetimeCounted: loaded.lifetimeCounted,
         endedAt: loaded.endedAt,
       })
+      recordAudit('sessionResumed', `Resumed “${loaded.location}” from Past sessions`, loaded.id)
       toast(`“${loaded.location}” is running again`)
     } catch {
       toast.error('Could not resume the session.')
@@ -202,6 +205,7 @@ export function PastSessionsDialog() {
     setBusy(true)
     try {
       await deleteHistory(loaded.id)
+      recordAudit('historyDeleted', `Deleted the past session “${loaded.location}” (ended ${when(loaded.endedAt)})`, loaded.id)
       if (cloud && club) await cloud.deleteHistory(club.token, loaded.id).catch(() => {
         toast.error('Deleted here, but the club copy could not be removed. Try again when online.')
       })
@@ -256,6 +260,7 @@ export function PastSessionsDialog() {
                 <Button variant="outline" disabled={busy} onClick={() => setViewing(null)}>
                   Back
                 </Button>
+                <ActivityDialog sessionId={viewing.id} variant="outline" />
                 <Button variant="outline" disabled={busy} onClick={() => setConfirmDelete(true)}>
                   Delete
                 </Button>
