@@ -1,12 +1,11 @@
 import type { Ref } from 'react'
 import { ClubLogo } from '@/components/ClubLogo'
-import { MedalBadge } from '@/components/MedalBadge'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { useSessionTitle } from '@/lib/avatars'
 import type { CardColors } from '@/lib/cardPalette'
-import { LAST_FRAME, rowProgress, shinePosition, shineStart } from '@/lib/standingsAnimation'
+import { medalRowBackground, medalStyle } from '@/lib/medalStyle'
 import { cn } from '@/lib/utils'
-import { formatDiff, STANDINGS_PAGE_SIZE, type Medal, type Standing } from '@/rotation/standings'
+import { formatDiff, STANDINGS_PAGE_SIZE, type Standing } from '@/rotation/standings'
 
 interface Props {
   /** This page's players only (see pageStandings). */
@@ -19,23 +18,8 @@ interface Props {
   topPartnership?: { names: [string, string]; count: number }
   /** The picked colours (see cardColors). */
   colors: CardColors
-  /**
-   * Which frame of the shared animation to draw (see lib/standingsAnimation.ts): rows slide in, then a
-   * light crosses the medal rows. Without it, the finished card.
-   */
-  frame?: number
-  /** Draw the card without its player rows (their space kept), as the still background of the GIF. */
-  piecesHidden?: boolean
   ref?: Ref<HTMLDivElement>
 }
-
-/** The top three rows are tinted in their medal's colour, fading into the usual row colour. */
-const MEDAL_TINT: Record<Medal, string> = {
-  gold: 'rgba(252, 211, 77, 0.55)',
-  silver: 'rgba(226, 232, 240, 0.5)',
-  bronze: 'rgba(251, 146, 60, 0.5)',
-}
-const MEDAL_EDGE: Record<Medal, string> = { gold: '#fcd34d', silver: '#e2e8f0', bronze: '#fb923c' }
 
 /**
  * One page of the ranked standings, sized for a messaging app share. Uses the picked fixed colours
@@ -51,7 +35,7 @@ const MEDAL_EDGE: Record<Medal, string> = { gold: '#fcd34d', silver: '#e2e8f0', 
  * different widths too, which is the "inconsistent size" this guards against. A lone page (no
  * set to match) is left to size itself naturally.
  */
-export function StandingsCard({ page, pageNumber, pageCount, location, date, topPartnership, colors, frame = LAST_FRAME, piecesHidden = false, ref }: Props) {
+export function StandingsCard({ page, pageNumber, pageCount, location, date, topPartnership, colors, ref }: Props) {
   const padded = pageCount > 1
   const rowSlots = padded ? STANDINGS_PAGE_SIZE : page.length
   const title = useSessionTitle(location)
@@ -83,43 +67,7 @@ export function StandingsCard({ page, pageNumber, pageCount, location, date, top
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: rowSlots }, (_, i) => page[i]).map((row, i) =>
           row ? (
-            <div
-              key={row.id}
-              // A moving piece of the GIF (lib/cardCapture.ts): each row slides in a frame after the one above,
-              // and the light crosses the medal rows.
-              data-piece=""
-              data-kind="slide"
-              data-start={i}
-              data-shine={row.medal ? shineStart(row.medal) : undefined}
-              className="relative flex items-center gap-2 overflow-hidden rounded-lg px-2 py-1.5"
-              style={{
-                visibility: piecesHidden ? 'hidden' : undefined,
-                background: row.medal ? `linear-gradient(90deg, ${MEDAL_TINT[row.medal]} 0%, ${colors.panel} 75%)` : colors.panel,
-                boxShadow: row.medal ? `inset 3px 0 0 ${MEDAL_EDGE[row.medal]}` : undefined,
-                opacity: rowProgress(frame, i),
-                transform: `translateX(${(1 - rowProgress(frame, i)) * -28}px)`,
-              }}
-            >
-              {row.medal && shinePosition(frame, row.medal) !== null && (
-                // The light crossing a medal row: a soft white band moving left to right.
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 w-1/2"
-                  style={{
-                    left: `${-50 + shinePosition(frame, row.medal)! * 150}%`,
-                    background: 'linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%)',
-                  }}
-                />
-              )}
-              <span className="w-5 shrink-0 text-center text-sm font-bold">{row.rank}</span>
-              <MedalBadge medal={row.medal} />
-              <PlayerAvatar name={row.name} size="sm" />
-              <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
-              <span className="shrink-0 text-sm tabular-nums opacity-90">
-                {row.wins}-{row.losses}
-              </span>
-              <span className="w-9 shrink-0 text-right text-sm tabular-nums opacity-90">{formatDiff(row)}</span>
-            </div>
+            <StandingRow key={row.id} row={row} panel={colors.panel} />
           ) : (
             // Reserves the same row height (the size-10 avatar sets it) on a page with fewer
             // players, so every page in the set matches.
@@ -144,6 +92,41 @@ export function StandingsCard({ page, pageNumber, pageCount, location, date, top
           </p>
         )
       )}
+    </div>
+  )
+}
+
+/**
+ * One player's row. Gold, silver and bronze stand out: the row is washed and edged in the medal's colour,
+ * the avatar ringed in it, and a pill names the medal, so it reads in any card colour and without colour.
+ */
+function StandingRow({ row, panel }: { row: Standing; panel: string }) {
+  const medal = medalStyle(row.medal)
+  return (
+    <div
+      className={cn('flex items-center gap-2 rounded-lg px-2 py-1.5', medal && 'font-semibold')}
+      style={{
+        background: medal ? medalRowBackground(medal, panel) : panel,
+        boxShadow: medal ? `inset 0 0 0 2px ${medal.color}` : undefined,
+      }}
+    >
+      <span className="w-5 shrink-0 text-center text-sm font-bold">{row.rank}</span>
+      <span className="shrink-0 rounded-full" style={medal ? { boxShadow: `0 0 0 2px ${medal.color}` } : undefined}>
+        <PlayerAvatar name={row.name} size="sm" />
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
+      {medal && (
+        <span
+          className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+          style={{ background: medal.color, color: medal.ink }}
+        >
+          {medal.label}
+        </span>
+      )}
+      <span className="shrink-0 text-sm tabular-nums opacity-90">
+        {row.wins}-{row.losses}
+      </span>
+      <span className="w-9 shrink-0 text-right text-sm tabular-nums opacity-90">{formatDiff(row)}</span>
     </div>
   )
 }

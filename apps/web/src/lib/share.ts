@@ -55,3 +55,12 @@ export async function shareImages({ files, title, text, url }: ShareImagesOption
 export function canShareNatively(): boolean {
   return typeof navigator.share === 'function'
 }
+
+/**
+ * File names for a set of shared images: `<base>.<ext>` for one, `<base>-1-of-3.<ext>` and so on for
+ * several, so they sort in order and say they belong together.
+ */
+export function cardFileNames(base: string, count: number, ext = 'png'): string[] {
+  if (count === 1) return [`${base}.${ext}`]
+  return Array.from({ length: count }, (_, i) => `${base}-${i + 1}-of-${count}.${ext}`)
+}

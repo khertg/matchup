@@ -101,17 +101,17 @@ test('filters the lifetime leaderboard by minimum games and validates the input'
   await expect(board.getByText('Enter a whole number from 1 to 50.')).toBeVisible()
 })
 
-/** A real looping animated GIF: its signature, many frames, and the loop-forever marker. */
-function expectAnimatedGif(bytes: Buffer) {
-  expect(bytes.subarray(0, 6).toString('ascii')).toBe('GIF89a')
-  // Each frame starts with a graphic control block.
-  expect(bytes.toString('latin1').split('!ù').length - 1).toBeGreaterThan(20)
-  const loop = bytes.indexOf('NETSCAPE2.0')
-  expect(loop).toBeGreaterThan(0)
-  expect(bytes.readUInt16LE(loop + 13)).toBe(0)
+/** A real, still PNG picture of the given width in CSS pixels (taken at 3 pixels per CSS pixel). */
+function expectPng(bytes: Buffer, cssWidth: number) {
+  expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  // The IHDR chunk comes first: width and height, big-endian.
+  expect(bytes.readUInt32BE(16)).toBe(cssWidth * 3)
+  expect(bytes.readUInt32BE(20)).toBeGreaterThan(0)
+  // No animation chunk (APNG).
+  expect(bytes.indexOf('acTL')).toBe(-1)
 }
 
-test('downloads an animated stats card', async ({ page }) => {
+test('downloads a stats card image', async ({ page }) => {
   await singlesWithGames(page, 1)
   await openStandings(page)
   await page.getByRole('button', { name: 'Share card for Ann' }).click()
@@ -127,27 +127,27 @@ test('downloads an animated stats card', async ({ page }) => {
     page.waitForEvent('download'),
     dialog.getByRole('button', { name: 'Download image' }).click(),
   ])
-  expect(download.suggestedFilename()).toBe('ann-q2dink-stats.gif')
-  expectAnimatedGif(readFileSync(await download.path()))
-  if (process.env.STATS_GIF) await download.saveAs(process.env.STATS_GIF)
+  expect(download.suggestedFilename()).toBe('ann-q2dink-stats.png')
+  expectPng(readFileSync(await download.path()), 360)
+  if (process.env.STATS_PNG) await download.saveAs(process.env.STATS_PNG)
 })
 
-test('downloads the whole standings as one animated image', async ({ page }) => {
+test('downloads the whole standings as one image', async ({ page }) => {
   await singlesWithGames(page, 1)
   await openStandings(page)
   await page.getByRole('button', { name: 'Share standings' }).click()
 
   const dialog = page.getByRole('dialog', { name: 'Share standings' })
-  await expect(dialog.getByText('An animated image of the standings, ready for a group chat.')).toBeVisible()
+  await expect(dialog.getByText('An image of the standings, ready for a group chat.')).toBeVisible()
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     dialog.getByRole('button', { name: 'Download image' }).click(),
   ])
-  expect(download.suggestedFilename()).toBe('q2dink-standings.gif')
+  expect(download.suggestedFilename()).toBe('q2dink-standings.png')
 
-  expectAnimatedGif(readFileSync(await download.path()))
-  if (process.env.STANDINGS_GIF) await download.saveAs(process.env.STANDINGS_GIF)
+  expectPng(readFileSync(await download.path()), 360)
+  if (process.env.STANDINGS_PNG) await download.saveAs(process.env.STANDINGS_PNG)
 })
 
 test.describe('image colours', () => {
@@ -210,8 +210,8 @@ test('splits a large roster into several images of up to 10 players each', async
   await page.getByRole('button', { name: 'Share standings' }).click()
 
   const dialog = page.getByRole('dialog', { name: 'Share standings' })
-  await expect(dialog.getByText('3 animated images of up to 10 players each, ready for a group chat.')).toBeVisible()
-  // Three animations take a while to prepare.
+  await expect(dialog.getByText('3 images of up to 10 players each, ready for a group chat.')).toBeVisible()
+  // Three images take a moment to prepare.
   await expect(dialog.getByRole('button', { name: 'Download 3 images' })).toBeEnabled({ timeout: 60_000 })
 })
 
@@ -234,7 +234,7 @@ test('offers a direct download of the whole standings even when the device could
     page.waitForEvent('download'),
     dialog.getByRole('button', { name: 'Download image instead' }).click(),
   ])
-  expect(download.suggestedFilename()).toBe('q2dink-standings.gif')
+  expect(download.suggestedFilename()).toBe('q2dink-standings.png')
 })
 
 /**
@@ -258,7 +258,7 @@ async function recordShares(page: Page) {
 const shareCalls = (page: Page) =>
   page.evaluate(() => (window as unknown as { shareCalls: { active: boolean; types: string[] }[] }).shareCalls)
 
-test('shares the animated standings straight from the tap, with the GIF ready beforehand', async ({ page }) => {
+test('shares the standings image straight from the tap, with it ready beforehand', async ({ page }) => {
   await recordShares(page)
   await singlesWithGames(page, 1)
   await openStandings(page)
@@ -266,27 +266,27 @@ test('shares the animated standings straight from the tap, with the GIF ready be
   const dialog = page.getByRole('dialog', { name: 'Share standings' })
   const share = dialog.getByRole('button', { name: 'Share standings' })
   // Made while the dialog is open, before anyone taps Share.
-  await expect(dialog.getByRole('button', { name: 'Preparing animation…' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Preparing image…' })).toBeDisabled()
   await expect(share).toBeEnabled({ timeout: 20_000 })
 
   await share.click()
   await expect.poll(async () => (await shareCalls(page)).length).toBe(1)
-  expect((await shareCalls(page))[0]).toEqual({ active: true, types: ['image/gif'] })
+  expect((await shareCalls(page))[0]).toEqual({ active: true, types: ['image/png'] })
 })
 
-test('shares the animated stats card straight from the tap, with the GIF ready beforehand', async ({ page }) => {
+test('shares the stats card image straight from the tap, with it ready beforehand', async ({ page }) => {
   await recordShares(page)
   await singlesWithGames(page, 1)
   await openStandings(page)
   await page.getByRole('button', { name: 'Share card for Ann' }).click()
   const dialog = page.getByRole('dialog', { name: 'Stats card' })
-  await expect(dialog.getByRole('button', { name: 'Preparing animation…' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Preparing image…' })).toBeDisabled()
   const share = dialog.getByRole('button', { name: 'Share card' })
   await expect(share).toBeEnabled({ timeout: 20_000 })
 
   await share.click()
   await expect.poll(async () => (await shareCalls(page)).length).toBe(1)
-  expect((await shareCalls(page))[0]).toEqual({ active: true, types: ['image/gif'] })
+  expect((await shareCalls(page))[0]).toEqual({ active: true, types: ['image/png'] })
 })
 
 test('offers a direct download of a stats card even when the device could share', async ({ page }) => {
@@ -300,7 +300,7 @@ test('offers a direct download of a stats card even when the device could share'
     page.waitForEvent('download'),
     dialog.getByRole('button', { name: 'Download image instead' }).click(),
   ])
-  expect(download.suggestedFilename()).toBe('ann-q2dink-stats.gif')
+  expect(download.suggestedFilename()).toBe('ann-q2dink-stats.png')
 })
 
 test('is also offered from Past sessions', async ({ page }) => {
@@ -336,6 +336,26 @@ test.describe('podium', () => {
     // Names and numbers on the podium are drawn from data attributes, not page text, so looking a player
     // up by name still finds only their row.
     expect(await page.getByRole('list', { name: 'Podium' }).evaluate((el) => el.textContent)).toBe('')
+  })
+
+  test('the shared images are still, and pick out gold, silver and bronze', async ({ page }) => {
+    await threeWinners(page)
+    await page.getByRole('button', { name: 'Share standings' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Share standings' })
+    await expect(dialog.getByRole('button', { name: 'Download image' })).toBeEnabled({ timeout: 20_000 })
+
+    // Each medallist's row names the medal; nobody else's does.
+    const row = (name: string) => dialog.locator('div.rounded-lg').filter({ hasText: name }).last()
+    await expect(row('Ann').getByText('Gold', { exact: true })).toBeVisible()
+    await expect(row('Cy').getByText('Silver', { exact: true })).toBeVisible()
+    await expect(row('Eve').getByText('Bronze', { exact: true })).toBeVisible()
+    for (const name of ['Bob', 'Dee', 'Fay']) await expect(row(name).getByText(/^(Gold|Silver|Bronze)$/)).toHaveCount(0)
+    // Nothing on the card moves.
+    await expect(dialog.locator('[data-piece]')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+
+    await page.getByRole('button', { name: 'Share card for Ann' }).click()
+    await expect(page.getByRole('dialog', { name: 'Stats card' }).getByText('Gold medal')).toBeVisible()
   })
 
   test('rises in and glows, and stays still for reduced motion', async ({ page }) => {

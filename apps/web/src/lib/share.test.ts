@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { canShareNatively, shareImages } from './share'
+import { canShareNatively, cardFileNames, shareImages } from './share'
 
 const fakeFile = (name = 'test.png') => new File(['x'], name, { type: 'image/png' })
 
@@ -98,5 +98,23 @@ describe('canShareNatively', () => {
 
     vi.stubGlobal('navigator', {})
     expect(canShareNatively()).toBe(false)
+  })
+})
+
+describe('cardFileNames', () => {
+  it('names a single image after its base, as a PNG', () => {
+    expect(cardFileNames('q2dink-standings', 1)).toEqual(['q2dink-standings.png'])
+  })
+
+  it('numbers a set of pages so they sort in order', () => {
+    expect(cardFileNames('q2dink-standings', 3)).toEqual([
+      'q2dink-standings-1-of-3.png',
+      'q2dink-standings-2-of-3.png',
+      'q2dink-standings-3-of-3.png',
+    ])
+  })
+
+  it('takes another extension when asked', () => {
+    expect(cardFileNames('card', 1, 'jpg')).toEqual(['card.jpg'])
   })
 })
