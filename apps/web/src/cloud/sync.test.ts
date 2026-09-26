@@ -12,7 +12,16 @@ vi.hoisted(() => {
   })
 })
 
-import type { LiveRow, PublishMeta, SessionStateRow } from '@q2dink/shared'
+// Keeping an ended session goes to IndexedDB, which node does not have: record what would be kept.
+vi.mock('@/db/history', async (importActual) => ({
+  ...(await importActual<typeof import('@/db/history')>()),
+  archiveSession: vi.fn(async (input: { now?: number }) => input),
+  markHistorySynced: vi.fn(async () => {}),
+}))
+
+import type { HistorySummary, LiveRow, PublishMeta, SessionStateRow } from '@q2dink/shared'
+import { archiveSession } from '@/db/history'
+import { playedMs } from '@/rotation/engine'
 import type { RosterPlayer, SessionState } from '@/rotation/types'
 import { applyAction } from '@/store/actions'
 import { useSessionStore } from '@/store/session'
@@ -40,7 +49,12 @@ type AsyncMock = ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>
 function fakeApi(
   overrides: { publish?: AsyncMock; clear?: AsyncMock; recordLifetime?: AsyncMock; fetchFullSession?: AsyncMock } = {},
 ) {
-  const server: { row: SessionStateRow | null; live: Set<(row: LiveRow | null) => void> } = { row: null, live: new Set() }
+  const server: {
+    row: SessionStateRow | null
+    live: Set<(row: LiveRow | null) => void>
+    /** The club's ended sessions, or null when the list cannot be fetched. */
+    history: HistorySummary[] | null
+  } = { row: null, live: new Set(), history: [] }
   const publish = async (_token: unknown, _snap: unknown, backup: unknown, meta: PublishMeta = {}) => {
     const stored = server.row
     if (meta.baseRevision !== undefined) {
@@ -72,6 +86,10 @@ function fakeApi(
       overrides.recordLifetime ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
     fetchFullSession: overrides.fetchFullSession ?? vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
     fetchSessionState: vi.fn(async () => server.row),
+    listHistory: vi.fn(async () => {
+      if (!server.history) throw new CloudError('network')
+      return server.history
+    }),
     subscribeLive: vi.fn((_slug: string, onChange: (row: LiveRow | null) => void) => {
       server.live.add(onChange)
       return () => server.live.delete(onChange)
@@ -429,6 +447,64 @@ describe('startCloudSync', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(session().session).toBeNull()
       stop()
+    })
+
+    describe('when this device only finds out hours later that the session ended', () => {
+      const HOUR = 60 * 60 * 1000
+
+      /** A game on Court 1 and P5 waiting, then the other device ends it while this one is asleep. */
+      async function endedWhileAsleep(fake: ReturnType<typeof fakeApi>) {
+        const stop = await started(fake)
+        for (const n of [2, 3, 4]) session().checkInPlayer(player(n))
+        await vi.advanceTimersByTimeAsync(500)
+        session().startGame(1)
+        await vi.advanceTimersByTimeAsync(500)
+        session().checkInPlayer(player(5))
+        await vi.advanceTimersByTimeAsync(500)
+        const { location, sessionId } = session()
+        const endedAt = Date.now()
+        fake.server.row = null
+        fake.server.history &&= [
+          { id: sessionId, location, endedAt: new Date(endedAt).toISOString(), mode: 'doubles', players: 5, games: 0 },
+        ]
+        vi.mocked(archiveSession).mockClear()
+
+        // Overnight, then the app opens again and the stream says there is no session.
+        vi.setSystemTime(endedAt + 8 * HOUR)
+        for (const listener of fake.server.live) listener(null)
+        await vi.advanceTimersByTimeAsync(0)
+        stop()
+        expect(session().session).toBeNull()
+        expect(archiveSession).toHaveBeenCalledTimes(1)
+        const archived = vi.mocked(archiveSession).mock.calls[0][0]
+        return { endedAt, archived }
+      }
+
+      /** Resume it as Past sessions does: every timer carries on from where it stood, with nothing added. */
+      function expectResumedWithoutTheGap(archived: Parameters<typeof archiveSession>[0]) {
+        const { id: sessionId, startedAt, lifetimeCounted, now: endedAt } = archived
+        session().loadSession(archived.location, archived.session, { sessionId, startedAt, lifetimeCounted, endedAt: endedAt! })
+        const resumed = session().session!
+        const now = Date.now()
+        expect(playedMs(resumed.courts[0], now)).toBeLessThan(60_000)
+        for (const id of resumed.queue) expect(now - resumed.queuedAt![id]).toBeLessThan(60_000)
+      }
+
+      it('records when the session really ended, so resuming it later adds no time', async () => {
+        const fake = fakeApi()
+        const { endedAt, archived } = await endedWhileAsleep(fake)
+        expect(archived.now).toBe(endedAt)
+        expectResumedWithoutTheGap(archived)
+      })
+
+      it('without the club’s history, records the session’s last activity instead', async () => {
+        const fake = fakeApi()
+        fake.server.history = null
+        const { endedAt, archived } = await endedWhileAsleep(fake)
+        expect(archived.now).toBeGreaterThan(endedAt - 60_000)
+        expect(archived.now).toBeLessThanOrEqual(endedAt)
+        expectResumedWithoutTheGap(archived)
+      })
     })
 
     it('stops sending when another device started a different session, until staff choose', async () => {

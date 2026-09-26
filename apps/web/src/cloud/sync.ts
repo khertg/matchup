@@ -30,6 +30,8 @@ import {
   setSyncClub,
 } from '@/db/settings'
 import { avatarKey, colorFor, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
+import { lastActivityAt } from '@/rotation/engine'
+import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi, type PutAvatarRequest } from './api'
 import { useClubAuth } from './auth'
@@ -391,7 +393,7 @@ function reportDropped(dropped: { reason: string }[]) {
  * With this device running the same session, take it and apply this device's unsent changes on top;
  * with none running here, remember it so staff can join; with a different one running here, say so.
  */
-export async function adoptClubCopy(clubRow: SessionStateRow | null): Promise<void> {
+export async function adoptClubCopy(clubRow: SessionStateRow | null, api: CloudApi | null = cloud): Promise<void> {
   const sync = useSyncStore.getState()
   const store = useSessionStore.getState()
   // A session that ended here but whose end has not reached the club yet is not running.
@@ -405,7 +407,7 @@ export async function adoptClubCopy(clubRow: SessionStateRow | null): Promise<vo
   if (!store.base) return
   if (!row) {
     // It ended on another device, after this one had it: follow, keeping a copy here.
-    if (store.base.revision > 0) await endedElsewhere()
+    if (store.base.revision > 0) await endedElsewhere(api)
     return
   }
   const sameSession = row.sessionId === null || row.sessionId === store.sessionId
@@ -420,8 +422,28 @@ export async function adoptClubCopy(clubRow: SessionStateRow | null): Promise<vo
   reportDropped(useSessionStore.getState().rebaseOnto(row.revision, parsed.session, parsed.location))
 }
 
+/**
+ * When a session that ended on another device really ended: the time that device kept it under, else
+ * the last thing that happened in it. This device may only find out hours later (it was asleep), and
+ * resuming takes the time since the end off every timer, so "now" would add those hours to them.
+ */
+async function endedAtFor(api: CloudApi | null, token: string | undefined, sessionId: string, session: SessionState) {
+  const now = Date.now()
+  let endedAt: number | undefined
+  if (api && token && navigator.onLine) {
+    try {
+      const entry = (await api.listHistory(token)).find((s) => s.id === sessionId)
+      if (entry) endedAt = Date.parse(entry.endedAt)
+    } catch {
+      // Not there or not reachable: fall back to the session's own times.
+    }
+  }
+  if (endedAt === undefined || Number.isNaN(endedAt)) endedAt = lastActivityAt(session)
+  return endedAt === undefined ? now : Math.min(endedAt, now)
+}
+
 /** Another staff device ended the session: keep it in Past sessions here, and leave it. */
-async function endedElsewhere(): Promise<void> {
+async function endedElsewhere(api: CloudApi | null): Promise<void> {
   const store = useSessionStore.getState()
   if (!store.session) return
   const club = useClubAuth.getState().club
@@ -434,6 +456,7 @@ async function endedElsewhere(): Promise<void> {
       session: store.session,
       lifetimeCounted: store.lifetimeCounted,
       clubSlug: club?.slug,
+      now: await endedAtFor(api, club?.token, store.sessionId, store.session),
     })
     // The device that ended it sends the club its copy; this one only keeps its own.
     if (saved) await markHistorySynced(saved.id, club?.slug)
@@ -535,7 +558,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
             useSyncStore.setState({ keepMine: false })
           } else {
             // Moved on elsewhere: take the club's copy, apply this device's changes on top, send again.
-            await adoptClubCopy(outcome.conflict)
+            await adoptClubCopy(outcome.conflict, api)
           }
         } catch (error) {
           handleAuthError(error)
@@ -583,7 +606,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
       if (!club || !navigator.onLine) return
       try {
         const row = await api.fetchSessionState(club.token)
-        if (signedIn()?.slug === club.slug) await adoptClubCopy(row)
+        if (signedIn()?.slug === club.slug) await adoptClubCopy(row, api)
       } catch (error) {
         handleAuthError(error)
       }

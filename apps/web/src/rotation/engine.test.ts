@@ -35,6 +35,7 @@ import {
   winnerScoreProblem,
   setAvgGameMinutes,
   setPlayerSkill,
+  lastActivityAt,
   shiftSessionClock,
   startGame,
   unlockPartners,
@@ -1012,6 +1013,31 @@ describe('shiftSessionClock', () => {
     const snapshot = structuredClone(s)
     shiftSessionClock(s, 5000)
     expect(s).toEqual(snapshot)
+  })
+})
+
+describe('lastActivityAt', () => {
+  it('is the latest check-in or game start', () => {
+    let s = createSession('doubles', 2)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), id * 1000)
+    s = startGame(s, 1, { now: 10_000 })
+    expect(lastActivityAt(s)).toBe(10_000)
+    s = checkIn(s, player(5), 12_000)
+    expect(lastActivityAt(s)).toBe(12_000)
+  })
+
+  it('counts a finished game and a paused court', () => {
+    let s = createSession('doubles', 1)
+    for (let id = 1; id <= 4; id++) s = checkIn(s, player(id), 0)
+    s = startGame(s, 1, { now: 10_000 })
+    const finished = recordScore(s, 1, 11, 7, { now: 70_000 }).state
+    expect(lastActivityAt({ ...finished, queuedAt: {} })).toBe(70_000)
+    expect(lastActivityAt({ ...s, courts: [{ ...s.courts[0], pausedAt: 90_000 }] })).toBe(90_000)
+  })
+
+  it('is undefined for a session with no times', () => {
+    expect(lastActivityAt(createSession('doubles', 1))).toBeUndefined()
+    expect(lastActivityAt(checkIn(createSession('doubles', 1), player(1)))).toBeUndefined()
   })
 })
 

@@ -1205,4 +1205,18 @@ export function shiftSessionClock(session: SessionState, offsetMs: number): Sess
     ),
   }
 }
+
+/**
+ * The latest wall-clock time the session records (a game finished or started, a check-in, a pause):
+ * the best guess of when it stopped when nothing better is known. Undefined when it holds no times.
+ */
+export function lastActivityAt(session: SessionState): number | undefined {
+  const times = [
+    ...(session.matches ?? []).map((m) => m.endedAt),
+    ...Object.values(session.queuedAt ?? {}),
+    ...session.courts.flatMap((c) => [c.startedAt, c.pausedAt]),
+  ].filter((t): t is number => t !== undefined)
+  return times.length > 0 ? Math.max(...times) : undefined
+}
+
 /** Change the assumed game length used for wait estimates. */
