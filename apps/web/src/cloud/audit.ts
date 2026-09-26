@@ -75,3 +75,13 @@ export function mergeEntries(unsent: AuditEntry[], sent: AuditEntry[]): { entry:
     ...sent.map((entry) => ({ entry, unsent: false })),
   ].sort((a, b) => b.entry.at.localeCompare(a.entry.at))
 }
+
+/** Whether an entry matches a search the way the club's server does: anywhere in what happened, the device's name or its details, ignoring case. */
+export function matchesSearch(entry: AuditEntry, q: string): boolean {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return true
+  return [entry.summary, entry.device.name ?? '', entry.device.label].some((text) => text.toLowerCase().includes(needle))
+}
+
+/** How many pages `total` entries make, `size` a page: always at least one. */
+export const pageCount = (total: number, size: number) => Math.max(1, Math.ceil(total / size))

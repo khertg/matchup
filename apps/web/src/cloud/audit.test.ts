@@ -19,7 +19,7 @@ import { useDevice } from '@/lib/device'
 import type { RosterPlayer } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi } from './api'
-import { mergeEntries, newAuditEntry, queueAudit, recordAudit, unsentAudit } from './audit'
+import { matchesSearch, mergeEntries, newAuditEntry, pageCount, queueAudit, recordAudit, unsentAudit } from './audit'
 import { useClubAuth } from './auth'
 import { countUnsent, flushAudit } from './sync'
 import { NOTHING_UNSENT } from '@/lib/reset'
@@ -195,5 +195,37 @@ describe('countUnsent', () => {
   it('counts nothing without a club: there is nowhere to send it', async () => {
     useClubAuth.setState({ club: null })
     expect(await countUnsent()).toEqual(NOTHING_UNSENT)
+  })
+})
+
+describe('matchesSearch', () => {
+  const entry: AuditEntry = {
+    id: '0b6f4a4e-3c1d-4b8e-9a51-2f1f0c2d9e10',
+    at: '2026-09-27T10:00:00.000Z',
+    kind: 'recordScore',
+    summary: 'Court 2: Blue won 11–7',
+    device: { id: 'd', label: 'SM-S918B · Android 14 · Chrome', name: 'Maria' },
+  }
+
+  it('finds the text in what happened, the device name or its details, ignoring case', () => {
+    expect(matchesSearch(entry, 'blue WON')).toBe(true)
+    expect(matchesSearch(entry, 'maria')).toBe(true)
+    expect(matchesSearch(entry, 'sm-s918')).toBe(true)
+    expect(matchesSearch(entry, 'Desk')).toBe(false)
+  })
+
+  it('matches everything when there is no search', () => {
+    expect(matchesSearch(entry, '')).toBe(true)
+    expect(matchesSearch(entry, '   ')).toBe(true)
+  })
+
+  it('works for a device not named yet', () => {
+    expect(matchesSearch({ ...entry, device: { id: 'd', label: 'iPhone' } }, 'iphone')).toBe(true)
+  })
+})
+
+describe('pageCount', () => {
+  it('is at least one page, and a page more for any leftover', () => {
+    expect([0, 1, 20, 21, 45].map((total) => pageCount(total, 20))).toEqual([1, 1, 1, 2, 3])
   })
 })

@@ -110,6 +110,10 @@ export interface CloudApi {
 export interface AuditQuery {
   sessionId?: string
   deviceId?: string
+  /** Text anywhere in what happened, the device's name or its details, ignoring case. */
+  q?: string
+  /** A numbered page, from 0: the answer then says how many match in all. */
+  page?: number
   /** Only entries before this time: the `next` of the previous page. */
   before?: string
   limit?: number

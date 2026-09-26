@@ -1,9 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { History } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { AuditEntry, ClubDevice } from '@q2dink/shared'
+import { AUDIT_LIMITS, type AuditEntry, type ClubDevice } from '@q2dink/shared'
 import { toCloudError } from '@/cloud/api'
-import { mergeEntries, unsentAudit } from '@/cloud/audit'
+import { matchesSearch, mergeEntries, pageCount, unsentAudit } from '@/cloud/audit'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { DeviceNameForm } from '@/components/DeviceNameForm'
@@ -16,13 +16,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { deviceDisplay, shortDeviceId, useDevice } from '@/lib/device'
 import { useSessionStore } from '@/store/session'
 
 /** How often the open log looks for what the club's other devices did. */
 const REFRESH_MS = 10_000
-const PAGE = 50
+/** A pause after typing before searching, so each letter does not send a request. */
+const SEARCH_DELAY_MS = 300
+const PAGE_SIZE = AUDIT_LIMITS.pageSize
 const ALL = 'all'
 
 interface Props {
@@ -37,8 +40,9 @@ interface Props {
 }
 
 /**
- * The audit log: which staff device did what, newest first, with who did it and when. Staff only, and only
- * with a club signed in. This device's changes not sent yet are listed too, marked as such.
+ * The audit log: which staff device did what, newest first, a page at a time, with who did it and when. It
+ * can be searched and narrowed to one device. Staff only, and only with a club signed in. This device's
+ * changes not sent yet are listed first, marked as such.
  */
 export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost', ...controlled }: Props) {
   const club = useClubAuth((s) => s.club)
@@ -51,28 +55,49 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
   const [renaming, setRenaming] = useState(false)
   const [device, setDevice] = useState(ALL)
   const [devices, setDevices] = useState<ClubDevice[]>([])
+  const [search, setSearch] = useState('')
+  /** The search as sent, a moment after typing stops. */
+  const [q, setQ] = useState('')
+  const [page, setPage] = useState(0)
   const [sent, setSent] = useState<AuditEntry[]>([])
-  const [next, setNext] = useState<string | null>(null)
+  const [total, setTotal] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  /** Start from the newest page again: on opening, and when another device is picked. */
+  /** Back to the first page, empty until it loads: on opening, and when the filters change. */
   function restart() {
+    setPage(0)
     setSent([])
-    setNext(null)
+    setTotal(0)
     setLoading(true)
   }
+
+  useEffect(() => {
+    if (search.trim() === q) return
+    const timer = setTimeout(() => {
+      restart()
+      setQ(search.trim())
+    }, SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [search, q])
 
   const queued = useLiveQuery(() => (club ? unsentAudit(club.slug) : Promise.resolve([])), [club?.slug])
   // Changes the club has not taken yet are on the session's pending list; the rest wait in the queue.
   const waiting = sessionId === undefined || sessionId === runningId ? pending.flatMap((p) => (p.audit ? [p.audit] : [])) : []
-  const unsent = [...(queued ?? []), ...waiting].filter(
-    (e) => (sessionId === undefined || e.sessionId === sessionId) && (device === ALL || e.device.id === device),
-  )
+  // Shown on the first page only, which is where the newest entries are.
+  const unsent =
+    page === 0
+      ? [...(queued ?? []), ...waiting].filter(
+          (e) =>
+            (sessionId === undefined || e.sessionId === sessionId) &&
+            (device === ALL || e.device.id === device) &&
+            matchesSearch(e, q),
+        )
+      : []
 
   const query = useMemo(
-    () => ({ ...(sessionId ? { sessionId } : {}), ...(device !== ALL ? { deviceId: device } : {}) }),
-    [sessionId, device],
+    () => ({ ...(sessionId ? { sessionId } : {}), ...(device !== ALL ? { deviceId: device } : {}), ...(q ? { q } : {}) }),
+    [sessionId, device, q],
   )
 
   useEffect(() => {
@@ -81,18 +106,24 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
     const token = club.token
     let cancelled = false
 
-    /** The newest page again (what other devices did since), keeping any older pages already loaded. */
+    /** This page again, with what other devices did since. */
     async function refresh() {
       try {
-        const [page, list] = await Promise.all([api.listAudit(token, { ...query, limit: PAGE }), api.listDevices(token)])
+        const [result, list] = await Promise.all([
+          api.listAudit(token, { ...query, page, limit: PAGE_SIZE }),
+          api.listDevices(token),
+        ])
         if (cancelled) return
         setDevices(list)
-        setSent((old) => {
-          const fresh = new Set(page.entries.map((e) => e.id))
-          const oldest = page.entries[page.entries.length - 1]?.at
-          return [...page.entries, ...old.filter((e) => !fresh.has(e.id) && oldest !== undefined && e.at < oldest)]
-        })
-        setNext((old) => (old === null ? page.next : old))
+        const count = result.total ?? result.entries.length
+        const last = pageCount(count, PAGE_SIZE) - 1
+        // The log got shorter (old entries let go): show the last page there is.
+        if (page > last) {
+          setPage(last)
+          return
+        }
+        setSent(result.entries)
+        setTotal(count)
         setError(null)
       } catch (err) {
         if (!cancelled) setError(toCloudError(err).message)
@@ -107,24 +138,15 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
       cancelled = true
       clearInterval(timer)
     }
-  }, [open, club, query])
-
-  async function loadMore() {
-    if (!cloud || !club || !next) return
-    setLoading(true)
-    try {
-      const page = await cloud.listAudit(club.token, { ...query, limit: PAGE, before: next })
-      setSent((old) => [...old, ...page.entries.filter((e) => !old.some((o) => o.id === e.id))])
-      setNext(page.next)
-    } catch (err) {
-      setError(toCloudError(err).message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [open, club, query, page])
 
   if (!cloud || !club) return null
   const rows = mergeEntries(unsent, sent)
+  const pages = pageCount(total, PAGE_SIZE)
+  const goTo = (to: number) => {
+    setLoading(true)
+    setPage(to)
+  }
   const when = (at: string) =>
     new Date(at).toLocaleString([], sessionId ? { hour: 'numeric', minute: '2-digit', second: '2-digit' } : { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -132,7 +154,11 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        if (value) restart()
+        if (value) {
+          restart()
+          setSearch('')
+          setQ('')
+        }
         setOpen(value)
         setRenaming(false)
       }}
@@ -169,6 +195,14 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
         </div>
 
         <div className="space-y-2">
+          <Input
+            type="search"
+            value={search}
+            maxLength={AUDIT_LIMITS.search}
+            aria-label="Search activity"
+            placeholder="Search: a player, a court, a device…"
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <Select
             value={device}
             onValueChange={(value) => {
@@ -198,7 +232,9 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
         )}
 
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{loading ? 'Loading…' : 'Nothing recorded yet.'}</p>
+          <p className="text-sm text-muted-foreground">
+            {loading ? 'Loading…' : q ? `Nothing matches “${q}”.` : 'Nothing recorded yet.'}
+          </p>
         ) : (
           <ol aria-label="Activity" className="divide-y">
             {rows.map(({ entry, unsent: notSent }) => {
@@ -218,10 +254,18 @@ export function ActivityDialog({ sessionId, label = 'Activity', variant = 'ghost
           </ol>
         )}
 
-        {next && (
-          <Button type="button" variant="outline" disabled={loading} onClick={loadMore}>
-            Load more
-          </Button>
+        {pages > 1 && (
+          <nav aria-label="Activity pages" className="flex items-center justify-between gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={loading || page === 0} onClick={() => goTo(page - 1)}>
+              Previous
+            </Button>
+            <p aria-live="polite" className="text-sm text-muted-foreground">
+              Page {page + 1} of {pages}
+            </p>
+            <Button type="button" variant="outline" size="sm" disabled={loading || page + 1 >= pages} onClick={() => goTo(page + 1)}>
+              Next
+            </Button>
+          </nav>
         )}
       </DialogContent>
     </Dialog>

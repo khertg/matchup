@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
 import { failOnCspViolations } from '../cspWatch'
 import { checkIn, openSessionMenu, startGame, startSession } from '../helpers'
-import { apiCreateClub, nameDevice, uniqueClub, type TestClub } from './support'
+import { apiCreateClub, bearer, expectSignedIn, nameDevice, storedToken, uiLogin, uniqueClub, type TestClub } from './support'
 
 failOnCspViolations(test)
 
@@ -97,4 +97,54 @@ test('tells two identical iPhones apart, and shows who did what', async ({ brows
 
   await desk.context.close()
   await maria.context.close()
+})
+
+test('club activity is paged 20 at a time and can be searched', async ({ page, request }) => {
+  const club = uniqueClub('Paged')
+  await apiCreateClub(request, club)
+  await page.goto('/')
+  await uiLogin(page, club)
+  await expectSignedIn(page)
+  const token = await storedToken(page)
+
+  // 45 older entries from another device, "Checked in P1" to "Checked in P45".
+  const seeder = { id: 'seeder-device', label: 'iPhone · iOS 18 · Safari', name: 'Seeder' }
+  expect((await request.put('/api/devices/me', { headers: bearer(token), data: seeder })).status()).toBe(204)
+  const start = Date.now() - 60 * 60 * 1000
+  const entries = Array.from({ length: 45 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    at: new Date(start + (i + 1) * 1000).toISOString(),
+    device: seeder,
+    kind: 'checkIn',
+    summary: `Checked in P${i + 1}`,
+  }))
+  expect((await request.post('/api/audit', { headers: bearer(token), data: { entries } })).status()).toBe(204)
+
+  await page.getByRole('button', { name: 'Club activity' }).click()
+  const log = page.getByRole('dialog', { name: 'Club activity' })
+  const rows = log.getByRole('list', { name: 'Activity' }).getByRole('listitem')
+  const pages = log.getByRole('navigation', { name: 'Activity pages' })
+  // This device's own entries (logging in, naming it) come first, then the 45: three pages.
+  await expect(pages.getByText('Page 1 of 3')).toBeVisible()
+  await expect(rows).toHaveCount(20)
+  await pages.getByRole('button', { name: 'Next' }).click()
+  await expect(pages.getByText('Page 2 of 3')).toBeVisible()
+  await expect(rows.filter({ hasText: 'Checked in P20' })).toHaveCount(1)
+  await pages.getByRole('button', { name: 'Previous' }).click()
+  await expect(pages.getByText('Page 1 of 3')).toBeVisible()
+
+  // A search looks through the whole log, and fits on one page here.
+  await log.getByLabel('Search activity').fill('checked in p4')
+  await expect(rows).toHaveCount(7) // P4 and P40 to P45
+  await expect(pages).toHaveCount(0)
+  await log.getByLabel('Search activity').fill('nobody did this')
+  await expect(log.getByText('Nothing matches “nobody did this”.')).toBeVisible()
+
+  // One device, with and without a search.
+  await log.getByLabel('Search activity').fill('')
+  await log.getByLabel('Show activity of').click()
+  await page.getByRole('option', { name: /^Seeder · / }).click()
+  await expect(pages.getByText('Page 1 of 3')).toBeVisible()
+  await log.getByLabel('Search activity').fill('P4')
+  await expect(rows).toHaveCount(7)
 })

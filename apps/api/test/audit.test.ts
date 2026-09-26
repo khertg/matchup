@@ -2,6 +2,7 @@ import type { AuditEntry, AuditPage, ClubDevice } from '@q2dink/shared'
 import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Db } from '../src/db'
+import { likePattern } from '../src/services/audit'
 import { bearer, clearData, createClub, startTestApp, startTestDb } from './helpers'
 
 let db: Db
@@ -137,5 +138,77 @@ describe('naming devices', () => {
   it('needs a name', async () => {
     const { token } = await createClub(app)
     expect((await name(token, 'phone-a', '  ')).statusCode).toBe(400)
+  })
+})
+
+describe('searching and numbered pages', () => {
+  const seed = async (token: string, count: number, over: (n: number) => Partial<AuditEntry> = () => ({})) => {
+    const all = Array.from({ length: count }, (_, i) => entry(i + 1, over(i + 1)))
+    for (let i = 0; i < all.length; i += 100) expect((await post(token, all.slice(i, i + 100))).statusCode).toBe(204)
+  }
+  const get = (token: string, query: string) => app.inject({ method: 'GET', url: `/api/audit?${query}`, headers: bearer(token) })
+
+  it('gives numbered pages of 20, newest first, with the total', async () => {
+    const { token } = await createClub(app)
+    await seed(token, 45)
+    const pages = await Promise.all([0, 1, 2, 3].map((p) => list(token, `?page=${p}`)))
+    expect(pages.map((p) => p.entries.length)).toEqual([20, 20, 5, 0])
+    expect(pages.every((p) => p.total === 45)).toBe(true)
+    expect(pages[0].entries[0].summary).toBe('Checked in P45')
+    expect(pages[2].entries.at(-1)!.summary).toBe('Checked in P1')
+  })
+
+  it('finds text in what happened, the device name or its details, ignoring case', async () => {
+    const { token } = await createClub(app)
+    await seed(token, 3)
+    await post(token, [entry(50, { summary: 'Court 2: Blue won 11–7', device: { id: 'phone-b', label: 'SM-S918B · Android 14 · Chrome', name: 'Maria' } })])
+    expect((await list(token, '?page=0&q=blue%20WON')).entries.map((e) => e.id)).toEqual([uuid(50)])
+    expect((await list(token, '?page=0&q=maria')).entries.map((e) => e.id)).toEqual([uuid(50)])
+    expect((await list(token, '?page=0&q=sm-s918')).entries.map((e) => e.id)).toEqual([uuid(50)])
+    const desk = await list(token, '?page=0&q=desk')
+    expect(desk.total).toBe(3)
+    expect((await list(token, '?page=0&q=nothing-like-this')).entries).toEqual([])
+  })
+
+  it('takes % and _ in a search literally', async () => {
+    const { token } = await createClub(app)
+    await post(token, [entry(1, { summary: 'Won 50% of games' }), entry(2, { summary: 'Won 500 games' }), entry(3, { summary: 'a_b' }), entry(4, { summary: 'axb' })])
+    expect((await list(token, '?page=0&q=50%25')).entries.map((e) => e.id)).toEqual([uuid(1)])
+    expect((await list(token, '?page=0&q=a_b')).entries.map((e) => e.id)).toEqual([uuid(3)])
+  })
+
+  it('combines a search with one session and one device', async () => {
+    const { token } = await createClub(app)
+    await seed(token, 12, (n) => ({
+      ...(n % 2 === 0 ? { device: { id: 'phone-b', label: IPHONE, name: 'Maria' } } : {}),
+      ...(n > 6 ? { sessionId: uuid(901) } : {}),
+    }))
+    // P1, P10, P11, P12 match "P1"; of those, P10 and P12 are Maria's, and P10, P11, P12 are in session 901.
+    const found = await list(token, `?page=0&q=P1&deviceId=phone-b&sessionId=${uuid(901)}`)
+    expect(found.entries.map((e) => e.summary)).toEqual(['Checked in P12', 'Checked in P10'])
+    expect(found.total).toBe(2)
+  })
+
+  it('refuses a search that is too long and a page that is not a page', async () => {
+    const { token } = await createClub(app)
+    expect((await get(token, `q=${'x'.repeat(101)}`)).statusCode).toBe(400)
+    for (const page of ['-1', '1.5', 'two', '10001']) expect((await get(token, `page=${page}`)).statusCode, page).toBe(400)
+    expect((await get(token, 'q=%20%20&page=0')).statusCode).toBe(200)
+  })
+
+  it('still pages the old way for older apps', async () => {
+    const { token } = await createClub(app)
+    await seed(token, 3)
+    const first = await list(token, '?limit=2')
+    expect(first.total).toBeUndefined()
+    expect(first.next).not.toBeNull()
+  })
+})
+
+describe('likePattern', () => {
+  it('finds the text anywhere, with its wildcards taken literally', () => {
+    expect(likePattern('ann')).toBe('%ann%')
+    expect(likePattern('50%')).toBe(String.raw`%50\%%`)
+    expect(likePattern(String.raw`a_b\c`)).toBe(String.raw`%a\_b\\c%`)
   })
 })

@@ -65,9 +65,19 @@ export async function addAuditEntries(db: Db, slug: string, entries: AuditEntry[
   })
 }
 
+/**
+ * A search as an `ilike` pattern (with `escape '\'`): the text anywhere, and its `%`, `_` and `\`
+ * taken literally, so "50%" finds "50%" and not everything.
+ */
+export const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+
 export interface AuditQuery {
   sessionId?: string
   deviceId?: string
+  /** Text anywhere in the summary, the device's name or its details, ignoring case. */
+  q?: string
+  /** A numbered page (from 0); the answer then carries the total. */
+  page?: number
   /** Only entries before this time (the `next` of the previous page). */
   before?: string
   limit?: number
@@ -84,9 +94,9 @@ type Row = {
   session_id: string | null
 }
 
-/** One page of the club's log, newest first, optionally for one session or one device. */
+/** One page of the club's log, newest first, optionally for one session, one device or a search. */
 export async function listAudit(db: Queryable, slug: string, query: AuditQuery = {}): Promise<AuditPage> {
-  const limit = Math.min(Math.max(query.limit ?? 50, 1), AUDIT_LIMITS.page)
+  const limit = Math.min(Math.max(query.limit ?? (query.page !== undefined ? AUDIT_LIMITS.pageSize : 50), 1), AUDIT_LIMITS.page)
   const where = ['club_slug = $1']
   const params: unknown[] = [slug]
   const add = (clause: string, value: unknown) => {
@@ -95,11 +105,21 @@ export async function listAudit(db: Queryable, slug: string, query: AuditQuery =
   }
   if (query.sessionId) add('session_id = ?', query.sessionId)
   if (query.deviceId) add('device_id = ?', query.deviceId)
-  if (query.before) add('at < ?', query.before)
-  params.push(limit + 1)
+  if (query.q) {
+    params.push(likePattern(query.q))
+    const n = `$${params.length}`
+    where.push(`(summary ilike ${n} escape '\\' or device_name ilike ${n} escape '\\' or device_label ilike ${n} escape '\\')`)
+  }
+  if (query.before && query.page === undefined) add('at < ?', query.before)
+  const filters = where.join(' and ')
+  const filterParams = [...params]
+  const numbered = query.page !== undefined
+  // A numbered page takes exactly its entries; cursor paging takes one more to know whether more follow.
+  const limitParam = `$${params.push(numbered ? limit : limit + 1)}`
+  const offset = numbered ? ` offset $${params.push(query.page! * limit)}` : ''
   const { rows } = await db.query<Row>(
     `select id, at, device_id, device_label, device_name, kind, summary, session_id from audit_log
-     where ${where.join(' and ')} order by at desc, id desc limit $${params.length}`,
+     where ${filters} order by at desc, id desc limit ${limitParam}${offset}`,
     params,
   )
   const page = rows.slice(0, limit).map(
@@ -112,5 +132,9 @@ export async function listAudit(db: Queryable, slug: string, query: AuditQuery =
       ...(r.session_id ? { sessionId: r.session_id } : {}),
     }),
   )
+  if (numbered) {
+    const count = await db.query<{ n: string | number }>(`select count(*) as n from audit_log where ${filters}`, filterParams)
+    return { entries: page, next: null, total: Number(count.rows[0].n) }
+  }
   return { entries: page, next: rows.length > limit ? page[page.length - 1].at : null }
 }

@@ -12,8 +12,12 @@ export const AUDIT_LIMITS = {
   deviceId: 64,
   deviceLabel: 80,
   deviceName: 40,
-  /** Entries per GET /audit page. */
+  /** Entries per GET /audit page, at most. */
   page: 200,
+  /** Entries per numbered page in the app. */
+  pageSize: 20,
+  /** Characters in a search. */
+  search: 100,
 } as const
 
 /** The staff device an entry came from. */
@@ -45,10 +49,14 @@ export interface PostAuditRequest {
   entries: AuditEntry[]
 }
 
-/** GET /audit (staff): newest first; `next` is the `before` for the following page, null at the end. */
+/**
+ * GET /audit (staff): newest first. With `page`, `total` is how many entries match (for "Page 2 of 7");
+ * without it (older apps), `next` is the `before` for the following page, null at the end.
+ */
 export interface AuditPage {
   entries: AuditEntry[]
   next: string | null
+  total?: number
 }
 
 /** PUT /devices/me (staff): name this device. 409 `name_taken` when another device of the club has the name. */

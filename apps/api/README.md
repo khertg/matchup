@@ -66,7 +66,7 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `GET /clubs/:slug/avatars` | none | `{avatars, logo, name}`: every avatar by name (without photos), with `ETag`. `logo` is always `null` (kept for older apps). |
 | `GET /clubs/:slug/avatars/:key/photo` | none | A player's photo image. |
 | `POST /audit` `{entries[]}` | staff | Add to the club's activity log (at most 100 per request). Each entry's `id` is a UUID made on the device, so sending it again stores it once. |
-| `GET /audit?sessionId&deviceId&before&limit` | staff | The activity log, newest first, `{entries, next}`; pass `next` as `before` for the following page. |
+| `GET /audit?sessionId&deviceId&q&page&limit` | staff | The activity log, newest first. `q` searches (ignoring case, `%` and `_` literal) what happened, the device name and its details. `page` (from 0, 20 a page) returns `{entries, total}`; without it (older apps) `{entries, next}`, with `next` passed as `before` for the following page. |
 | `PUT /devices/me` `{id, name, label}` | staff | Name this staff device. `409 name_taken` when another device of the club has the name (ignoring case). |
 | `GET /devices` | staff | The club's named devices, `{devices}`. |
 | `GET /health` | none | Liveness, checks the database, and reports the build: `{ok, version, commit}` (`dev` when run from source or built without `GIT_SHA`). |
