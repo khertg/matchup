@@ -5,6 +5,7 @@ import {
   checkIn,
   checkOut,
   closeCourt,
+  courtSlots,
   createSession,
   dropFromNextUp,
   defaultCourtName,
@@ -720,6 +721,35 @@ describe('removing a player from a court', () => {
     expect(() => fillCourtSpot(s, 1, 0, b, MIN)).toThrow('waiting or on a break')
   })
 
+  it('keeps the open spot where the removed player was, and fills exactly the spot chosen', () => {
+    const s = playing()
+    const [a, b] = s.courts[0].teams![0]
+    const t = removeFromCourt(s, 1, a, { now: MIN })
+    expect(courtSlots(t.courts[0], 2)[0]).toEqual([null, b]) // b does not move up
+    expect(t.courts[0].teams![0]).toEqual([b])
+    expect(() => fillCourtSpot(t, 1, 0, 5, MIN, 1)).toThrow('not open')
+    const filled = fillCourtSpot(t, 1, 0, 5, 2 * MIN, 0)
+    expect(filled.courts[0].teams![0]).toEqual([5, b])
+    expect(filled.courts[0].openSlots).toBeUndefined()
+  })
+
+  it('fills the first open spot when no spot is given, as an older app sends it', () => {
+    const s = playing()
+    const [a, b] = s.courts[0].teams![0]
+    let t = removeFromCourt(s, 1, b, { now: MIN })
+    t = removeFromCourt(t, 1, a, { now: MIN })
+    expect(courtSlots(t.courts[0], 2)[0]).toEqual([null, null])
+    const filled = fillCourtSpot(t, 1, 0, 5, MIN)
+    expect(courtSlots(filled.courts[0], 2)[0]).toEqual([5, null])
+  })
+
+  it('keeps the gap in place when a player on the court is swapped', () => {
+    const s = playing()
+    const [a, b] = s.courts[0].teams![0]
+    const t = replacePlayer(removeFromCourt(s, 1, a, { now: MIN }), 1, b, 6)
+    expect(courtSlots(t.courts[0], 2)[0]).toEqual([null, 6])
+  })
+
   it('opens the court when nobody is left, and moves the pause with the session clock', () => {
     let s = createSession('singles', 1)
     s = startGame(withPlayers(s, 2), 1, { now: 0 })
@@ -786,6 +816,23 @@ describe('setting up a court by hand', () => {
     expect(cleared.courts[0].teams).toBeNull()
     expect(cleared.queue.slice(0, 2)).toEqual([6, 5])
     expect(cleared.queuedAt?.[6]).toBe(6 * MIN)
+  })
+
+  it('fills the spots in the order staff tap them, and starts that exact line-up', () => {
+    let s = fillCourtSpot(six(), 1, 0, 5, 10 * MIN, 1) // the lower Blue spot first
+    expect(courtSlots(s.courts[0], 2)).toEqual([
+      [null, 5],
+      [null, null],
+    ])
+    s = fillCourtSpot(s, 1, 1, 1, 10 * MIN, 1)
+    s = fillCourtSpot(s, 1, 1, 2, 10 * MIN, 0)
+    s = fillCourtSpot(s, 1, 0, 6, 10 * MIN, 0)
+    expect(s.courts[0].openSlots).toBeUndefined()
+    const started = startGame(s, 1, { now: 12 * MIN })
+    expect(started.courts[0].teams).toEqual([
+      [6, 5],
+      [2, 1],
+    ])
   })
 
   it('brings a player back from a break onto the court', () => {

@@ -422,6 +422,35 @@ test.describe('open spots', () => {
     expect(await queueNames(page)).toEqual(['Cy', 'Dee'])
   })
 
+  /** A court team's spots top to bottom: each player's name, or null for an open spot. */
+  const spots = async (page: Page, team: 'Blue' | 'Orange') => {
+    const texts = await court(page).getByRole('group', { name: team }).locator('ul > li').allInnerTexts()
+    return texts.map((text) => SIX.find((name) => text.includes(name)) ?? null)
+  }
+
+  test('removing a player keeps their spot where it was, and filling it puts the new player there', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, SIX)
+    await startGame(page)
+    const [top, bottom] = await spots(page, 'Blue')
+    await playerAction(court(page), top!, 'Remove')
+    await expect.poll(() => spots(page, 'Blue')).toEqual([null, bottom])
+    await court(page).getByRole('button', { name: 'Fill open spot on Blue' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /Fay/ }).click()
+    await expect.poll(() => spots(page, 'Blue')).toEqual(['Fay', bottom])
+  })
+
+  test('on an open court, the spot tapped is the one filled', async ({ page }) => {
+    await startSession(page)
+    await checkIn(page, SIX)
+    await court(page).getByRole('button', { name: 'Fill open spot on Blue' }).last().click()
+    await page.getByRole('dialog').getByRole('button', { name: /Eve/ }).click()
+    await expect.poll(() => spots(page, 'Blue')).toEqual([null, 'Eve'])
+    await court(page).getByRole('button', { name: 'Fill open spot on Blue' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /Fay/ }).click()
+    await expect.poll(() => spots(page, 'Blue')).toEqual(['Fay', 'Eve'])
+  })
+
   test('a court being set up can be cleared', async ({ page }) => {
     await startSession(page)
     await checkIn(page, SIX)

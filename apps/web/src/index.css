@@ -5,15 +5,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* The waiting hourglass: still for most of the cycle, then turned over (it looks the same upside down). */
 @theme {
-    --animate-hourglass: hourglass 3s ease-in-out infinite;
-
-    @keyframes hourglass {
-        0%, 75% { transform: rotate(0deg); }
-        100% { transform: rotate(180deg); }
-    }
-
     /* The standings podium: each step rises in once (staggered by delay), then gold glows softly. */
     --animate-podium-rise: podium-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
     --animate-podium-glow: podium-glow 3s ease-in-out 1s infinite;

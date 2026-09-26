@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ReplacePlayerDialog, type Candidate } from '@/components/ReplacePlayerDialog'
 import { PlayerMenu } from '@/components/PlayerMenu'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
-import { OpenTile, PlayerTile, TeamBox } from '@/components/PlayerTile'
+import { OpenTile, PlayerTile, TeamBox, Versus } from '@/components/PlayerTile'
 import { SkillBadge } from '@/components/SkillBadge'
 import { WaitingTime } from '@/components/WaitingTime'
 import type { SkillLevel } from '@/db/db'
@@ -178,47 +178,55 @@ function GroupTeams({
   const half = spots.length / 2
   const teams = [spots.slice(0, half), spots.slice(half)]
   return (
-    <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-3">
       {teams.map((team, i) => (
-        <TeamBox key={i} team={i as 0 | 1}>
-          {team.map((id, k) =>
-            id === null ? (
-              <OpenTile
-                key={`open-${k}`}
-                onFill={onOpenSpot && (() => onOpenSpot(i * half + k))}
-                fillLabel={`Fill open spot on ${TEAM_NAMES[i]}`}
-              />
-            ) : (
-              <PlayerTile key={id}>
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <PlayerAvatar name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
-                  <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
-                  {queuedAt?.[id] !== undefined && (
-                    <WaitingTime seconds={(now - queuedAt[id]) / 1000} className="text-xs" />
+        <Fragment key={i}>
+          {i === 1 && <Versus />}
+          <TeamBox team={i as 0 | 1}>
+            {team.map((id, k) =>
+              id === null ? (
+                <OpenTile
+                  key={`open-${k}`}
+                  onFill={onOpenSpot && (() => onOpenSpot(i * half + k))}
+                  fillLabel={`Fill open spot on ${TEAM_NAMES[i]}`}
+                />
+              ) : (
+                <PlayerTile key={id}>
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <PlayerAvatar name={players[id]?.name ?? 'Player'} size="sm" editable={editable} viewable />
+                    <span className="min-w-0 truncate">{players[id]?.name ?? 'Player'}</span>
+                  </span>
+                  {/* Its own column, so the times line up like the level badges. */}
+                  {queuedAt && (
+                    <span className="w-16 shrink-0 text-right">
+                      {queuedAt[id] !== undefined && (
+                        <WaitingTime seconds={(now - queuedAt[id]) / 1000} className="justify-end text-xs" />
+                      )}
+                    </span>
                   )}
-                </span>
-                {players[id] && (
-                  <SkillBadge
-                    player={players[id]}
-                    onChange={onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
-                  />
-                )}
-                {onReplace && players[id] && (
-                  <PlayerMenu
-                    mode="nextUp"
-                    player={players[id]}
-                    candidates={candidates}
-                    lane={lane}
-                    onReplace={(inId) => onReplace(id, inId)}
-                    onRemove={onRemove && (() => onRemove(id))}
-                    onTakeBreak={onTakeBreak && (() => onTakeBreak(id))}
-                    removeBlocked={removeBlocked?.(id)}
-                  />
-                )}
-              </PlayerTile>
-            ),
-          )}
-        </TeamBox>
+                  {players[id] && (
+                    <SkillBadge
+                      player={players[id]}
+                      onChange={onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
+                    />
+                  )}
+                  {onReplace && players[id] && (
+                    <PlayerMenu
+                      mode="nextUp"
+                      player={players[id]}
+                      candidates={candidates}
+                      lane={lane}
+                      onReplace={(inId) => onReplace(id, inId)}
+                      onRemove={onRemove && (() => onRemove(id))}
+                      onTakeBreak={onTakeBreak && (() => onTakeBreak(id))}
+                      removeBlocked={removeBlocked?.(id)}
+                    />
+                  )}
+                </PlayerTile>
+              ),
+            )}
+          </TeamBox>
+        </Fragment>
       ))}
     </div>
   )

@@ -19,7 +19,7 @@ interface Props {
 }
 
 /**
- * One team's players, one per line: "Ann (0:04)", each with how long they had waited before this
+ * One team's players, one per line: "Ann (4m)", each with how long they had waited before this
  * match started, when known and not zero. A player who has since left the session shows as "Unknown".
  */
 function TeamLines({

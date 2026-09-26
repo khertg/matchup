@@ -79,6 +79,18 @@ describe('rebase', () => {
     expect(result.session.courts[0].pausedAt).toBe(1000)
   })
 
+  it('fills the exact open spot on a court, also when replayed on the club’s copy', () => {
+    const playing = apply(base, checkIn('Bob', 'Cy', 'Dee', 'Eve'), { type: 'startGame', courtId: 1, now: 0 })
+    const [first, second] = playing.courts[0].teams![0]
+    const pending: PendingAction[] = [
+      { action: { type: 'removeFromCourt', courtId: 1, playerId: first, onBreak: false, now: 1000 } },
+      { action: { type: 'fillCourtSpot', courtId: 1, team: 0, slot: 0, playerId: 5, now: 2000 } },
+    ]
+    const result = rebase(playing, pending)
+    expect(result.dropped).toEqual([])
+    expect(result.session.courts[0].teams![0]).toEqual([5, second])
+  })
+
   it('drops a change that no longer applies, and says why', () => {
     const playing = apply(base, checkIn('Bob', 'Cy', 'Dee'), { type: 'startGame', courtId: 1, now: 0 })
     const club = apply(playing, { type: 'recordScore', courtId: 1, scoreA: 11, scoreB: 2, now: 0 })

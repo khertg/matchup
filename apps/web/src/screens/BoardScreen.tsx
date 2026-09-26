@@ -152,9 +152,9 @@ export function BoardScreen({ session }: { session: SessionState }) {
   }
 
   /** Put someone in an open spot on a court: a game missing a player, or a court being set up by hand. */
-  function handleFill(courtId: number, team: 0 | 1, inId: number) {
+  function handleFill(courtId: number, team: 0 | 1, slot: number, inId: number) {
     const court = session.courts.find((c) => c.id === courtId)
-    fillCourtSpot(courtId, team, inId)
+    fillCourtSpot(courtId, team, slot, inId)
     const lastSpot = (court?.teams?.flat().length ?? 0) === slotsPerTeam * 2 - 1
     const after = !lastSpot ? '' : court?.teams && !court.notStarted ? ' The game is back on.' : ' Ready to start.'
     toast(`${session.players[inId].name} is on ${courtName(courtId)}.${after}`)
@@ -213,7 +213,7 @@ export function BoardScreen({ session }: { session: SessionState }) {
             onReplace={(outId, inId, options) => handleReplace(court.id, outId, inId, options.sendOnBreak)}
             onRemove={(id) => handleOffCourt(court.id, id, false)}
             onTakeBreak={(id) => handleOffCourt(court.id, id, true)}
-            onFill={(team, inId) => handleFill(court.id, team, inId)}
+            onFill={(team, slot, inId) => handleFill(court.id, team, slot, inId)}
             onSkillChange={changeSkill}
             onScore={(a, b) => handleScore(court.id, a, b)}
             onCancel={() => handleCancel(court.id)}

@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent } from 'react'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { PlayerTile, TeamBox, Versus } from '@/components/PlayerTile'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -51,15 +53,55 @@ export function ScoreDialog({ courtName, teamNames, winner, onClose, onSubmit }:
   )
 }
 
-function TeamPlayers({ names }: { names: string[] }) {
+/** One team's score field. */
+export interface ScoreField {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  autoFocus?: boolean
+  invalid?: boolean
+}
+
+/**
+ * Both teams as on the court: Blue on top, "vs", Orange below, each in its colour with its players
+ * and its score field, so staff can see at a glance whose score they are typing.
+ */
+export function ScoreTeams({ teamNames, fields }: { teamNames: [string[], string[]]; fields: [ScoreField, ScoreField] }) {
   return (
-    <ul className="text-sm text-muted-foreground">
-      {names.map((name, i) => (
-        <li key={i} className="truncate">
-          {name}
-        </li>
+    <div className="space-y-2">
+      {([0, 1] as const).map((team) => (
+        <Fragment key={team}>
+          {team === 1 && <Versus />}
+          <TeamBox
+            team={team}
+            footer={
+              <div className="flex items-center justify-between gap-3 px-1">
+                <Label htmlFor={fields[team].id}>{TEAM_NAMES[team]} score</Label>
+                <Input
+                  id={fields[team].id}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={MAX_SCORE}
+                  className="w-24"
+                  autoFocus={fields[team].autoFocus}
+                  value={fields[team].value}
+                  onChange={(e) => fields[team].onChange(e.target.value)}
+                  aria-invalid={fields[team].invalid}
+                />
+              </div>
+            }
+          >
+            {teamNames[team].map((name, i) => (
+              <PlayerTile key={i}>
+                <PlayerAvatar name={name} size="sm" />
+                <span className="min-w-0 truncate">{name}</span>
+              </PlayerTile>
+            ))}
+          </TeamBox>
+        </Fragment>
       ))}
-    </ul>
+    </div>
   )
 }
 
@@ -97,38 +139,13 @@ function ScoreForm({
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="score-a">Blue score</Label>
-            <TeamPlayers names={teamNames[0]} />
-            <Input
-              id="score-a"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={MAX_SCORE}
-              autoFocus={winner === 1}
-              value={textA}
-              onChange={(e) => setTextA(e.target.value)}
-              aria-invalid={typedInvalid(textA, a)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="score-b">Orange score</Label>
-            <TeamPlayers names={teamNames[1]} />
-            <Input
-              id="score-b"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={MAX_SCORE}
-              autoFocus={winner === 0}
-              value={textB}
-              onChange={(e) => setTextB(e.target.value)}
-              aria-invalid={typedInvalid(textB, b)}
-            />
-          </div>
-        </div>
+        <ScoreTeams
+          teamNames={teamNames}
+          fields={[
+            { id: 'score-a', value: textA, onChange: setTextA, autoFocus: winner === 1, invalid: typedInvalid(textA, a) },
+            { id: 'score-b', value: textB, onChange: setTextB, autoFocus: winner === 0, invalid: typedInvalid(textB, b) },
+          ]}
+        />
         {message && (
           <p role="alert" className="text-sm text-destructive">
             {message}

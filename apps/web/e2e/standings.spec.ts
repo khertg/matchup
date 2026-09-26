@@ -53,8 +53,9 @@ test('shows each player\'s total wait before their games', async ({ page }) => {
 
   const rows = page.getByRole('table').first().getByRole('row')
   await expect(rows.first().getByRole('columnheader').nth(9)).toHaveText('Wait')
-  await expect(rows.nth(1).getByRole('cell').nth(9)).toHaveText('0:08')
-  await expect(rows.nth(2).getByRole('cell').nth(9)).toHaveText('0:08')
+  // 8 minutes, plus the few real seconds the clicks took.
+  await expect(rows.nth(1).getByRole('cell').nth(9)).toHaveText(/^8m(\d+s)?$/)
+  await expect(rows.nth(2).getByRole('cell').nth(9)).toHaveText(/^8m(\d+s)?$/)
 })
 
 test('removes an undone result from the standings', async ({ page }) => {

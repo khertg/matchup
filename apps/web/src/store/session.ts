@@ -110,7 +110,7 @@ interface SessionStore {
   /** Take a player off a court, leaving the spot open and the game paused; they go to the front of the queue or on a break. */
   removeFromCourt: (courtId: number, playerId: number, onBreak: boolean) => void
   /** Put a waiting (or resting) player in an open spot on a team; the game runs again once the court is full. */
-  fillCourtSpot: (courtId: number, team: 0 | 1, playerId: number) => void
+  fillCourtSpot: (courtId: number, team: 0 | 1, slot: number, playerId: number) => void
   /** Pin a waiting (or resting) player into an open Next up spot of a lane; the group forms around them. */
   fillNextUpSpot: (lane: number, slot: number, playerId: number) => void
   /** Go back to the automatic next group. */
@@ -314,8 +314,8 @@ export const useSessionStore = create<SessionStore>()(
         removeFromCourt: (courtId, playerId, onBreak) =>
           dispatch({ type: 'removeFromCourt', courtId, playerId, onBreak, now: Date.now() }, null),
 
-        fillCourtSpot: (courtId, team, playerId) =>
-          dispatch({ type: 'fillCourtSpot', courtId, team, playerId, now: Date.now() }, null),
+        fillCourtSpot: (courtId, team, slot, playerId) =>
+          dispatch({ type: 'fillCourtSpot', courtId, team, slot, playerId, now: Date.now() }, null),
 
         fillNextUpSpot: (lane, slot, playerId) =>
           dispatch({ type: 'fillNextUpSpot', lane, slot, playerId, now: Date.now() }, null),

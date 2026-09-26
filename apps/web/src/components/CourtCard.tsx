@@ -1,4 +1,4 @@
-import { History, MoreVerticalIcon, Pause, Timer, Trophy } from 'lucide-react'
+import { MoreVerticalIcon, Pause, Timer, Trophy } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import { levelLabel } from '@/lib/skill'
 import { TEAM_BUTTON, TEAM_NAMES } from '@/lib/teams'
 import { formatDuration, useNow } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { playedMs } from '@/rotation/engine'
+import { courtSlots, playedMs } from '@/rotation/engine'
 import type { Court, RosterPlayer } from '@/rotation/types'
 
 interface Props {
@@ -36,7 +36,7 @@ interface Props {
   /** The same, but they go on a break. */
   onTakeBreak?: (playerId: number) => void
   /** Put a waiting or resting player in an open spot on a team: on a game missing a player, or to set up an open court. */
-  onFill?: (team: 0 | 1, playerId: number) => void
+  onFill?: (team: 0 | 1, slot: number, playerId: number) => void
   /** Staff only: change a player's skill level from their badge. */
   onSkillChange?: (playerId: number, skill: SkillLevel) => void
   /**
@@ -58,8 +58,8 @@ interface Props {
 }
 
 /**
- * The in-play badge: a timer icon and how long the game has been played ("⏱ 0:07"), refreshed every
- * 30 seconds by its own timer. Time with an open spot is left out, and while a spot is open the badge
+ * The in-play badge: a timer icon and how long the game has been played ("⏱ 7m10s"), refreshed every
+ * second by its own timer. Time with an open spot is left out, and while a spot is open the badge
  * says "Paused" with the time stopped. "In play" is kept for screen readers. A game with no start
  * time says "In play"; a court being set up by hand says "Not started".
  */
@@ -108,8 +108,10 @@ export function CourtCard({
   // The team whose win button was pressed; the score pop-up is open while this is set.
   const [pendingWinner, setPendingWinner] = useState<0 | 1 | null>(null)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
-  // The team whose open spot is being filled; the pop-up to choose who is open while this is set.
-  const [filling, setFilling] = useState<0 | 1 | null>(null)
+  // The open spot being filled (its team and position); the pop-up to choose who is open while this is set.
+  const [filling, setFilling] = useState<{ team: 0 | 1; slot: number } | null>(null)
+  // Players and open spots in place, so a removed player's spot stays where it was.
+  const slots = courtSlots(court, slotsPerTeam)
   const levels = levelLabel(court.levels)
   const short = !!court.teams && court.teams.some((team) => team.length < slotsPerTeam)
   const staged = !!court.notStarted
@@ -186,43 +188,48 @@ export function CourtCard({
                     )
                   }
                 >
-                  {team.map((id) => (
-                    <PlayerTile key={id}>
-                      <span className="flex min-w-0 flex-1 items-center gap-2">
-                        {players[id] && <PlayerAvatar name={players[id].name} size="sm" editable={!readOnly} viewable />}
-                        <span className="min-w-0 truncate">{players[id]?.name}</span>
-                        {court.waited?.[id] !== undefined && (
-                          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                            <History className="size-3" aria-label="Waited" />
-                            {formatDuration(court.waited[id])}
+                  {slots[i].map((id, slot) =>
+                    id === null ? (
+                      <OpenTile
+                        key={`open-${slot}`}
+                        onFill={canFill ? () => setFilling({ team: i as 0 | 1, slot }) : undefined}
+                        fillLabel={`Fill open spot on ${TEAM_NAMES[i]}`}
+                      />
+                    ) : (
+                      <PlayerTile key={id}>
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          {players[id] && <PlayerAvatar name={players[id].name} size="sm" editable={!readOnly} viewable />}
+                          <span className="min-w-0 truncate">{players[id]?.name}</span>
+                        </span>
+                        {/* Its own column, so the times line up like the level badges. */}
+                        {court.waited && (
+                          <span className="w-16 shrink-0 text-right">
+                            {court.waited[id] !== undefined && (
+                              <span title="Waited before this game" className="text-xs text-muted-foreground">
+                                {formatDuration(court.waited[id])}
+                              </span>
+                            )}
                           </span>
                         )}
-                      </span>
-                      {players[id] && (
-                        <SkillBadge
-                          player={players[id]}
-                          onChange={!readOnly && onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
-                        />
-                      )}
-                      {!readOnly && onReplace && players[id] && (
-                        <PlayerMenu
-                          player={players[id]}
-                          candidates={candidates}
-                          courtId={court.id}
-                          onReplace={(inId, options) => onReplace(id, inId, options)}
-                          onRemove={onRemove && (() => onRemove(id))}
-                          onTakeBreak={onTakeBreak && (() => onTakeBreak(id))}
-                        />
-                      )}
-                    </PlayerTile>
-                  ))}
-                  {Array.from({ length: Math.max(0, slotsPerTeam - team.length) }, (_, k) => (
-                    <OpenTile
-                      key={`open-${k}`}
-                      onFill={canFill ? () => setFilling(i as 0 | 1) : undefined}
-                      fillLabel={`Fill open spot on ${TEAM_NAMES[i]}`}
-                    />
-                  ))}
+                        {players[id] && (
+                          <SkillBadge
+                            player={players[id]}
+                            onChange={!readOnly && onSkillChange ? (skill) => onSkillChange(id, skill) : undefined}
+                          />
+                        )}
+                        {!readOnly && onReplace && players[id] && (
+                          <PlayerMenu
+                            player={players[id]}
+                            candidates={candidates}
+                            courtId={court.id}
+                            onReplace={(inId, options) => onReplace(id, inId, options)}
+                            onRemove={onRemove && (() => onRemove(id))}
+                            onTakeBreak={onTakeBreak && (() => onTakeBreak(id))}
+                          />
+                        )}
+                      </PlayerTile>
+                    ),
+                  )}
                 </TeamBox>
               </Fragment>
             ))}
@@ -264,7 +271,7 @@ export function CourtCard({
           </>
         ) : (
           <div className="space-y-3 text-center">
-            <EmptyTeams perTeam={slotsPerTeam} stacked onFill={canFill ? (team) => setFilling(team) : undefined} />
+            <EmptyTeams perTeam={slotsPerTeam} stacked onFill={canFill ? (team, slot) => setFilling({ team, slot }) : undefined} />
             {readOnly ? (
               <p className="text-sm text-muted-foreground">Waiting for the next game</p>
             ) : startState === 'ready' ? (
@@ -295,11 +302,11 @@ export function CourtCard({
         {canFill && (
           <ReplacePlayerDialog
             mode="fill"
-            spot={`${court.name}, ${TEAM_NAMES[filling ?? 0]}`}
+            spot={`${court.name}, ${TEAM_NAMES[filling?.team ?? 0]}`}
             candidates={candidates}
             open={filling !== null}
             onOpenChange={(open) => !open && setFilling(null)}
-            onReplace={(inId) => filling !== null && onFill?.(filling, inId)}
+            onReplace={(inId) => filling !== null && onFill?.(filling.team, filling.slot, inId)}
           />
         )}
       </CardContent>

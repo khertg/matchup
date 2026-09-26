@@ -7,9 +7,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { MAX_SCORE, scoreProblem } from '@/rotation/engine'
+import { ScoreTeams } from '@/components/ScoreDialog'
+import { scoreProblem } from '@/rotation/engine'
 
 interface Props {
   courtName: string
@@ -24,18 +23,6 @@ interface Props {
 
 /** A blank field is not a number, so it is never a valid score. */
 const parse = (text: string) => (text.trim() === '' ? NaN : Number(text))
-
-function TeamPlayers({ names }: { names: string[] }) {
-  return (
-    <ul className="text-sm text-muted-foreground">
-      {names.map((name, i) => (
-        <li key={i} className="truncate">
-          {name}
-        </li>
-      ))}
-    </ul>
-  )
-}
 
 /** Correct an already-recorded match's score. Unlike ScoreDialog, both fields start pre-filled. */
 export function EditMatchScoreDialog({ courtName, teamNames, score, open, onOpenChange, onSubmit }: Props) {
@@ -82,36 +69,13 @@ function EditScoreForm({ courtName, teamNames, score, onOpenChange, onSubmit }: 
         <DialogDescription>{courtName}: correct each team&apos;s score.</DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="edit-score-a">Blue score</Label>
-            <TeamPlayers names={teamNames[0]} />
-            <Input
-              id="edit-score-a"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={MAX_SCORE}
-              value={textA}
-              onChange={(e) => setTextA(e.target.value)}
-              aria-invalid={message !== null}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-score-b">Orange score</Label>
-            <TeamPlayers names={teamNames[1]} />
-            <Input
-              id="edit-score-b"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={MAX_SCORE}
-              value={textB}
-              onChange={(e) => setTextB(e.target.value)}
-              aria-invalid={message !== null}
-            />
-          </div>
-        </div>
+        <ScoreTeams
+          teamNames={teamNames}
+          fields={[
+            { id: 'edit-score-a', value: textA, onChange: setTextA, invalid: message !== null },
+            { id: 'edit-score-b', value: textB, onChange: setTextB, invalid: message !== null },
+          ]}
+        />
         {message && (
           <p role="alert" className="text-sm text-destructive">
             {message}

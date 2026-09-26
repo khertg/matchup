@@ -871,6 +871,33 @@ export interface ReplacePlayerOptions {
 }
 
 /** The court with these teams and pre-game waits (the waits left out when there are none). */
+/** A court's spots, team by team in board order: a player's id, or null for an open spot. */
+export type CourtSlots = [(number | null)[], (number | null)[]]
+
+/**
+ * Where each player and open spot of a court is (see Court.openSlots): the players keep their order
+ * in the positions that are not open. Without (or with unusable) positions, open spots come last.
+ */
+export function courtSlots(court: Court, perTeam: number): CourtSlots {
+  const teams = court.teams ?? [[], []]
+  return teams.map((team, i) => {
+    const size = Math.max(perTeam, team.length)
+    const open = court.openSlots?.[i] ?? []
+    const usable = open.length === size - team.length && open.every((s) => Number.isInteger(s) && s >= 0 && s < size)
+    const gaps = new Set(usable ? open : Array.from({ length: size - team.length }, (_, k) => team.length + k))
+    const players = [...team]
+    return Array.from({ length: size }, (_, s) => (gaps.has(s) ? null : (players.shift() ?? null)))
+  }) as CourtSlots
+}
+
+/** The court with these spots: `teams` holds the players in order, `openSlots` where the gaps are (left out when none). */
+function withSlots(court: Court, slots: CourtSlots): Court {
+  const { openSlots: _old, ...rest } = court
+  const teams = slots.map((team) => team.filter((id): id is number => id !== null)) as Teams
+  const open = slots.map((team) => team.flatMap((id, s) => (id === null ? [s] : []))) as [number[], number[]]
+  return { ...rest, teams, ...(open.some((gaps) => gaps.length > 0) ? { openSlots: open } : {}) }
+}
+
 function withTeams(court: Court, teams: Teams, waited: Record<number, number>): Court {
   const { waited: _old, ...rest } = court
   return { ...rest, teams, ...(Object.keys(waited).length > 0 ? { waited } : {}) }
@@ -965,11 +992,14 @@ export function removeFromCourt(
   if (!court?.teams?.flat().includes(playerId)) {
     throw new Error(`Player ${playerId} is not playing on court ${courtId}`)
   }
-  const teams: Teams = [court.teams[0].filter((id) => id !== playerId), court.teams[1].filter((id) => id !== playerId)]
+  // The spot stays open where they were, so the others do not move up.
+  const slots = courtSlots(court, playersPerTeam(state.mode))
+  const spots = slots.map((team) => team.map((id) => (id === playerId ? null : id))) as CourtSlots
   const waited = { ...court.waited }
   delete waited[playerId]
-  const empty = teams.every((team) => team.length === 0)
-  const left = withTeams(court, teams, waited)
+  const empty = spots.every((team) => team.every((id) => id === null))
+  const placed = withSlots(court, spots)
+  const left = withTeams(placed, placed.teams!, waited)
   // Only a game that has started is paused; a court being set up has no time to stop.
   if (!court.notStarted && (court.pausedAt ?? now) !== undefined) left.pausedAt = court.pausedAt ?? now
   const off: SessionState = {
@@ -987,6 +1017,7 @@ export function removeFromCourt(
  * Put a player in an open spot on a team of a game in progress (see removeFromCourt). They can be
  * waiting or on a break (they come back), not on a court. Once the court is full again its time runs
  * again: the time it was paused is kept aside and left out of the game's recorded length.
+ * `slot` is the open spot's position on the team (see courtSlots); without it, the first open one.
  */
 export function fillCourtSpot(
   state: SessionState,
@@ -994,27 +1025,32 @@ export function fillCourtSpot(
   team: 0 | 1,
   playerId: number,
   now?: number,
+  slot?: number,
 ): SessionState {
   const found = state.courts.find((c) => c.id === courtId)
   if (!found) throw new Error(`Court ${courtId} does not exist`)
   // An open court is set up by hand, one spot at a time; its game starts when staff press Start game.
   const court: Court = found.teams ? found : { ...openCourt(found), teams: [[], []], notStarted: true }
-  const current = court.teams!
-  if (current[team].length >= playersPerTeam(state.mode)) throw new Error(`${TEAM_LABELS[team]} has no open spot`)
+  const spots = courtSlots(court, playersPerTeam(state.mode))
+  // Without a slot (an action from an older app), the first open spot of the team.
+  const at = slot ?? spots[team].indexOf(null)
+  if (at < 0) throw new Error(`${TEAM_LABELS[team]} has no open spot`)
+  if (spots[team][at] !== null) throw new Error('That spot is not open')
   if (courtWithPlayer(state, playerId)) throw new Error('Choose a player who is waiting or on a break')
   const back = state.onBreak.includes(playerId) ? checkIn(state, state.players[playerId], now) : state
   if (!back.queue.includes(playerId)) throw new Error('Choose a player who is waiting or on a break')
-  const teams: Teams = team === 0 ? [[...current[0], playerId], current[1]] : [current[0], [...current[1], playerId]]
+  spots[team][at] = playerId
+  const placed = withSlots(court, spots)
   const moved = {
     ...withoutPickIncluding(back, playerId),
     queue: back.queue.filter((id) => id !== playerId),
   }
   if (court.notStarted) {
     // Not playing yet: they keep their wait, recorded when the game starts.
-    return { ...moved, courts: back.courts.map((c) => (c.id === courtId ? { ...court, teams } : c)) }
+    return { ...moved, courts: back.courts.map((c) => (c.id === courtId ? placed : c)) }
   }
   const waited = { ...court.waited, ...waitedSeconds(back.queuedAt, [playerId], now) }
-  let filled = withTeams(court, teams, waited)
+  let filled = withTeams(placed, placed.teams!, waited)
   if (!isShort(filled, state.mode) && filled.pausedAt !== undefined) {
     const { pausedAt, ...running } = filled
     const pausedFor = now === undefined ? 0 : Math.max(0, Math.floor((now - pausedAt) / 1000))

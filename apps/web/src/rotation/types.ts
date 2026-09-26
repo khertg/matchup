@@ -39,6 +39,12 @@ export interface Court {
   /** null while the court is empty. */
   teams: Teams | null
   /**
+   * While a team has an open spot: which positions (0-based, per team) are open, so a removed player's
+   * spot stays where it was and staff fill the exact one they tap (see courtSlots in the engine).
+   * `teams` keeps only the players, in order. Missing means any open spots come after the players.
+   */
+  openSlots?: [number[], number[]]
+  /**
    * The skill levels this court is kept for (min, max, both 1 to 6). Its games are drawn only from
    * waiting players in range (see rotation/levels.ts). Missing means any level.
    */

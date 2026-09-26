@@ -48,6 +48,7 @@ function OtherSessionBanner() {
 export function SessionScreen({ session }: { session: SessionState }) {
   const location = useSessionStore((s) => s.location)
   const clubName = useClubName()
+  const totalPlayers = session.queue.length + playingIds(session).length + session.onBreak.length
 
   return (
     // Bottom padding clears the fixed bottom tab bar (its height plus the home-indicator safe area).
@@ -65,6 +66,10 @@ export function SessionScreen({ session }: { session: SessionState }) {
             )}
             <Badge variant="secondary">
               {session.courts.length} {session.courts.length === 1 ? 'court' : 'courts'}
+            </Badge>
+            {/* Everyone in the session right now: waiting, playing or on a break. */}
+            <Badge variant="secondary">
+              {totalPlayers} {totalPlayers === 1 ? 'player' : 'players'}
             </Badge>
           </div>
           {/* Everyone checked in (waiting or playing; not those on a break). */}

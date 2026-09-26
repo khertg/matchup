@@ -57,7 +57,7 @@ export type SessionAction =
   | { type: 'replaceNextUp'; outId: number; inId: number; now?: number }
   | { type: 'dropFromNextUp'; playerId: number; onBreak: boolean }
   | { type: 'removeFromCourt'; courtId: number; playerId: number; onBreak: boolean; now: number }
-  | { type: 'fillCourtSpot'; courtId: number; team: 0 | 1; playerId: number; now: number }
+  | { type: 'fillCourtSpot'; courtId: number; team: 0 | 1; slot?: number; playerId: number; now: number }
   | { type: 'fillNextUpSpot'; lane: number; slot: number; playerId: number; now: number }
   | { type: 'resetNextUp' }
   | { type: 'lockPartners'; a: number; b: number }
@@ -143,7 +143,7 @@ export function applyAction(session: SessionState, action: SessionAction): Appli
         session: removeFromCourt(session, action.courtId, action.playerId, { onBreak: action.onBreak, now: action.now }),
       }
     case 'fillCourtSpot':
-      return { session: fillCourtSpot(session, action.courtId, action.team, action.playerId, action.now) }
+      return { session: fillCourtSpot(session, action.courtId, action.team, action.playerId, action.now, action.slot) }
     case 'fillNextUpSpot':
       return { session: fillNextUpSpot(session, action.lane, action.slot, action.playerId, action.now) }
     case 'resetNextUp':
