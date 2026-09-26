@@ -166,6 +166,21 @@ export async function addOrGetPlayer(
   return { id, name: trimmed, skill, gender }
 }
 
+/**
+ * Save a player on the club's roster without checking them in (the Saved players list). `added` is
+ * false when the club already had someone of that name; their details are still updated.
+ */
+export async function savePlayer(
+  name: string,
+  skill: SkillLevel,
+  gender?: Gender,
+  clubSlug?: string,
+): Promise<{ player: RosterPlayer; added: boolean }> {
+  const known = await findByName(clubSlug, name.trim())
+  const player = await addOrGetPlayer(name, skill, gender, clubSlug)
+  return { player, added: known === undefined }
+}
+
 /** Forget which avatars are waiting to be sent to a club (they were for a different club). */
 export async function clearAvatarDirty(): Promise<void> {
   await db.players.filter((p) => p.avatarDirty === true).modify({ avatarDirty: false })

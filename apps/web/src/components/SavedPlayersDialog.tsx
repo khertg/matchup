@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import type { Gender, SkillLevel } from '@/db/db'
-import { addOrGetPlayer, findSavedPlayer, listRoster, setRosterSkill } from '@/db/roster'
+import { listRoster, savePlayer, setRosterSkill } from '@/db/roster'
 
 /**
  * The club's saved players, and a way to add more before any session has started. Saving only puts
@@ -26,10 +26,9 @@ export function SavedPlayersDialog() {
   const roster = useLiveQuery(() => listRoster(clubSlug), [clubSlug])
 
   async function handleAdd(name: string, skill: SkillLevel, gender: Gender | undefined) {
-    const known = await findSavedPlayer(clubSlug, name)
-    const player = await addOrGetPlayer(name, skill, gender, clubSlug)
+    const { player, added } = await savePlayer(name, skill, gender, clubSlug)
     requestRosterSync()
-    toast(known ? `${player.name} is already saved` : `${player.name} saved`)
+    toast(added ? `${player.name} saved` : `${player.name} is already saved`)
     return true
   }
 
