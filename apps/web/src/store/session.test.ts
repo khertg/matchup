@@ -27,6 +27,28 @@ beforeEach(() => {
 })
 
 describe('session store', () => {
+  describe('the public live page', () => {
+    it('keeps a new session off it until staff go live, and can take it off again', () => {
+      store().startSession('Club', 'doubles', 1)
+      expect(store().session!.live).toBe(false)
+      store().setLive(true)
+      expect(store().session!.live).toBe(true)
+      store().setLive(false)
+      expect(store().session!.live).toBe(false)
+    })
+
+    it('keeps the pending result undo, and undoing never changes whether it is live', () => {
+      store().startSession('Club', 'doubles', 1)
+      checkInMany(4)
+      store().startGame(1)
+      store().recordScore(1, 11, 5)
+      store().setLive(true)
+      expect(store().undo()).toBe(true)
+      expect(store().session!.live).toBe(true)
+      expect(store().session!.courts[0].teams).not.toBeNull()
+    })
+  })
+
   it('starts a session with empty courts', () => {
     store().startSession('Downtown Club', 'doubles', 2)
     expect(store().location).toBe('Downtown Club')

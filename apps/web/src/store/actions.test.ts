@@ -31,6 +31,13 @@ describe('session player ids', () => {
 describe('rebase', () => {
   const base = apply(createSession('doubles', 1), checkIn('Ann'))
 
+  it('always applies going live or not on the club’s newer copy', () => {
+    const club = apply(base, checkIn('Bob'))
+    const result = rebase(club, [{ action: { type: 'setLive', live: true } }])
+    expect(result.session.live).toBe(true)
+    expect(result.dropped).toEqual([])
+  })
+
   it('applies this device’s changes again on the club’s newer copy', () => {
     const club = apply(base, checkIn('Bob'))
     const pending: PendingAction[] = [{ action: checkIn('Cy'), ids: [2] }]

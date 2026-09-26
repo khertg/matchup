@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
 import { failOnCspViolations } from '../cspWatch'
 import { checkIn, openSessionMenu, recordWin, startGame, startSession } from '../helpers'
-import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
+import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub, goLive } from './support'
 
 failOnCspViolations(test)
 
@@ -64,6 +64,7 @@ test.describe('two staff devices running one session', () => {
     await apiCreateClub(request, club)
     await signIn(page, club)
     await startSession(page, { location: 'Clash Night' })
+    await goLive(page)
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee'])
     await startGame(page)
     const pc = await secondDevice(browser, club)
@@ -137,6 +138,7 @@ test.describe('renaming', () => {
     await apiCreateClub(request, club)
     await signIn(page, club)
     await startSession(page, { location: 'Tusday' })
+    await goLive(page)
     await checkIn(page, ['Ann'])
     const pc = await secondDevice(browser, club)
     await pc.page.getByRole('button', { name: 'Join “Tusday”' }).click(FOLLOW)
@@ -173,6 +175,7 @@ test.describe('renaming', () => {
     await expect(pc.page.getByText('Riverside Picklers', { exact: true })).toBeVisible(INDEX)
     // The live page names the club above a running session.
     await startSession(page, { location: 'Night Play' })
+    await goLive(page)
     const viewer = await pc.context.newPage()
     await viewer.goto(`/club/${club.slug}/live`)
     await expect(viewer.getByText('Riverside Picklers').first()).toBeVisible(FOLLOW)

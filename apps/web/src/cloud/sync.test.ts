@@ -90,10 +90,17 @@ function fakeApi(
       if (!server.history) throw new CloudError('network')
       return server.history
     }),
-    subscribeLive: vi.fn((_slug: string, onChange: (row: LiveRow | null) => void) => {
-      server.live.add(onChange)
-      return () => server.live.delete(onChange)
-    }),
+    // Like the real stream: every change to the club's copy also comes as a revision signal.
+    subscribeLive: vi.fn(
+      (_slug: string, onChange: (row: LiveRow | null) => void, onRevision?: (revision: number) => void) => {
+        const listener = (row: LiveRow | null) => {
+          onChange(row)
+          if (row?.revision !== undefined) onRevision?.(row.revision)
+        }
+        server.live.add(listener)
+        return () => server.live.delete(listener)
+      },
+    ),
   }
   /** Another staff device changes the club's copy, and the live stream says so. */
   const otherDevice = (change: (session: SessionState) => SessionState, sessionId = server.row?.sessionId ?? null) => {
@@ -287,6 +294,22 @@ describe('startCloudSync', () => {
     expect(JSON.stringify(publicSnap)).not.toContain('gender')
     expect(JSON.stringify(backup)).toContain('gender') // the private backup keeps everything
     expect(useSyncStore.getState().status).toBe('synced')
+    stop()
+  })
+
+  it('tells the club whether the session is on the public page: not until staff go live', async () => {
+    const { api, cloudApi } = fakeApi()
+    useClubAuth.setState({ club })
+    const stop = startCloudSync(cloudApi)
+    session().startSession('Downtown Open', 'doubles', 1)
+    session().checkInPlayer(player(1))
+    await vi.advanceTimersByTimeAsync(500)
+    const meta = (call: number) => (api.publish.mock.calls[call] as unknown as [unknown, unknown, unknown, { live?: boolean }])[3]
+    expect(meta(0).live).toBe(false)
+
+    session().setLive(true)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(meta(1).live).toBe(true)
     stop()
   })
 

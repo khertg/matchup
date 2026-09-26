@@ -143,3 +143,10 @@ export async function expectSignedIn(page: Page) {
   if (await naming.isVisible()) await nameDevice(page)
   await expect(logOut).toBeVisible()
 }
+
+/** Put the running session on the club's public live page (a new session starts not live). */
+export async function goLive(page: Page) {
+  await page.getByRole('button', { name: 'Session menu' }).click()
+  await page.getByRole('button', { name: 'Go live' }).click()
+  await expect(page.getByText(/^Live: players can see the board/).first()).toBeVisible()
+}

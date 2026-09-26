@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { setEmojiAvatar, viewAvatar } from '../avatarHelpers'
 import { failOnCspViolations } from '../cspWatch'
 import { checkIn, openSessionMenu, recordWin, startGame, startSession } from '../helpers'
-import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
+import { apiCreateClub, expectSignedIn, uiLogin, uniqueClub, type TestClub, goLive } from './support'
 
 failOnCspViolations(test)
 
@@ -23,6 +23,7 @@ async function signIn(page: Page, club: TestClub) {
 /** One finished singles game with Ann and Bob, results saved to the club, and Ann has an emoji avatar. */
 async function playAndSave(page: Page) {
   await startSession(page, { mode: 'Singles' })
+  await goLive(page)
   await checkIn(page, ['Ann', 'Bob'])
   await setEmojiAvatar(page, 'Ann', '🎾')
   await startGame(page)
@@ -36,6 +37,7 @@ async function playAndSave(page: Page) {
 /** Rename a saved player from the roster list of a new session. */
 async function renameFromRoster(page: Page, from: string, to: string) {
   await startSession(page, { mode: 'Singles' })
+  await goLive(page)
   await page.getByRole('tab', { name: 'Check-in' }).click()
   const roster = page.getByRole('group', { name: 'Check in from the roster' })
   const view = await viewAvatar(page, from, roster)

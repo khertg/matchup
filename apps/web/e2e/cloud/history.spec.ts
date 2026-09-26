@@ -7,6 +7,7 @@ import {
   storedToken,
   uiLogin,
   uniqueClub,
+  goLive,
   type TestClub,
 } from './support'
 
@@ -19,6 +20,7 @@ async function signInAndPlay(page: Page, club: TestClub, location: string) {
   await page.getByRole('button', { name: 'Singles' }).click()
   await page.getByRole('button', { name: 'Start session' }).click()
   await expect(page.getByRole('heading', { name: location })).toBeVisible()
+  await goLive(page)
   await checkIn(page, ['Ann', 'Bob'])
   await startGame(page)
   await recordWin(page)
@@ -138,6 +140,48 @@ test.describe('history in the club cloud', () => {
     await view.getByRole('button', { name: 'Delete session' }).click()
     await expect(page.getByText('Session deleted')).toBeVisible()
     await expect.poll(async () => (await history(request, token)()).length).toBe(0)
+  })
+
+  test('deleting and restoring is club-wide: another staff device follows both', async ({ page, browser, request }) => {
+    const club = uniqueClub('Trash')
+    await apiCreateClub(request, club)
+    await signInAndPlay(page, club, 'Oops Night')
+    const token = await storedToken(page)
+    await end(page)
+    await expect.poll(async () => (await history(request, token)()).length).toBe(1)
+
+    // Deleted on this device: the club moves it to Recently deleted.
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    await page.getByRole('dialog', { name: 'Past sessions' }).getByRole('button', { name: /Oops Night/ }).click()
+    const view = page.getByRole('dialog', { name: 'Oops Night' })
+    await view.getByRole('button', { name: 'Delete', exact: true }).click()
+    await view.getByRole('button', { name: 'Delete session' }).click()
+    const deletedOnClub = async () =>
+      ((await (await request.get('/api/history/deleted', { headers: bearer(token) })).json()).sessions as Summary[]).map((s) => s.location)
+    await expect.poll(deletedOnClub).toEqual(['Oops Night'])
+    await page.keyboard.press('Escape')
+
+    // Another staff device lists it only in Recently deleted, and restores it.
+    const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block' })
+    const second = await other.newPage()
+    await second.goto('/')
+    await uiLogin(second, club)
+    await expectSignedIn(second)
+    await second.getByRole('button', { name: 'Past sessions' }).click()
+    const list = second.getByRole('dialog', { name: 'Past sessions' })
+    await expect(list.getByText('No past sessions yet.')).toBeVisible()
+    await list.getByRole('button', { name: 'Recently deleted (1)' }).click()
+    const trash = second.getByRole('dialog', { name: 'Recently deleted' })
+    await trash.getByRole('button', { name: 'Restore' }).click()
+    await expect(second.getByText('“Oops Night” restored')).toBeVisible()
+    await expect.poll(async () => (await history(request, token)()).map((s) => s.location)).toEqual(['Oops Night'])
+
+    // The first device, which deleted it, shows it again.
+    await page.getByRole('button', { name: 'Past sessions' }).click()
+    const again = page.getByRole('dialog', { name: 'Past sessions' })
+    await expect(again.getByRole('button', { name: /Oops Night/ })).toBeVisible()
+    await expect(again.getByRole('button', { name: /Recently deleted/ })).toHaveCount(0)
+    await other.close()
   })
 
   test('a session resumed on another device does not count its old games again on the club leaderboard', async ({

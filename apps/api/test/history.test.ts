@@ -39,8 +39,12 @@ const list = (token: string | null) =>
   app.inject({ method: 'GET', url: '/api/history', headers: token ? bearer(token) : {} })
 const get = (token: string | null, id: string) =>
   app.inject({ method: 'GET', url: `/api/history/${id}`, headers: token ? bearer(token) : {} })
-const remove = (token: string | null, id: string) =>
-  app.inject({ method: 'DELETE', url: `/api/history/${id}`, headers: token ? bearer(token) : {} })
+const remove = (token: string | null, id: string, permanent = false) =>
+  app.inject({ method: 'DELETE', url: `/api/history/${id}${permanent ? '?permanent=1' : ''}`, headers: token ? bearer(token) : {} })
+const restore = (token: string | null, id: string) =>
+  app.inject({ method: 'POST', url: `/api/history/${id}/restore`, headers: token ? bearer(token) : {} })
+const deleted = (token: string | null) =>
+  app.inject({ method: 'GET', url: '/api/history/deleted', headers: token ? bearer(token) : {} })
 
 describe('session history', () => {
   it('needs a valid staff token for every route', async () => {
@@ -109,13 +113,77 @@ describe('session history', () => {
     expect((await get(b.token, uuid(1))).json().location).toBe('B')
   })
 
-  it('deletes a session, and deleting one that is gone is fine', async () => {
+  it('moves a deleted session to Recently deleted, where it can be looked at and restored', async () => {
     const { token } = await createClub(app)
     await put(token, uuid(1), body())
+    await put(token, uuid(2), body({ endedAt: '2026-03-02T20:00:00Z' }))
     expect((await remove(token, uuid(1))).statusCode).toBe(204)
-    expect((await remove(token, uuid(1))).statusCode).toBe(204)
+    expect((await remove(token, uuid(1))).statusCode).toBe(204) // already deleted: fine
+    expect((await list(token)).json().sessions.map((s: { id: string }) => s.id)).toEqual([uuid(2)])
+    const trash = (await deleted(token)).json().sessions
+    expect(trash).toHaveLength(1)
+    expect(trash[0]).toMatchObject({ id: uuid(1), location: 'Sunset Courts' })
+    expect(Number.isNaN(Date.parse(trash[0].deletedAt))).toBe(false)
+    expect((await get(token, uuid(1))).statusCode).toBe(200)
+
+    expect((await restore(token, uuid(1))).statusCode).toBe(204)
+    expect((await list(token)).json().sessions.map((s: { id: string }) => s.id)).toEqual([uuid(2), uuid(1)])
+    expect((await deleted(token)).json().sessions).toEqual([])
+    expect((await restore(token, uuid(9))).statusCode).toBe(204) // unknown: nothing to do
+  })
+
+  it('removes a session for good when asked, deleted or not', async () => {
+    const { token } = await createClub(app)
+    await put(token, uuid(1), body())
+    await put(token, uuid(2), body())
+    await remove(token, uuid(1))
+    expect((await remove(token, uuid(1), true)).statusCode).toBe(204)
+    expect((await remove(token, uuid(2), true)).statusCode).toBe(204)
     expect((await get(token, uuid(1))).statusCode).toBe(404)
     expect((await list(token)).json().sessions).toEqual([])
+    expect((await deleted(token)).json().sessions).toEqual([])
+  })
+
+  it('keeps a deleted session deleted when a device sends its copy again', async () => {
+    const { token } = await createClub(app)
+    await put(token, uuid(1), body())
+    await remove(token, uuid(1))
+    expect((await put(token, uuid(1), body({ games: 9 }))).statusCode).toBe(204)
+    expect((await list(token)).json().sessions).toEqual([])
+    expect((await deleted(token)).json().sessions[0].games).toBe(9)
+  })
+
+  it('removes sessions deleted over 30 days ago for good', async () => {
+    const { token, slug } = await createClub(app)
+    await put(token, uuid(1), body())
+    await put(token, uuid(2), body())
+    await remove(token, uuid(1))
+    await remove(token, uuid(2))
+    await db.query("update session_history set deleted_at = now() - interval '31 days' where club_slug = $1 and id = $2", [slug, uuid(1)])
+    expect((await deleted(token)).json().sessions.map((s: { id: string }) => s.id)).toEqual([uuid(2)])
+    expect((await get(token, uuid(1))).statusCode).toBe(404)
+  })
+
+  it('counts only sessions that are not deleted towards the club’s limit', async () => {
+    const { token } = await createClub(app)
+    await put(token, uuid(1), body({ endedAt: '2020-01-01T00:00:00Z' }))
+    await remove(token, uuid(1))
+    for (let n = 2; n <= MAX_HISTORY_PER_CLUB + 1; n++) await put(token, uuid(n), body())
+    expect((await list(token)).json().sessions).toHaveLength(MAX_HISTORY_PER_CLUB)
+    // The oldest deleted one is still in Recently deleted: the limit did not push it out.
+    expect((await deleted(token)).json().sessions.map((s: { id: string }) => s.id)).toEqual([uuid(1)])
+  })
+
+  it('never lets another club delete or restore a session', async () => {
+    const a = await createClub(app)
+    const b = await createClub(app)
+    await put(a.token, uuid(1), body())
+    await remove(b.token, uuid(1))
+    await remove(b.token, uuid(1), true)
+    expect((await list(a.token)).json().sessions).toHaveLength(1)
+    await remove(a.token, uuid(1))
+    await restore(b.token, uuid(1))
+    expect((await deleted(a.token)).json().sessions).toHaveLength(1)
   })
 
   it('answers 404 for an id that is not a UUID or is unknown', async () => {

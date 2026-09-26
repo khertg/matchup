@@ -12,7 +12,13 @@ const toStateRow = (row: StoredRow): SessionStateRow => ({
   full: row.state,
 })
 
-export type PublishResult = { row: LiveRow; revision: number } | { conflict: SessionStateRow | null }
+/**
+ * A publish that went through: the public row while live (null while not), whether a public row was there
+ * before (so viewers can be told it is gone), the new revision and when it was stored.
+ */
+export type PublishResult =
+  | { row: LiveRow | null; wasLive: boolean; revision: number; updatedAt: string }
+  | { conflict: SessionStateRow | null }
 
 /**
  * Store the public snapshot and the private backup together, moving the revision on. With
@@ -44,23 +50,33 @@ export async function publishSession(
     }
     const revision = (stored ? Number(stored.revision) : 0) + 1
 
-    const live = await tx.query<{ updated_at: string }>(
-      `insert into live_sessions (club_slug, state, updated_at)
-       values ($1, $2::jsonb, now())
-       on conflict (club_slug) do update set state = excluded.state, updated_at = excluded.updated_at
-       returning updated_at`,
-      [slug, JSON.stringify(snapshot)],
-    )
-    await tx.query(
+    // Not live: staff devices still share it (the backup below), but the public page shows no game.
+    let row: LiveRow | null = null
+    let wasLive = true
+    if (meta.live === false) {
+      const removed = await tx.query('delete from live_sessions where club_slug = $1', [slug])
+      wasLive = (removed.rowCount ?? 0) > 0
+    } else {
+      const live = await tx.query<{ updated_at: string }>(
+        `insert into live_sessions (club_slug, state, updated_at)
+         values ($1, $2::jsonb, now())
+         on conflict (club_slug) do update set state = excluded.state, updated_at = excluded.updated_at
+         returning updated_at`,
+        [slug, JSON.stringify(snapshot)],
+      )
+      row = { state: snapshot, updatedAt: toIso(live.rows[0].updated_at), revision }
+    }
+    const backedUp = await tx.query<{ updated_at: unknown }>(
       `insert into session_backups (club_slug, state, updated_at, revision, session_id, started_at)
        values ($1, $2::jsonb, now(), $3, $4, $5)
        on conflict (club_slug) do update set
          state = excluded.state, updated_at = excluded.updated_at, revision = excluded.revision,
          session_id = coalesce(excluded.session_id, session_backups.session_id),
-         started_at = coalesce(excluded.started_at, session_backups.started_at)`,
+         started_at = coalesce(excluded.started_at, session_backups.started_at)
+       returning updated_at`,
       [slug, JSON.stringify(backup), revision, meta.sessionId ?? null, meta.startedAt ?? null],
     )
-    return { row: { state: snapshot, updatedAt: toIso(live.rows[0].updated_at), revision }, revision }
+    return { row, wasLive, revision, updatedAt: row?.updatedAt ?? toIso(backedUp.rows[0].updated_at) }
   })
 }
 

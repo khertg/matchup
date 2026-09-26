@@ -7,8 +7,11 @@ import { bearer, clearData, createClub, publish, startTestApp, startTestDb } fro
 
 interface SseEvent {
   event: string
-  data: { state?: { location?: string }; updatedAt?: string }
+  data: { state?: { location?: string }; updatedAt?: string; revision?: number }
 }
+
+/** What viewers act on: the board and its end. Revision signals (for staff devices) are left out. */
+const board = (events: SseEvent[]) => events.filter((e) => e.event !== 'revision')
 
 /** A minimal Server-Sent Events client that records every event and comment it sees. */
 async function openStream(baseUrl: string, slug: string, headers: Record<string, string> = {}) {
@@ -64,6 +67,7 @@ async function openStream(baseUrl: string, slug: string, headers: Record<string,
     ended: () => ended,
     close: () => controller.abort(),
     waitForEvents: (count: number) => waitFor(() => events.length >= count, `${count} events`),
+    waitForBoard: (count: number) => waitFor(() => board(events).length >= count, `${count} board events`),
     waitForRaw: (text: string) => waitFor(() => raw.includes(text), `"${text}"`),
     waitUntilEnded: () => waitFor(() => ended, 'the stream to end'),
   }
@@ -134,15 +138,48 @@ describe('the live stream', () => {
     await Promise.all([first, second, other].map((s) => s.waitForEvents(1)))
 
     await publish(app, a.token, 'Round one')
-    await first.waitForEvents(2)
-    await second.waitForEvents(2)
-    expect(first.events[1]).toMatchObject({ event: 'update', data: { state: { location: 'Round one' } } })
-    expect(second.events[1].data.state?.location).toBe('Round one')
+    await first.waitForBoard(2)
+    await second.waitForBoard(2)
+    expect(board(first.events)[1]).toMatchObject({ event: 'update', data: { state: { location: 'Round one' } } })
+    expect(board(second.events)[1].data.state?.location).toBe('Round one')
 
     await publish(app, a.token, 'Round two')
-    await first.waitForEvents(3)
-    expect(first.events[2].data.state?.location).toBe('Round two')
+    await first.waitForBoard(3)
+    expect(board(first.events)[2].data.state?.location).toBe('Round two')
     expect(other.events).toHaveLength(1) // only its own initial "cleared"
+  })
+
+  it('keeps a session that is not live off the public page, while still telling staff devices it changed', async () => {
+    const { token, slug } = await createClub(app)
+    const stream = await watch(slug)
+    await stream.waitForEvents(1)
+
+    expect((await publish(app, token, 'Setting up', undefined, { live: false })).statusCode).toBe(200)
+    await stream.waitForEvents(2)
+    expect(stream.events[1]).toEqual({ event: 'revision', data: { revision: 1 } })
+    expect(board(stream.events)).toHaveLength(1) // still only the initial "cleared"
+    expect(stream.raw()).not.toContain('Setting up')
+    expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/live` })).statusCode).toBe(404)
+    // Staff devices still get the club's copy.
+    const state = await app.inject({ method: 'GET', url: '/api/session/state', headers: bearer(token) })
+    expect(state.json()).toMatchObject({ revision: 1, full: { location: 'Setting up' } })
+
+    // Going live shows it to viewers; going back to not live takes it away again.
+    await publish(app, token, 'Now live', undefined, { live: true })
+    await stream.waitForBoard(2)
+    expect(board(stream.events)[1]).toMatchObject({ event: 'update', data: { state: { location: 'Now live' } } })
+    expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/live` })).statusCode).toBe(200)
+    await publish(app, token, 'Paused', undefined, { live: false })
+    await stream.waitForBoard(3)
+    expect(board(stream.events)[2].event).toBe('cleared')
+    expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/live` })).statusCode).toBe(404)
+    expect(stream.raw()).not.toContain('Paused')
+  })
+
+  it('treats a publish without the live flag (an older app) as live', async () => {
+    const { token, slug } = await createClub(app)
+    await publish(app, token, 'Older app')
+    expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/live` })).statusCode).toBe(200)
   })
 
   it('announces the end of a session', async () => {

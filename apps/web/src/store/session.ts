@@ -5,6 +5,7 @@ import {
   createSession,
   playingIds,
   setAvgGameMinutes as setAvgGameMinutesEngine,
+  setLive as setLiveEngine,
   renamePlayer as renamePlayerEngine,
   setPlayerSkill as setPlayerSkillEngine,
   shiftSessionClock,
@@ -61,6 +62,8 @@ interface SessionStore {
   /** Rename the running session. Throws a RangeError with a readable message if the name is not allowed. */
   renameSession: (name: string) => void
   setAvgGameMinutes: (minutes: number) => void
+  /** Show the session on the club's public live page, or keep it off it (staff devices share it either way). */
+  setLive: (live: boolean) => void
   /** Change a checked-in player's skill level. Future matching follows it; a pending result undo stays. */
   setPlayerSkill: (playerId: number, skill: SkillLevel) => void
   /** Rename a checked-in player. Throws a RangeError with a readable message if the name is not allowed. */
@@ -203,7 +206,8 @@ export const useSessionStore = create<SessionStore>()(
           const sessionId = newBatchId()
           set({
             location,
-            session: createSession(mode, courtCount, options),
+            // Not on the public live page until staff choose Go live.
+            session: setLiveEngine(createSession(mode, courtCount, options), false),
             previous: null,
             sessionId,
             startedAt: Date.now(),
@@ -228,6 +232,12 @@ export const useSessionStore = create<SessionStore>()(
           // While shared, the club has to be sent the new name even with no other change pending.
           set((state) => ({ location: trimmed, locationPending: state.base !== null }))
           recordAudit('sessionRenamed', `Renamed the session “${was}” to “${trimmed}”`, sessionId)
+        },
+
+        setLive: (live) => {
+          const { previous } = get()
+          // A setting, not a game event: undoing a result must never take the session off (or onto) the live page.
+          dispatch({ type: 'setLive', live }, previous && setLiveEngine(previous, live))
         },
 
         setAvgGameMinutes: (minutes) => {

@@ -3,6 +3,7 @@ import type {
   AuditPage,
   AuthGrant,
   ClubDevice,
+  DeletedHistorySummary,
   AvatarIndex,
   ClubRosterPlayer,
   ErrorCode,
@@ -71,7 +72,12 @@ export interface CloudApi {
   listHistory(token: string): Promise<HistorySummary[]>
   /** One ended session in full (a FullBackup), or null if it is gone. */
   fetchHistory(token: string, id: string): Promise<unknown | null>
-  deleteHistory(token: string, id: string): Promise<void>
+  /** Move an ended session to Recently deleted, or with `permanent` remove it for good. */
+  deleteHistory(token: string, id: string, options?: { permanent?: boolean }): Promise<void>
+  /** Bring a deleted session back. */
+  restoreHistory(token: string, id: string): Promise<void>
+  /** Recently deleted: the club's deleted sessions that can still be restored. */
+  listDeletedHistory(token: string): Promise<DeletedHistorySummary[]>
 
   /** Set a player's avatar; `key` is the lower-case player name. */
   putAvatar(token: string, key: string, avatar: PutAvatarRequest): Promise<void>
@@ -94,7 +100,7 @@ export interface CloudApi {
    * Call `onChange` whenever the board changes (a row) or ends (null). Returns
    * an unsubscribe function. Callers should still poll as a fallback.
    */
-  subscribeLive(slug: string, onChange: (row: LiveRow | null) => void): () => void
+  subscribeLive(slug: string, onChange: (row: LiveRow | null) => void, onRevision?: (revision: number) => void): () => void
 
   /** Store entries of the audit log. Sending one again stores it once. */
   postAudit(token: string, entries: AuditEntry[]): Promise<void>

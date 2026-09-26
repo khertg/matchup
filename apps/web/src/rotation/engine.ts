@@ -225,6 +225,14 @@ export function renamePlayer(state: SessionState, playerId: number, name: string
   return { ...state, players: { ...state.players, [playerId]: { ...player, name: trimmed } } }
 }
 
+/** Show the session on the club's public live page, or keep it off it. Staff devices share it either way. */
+export function setLive(state: SessionState, live: boolean): SessionState {
+  return { ...state, live }
+}
+
+/** Whether players see the session on the public live page: missing means live (sessions from before the choice). */
+export const isLive = (state: SessionState) => state.live !== false
+
 export function setAvgGameMinutes(state: SessionState, minutes: number): SessionState {
   if (!isValidGameMinutes(minutes)) {
     throw new RangeError('avgGameMinutes must be an integer from 5 to 60')

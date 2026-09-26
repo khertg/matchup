@@ -27,6 +27,8 @@ export function describeAction(before: SessionState, action: SessionAction, afte
   switch (action.type) {
     case 'setAvgGameMinutes':
       return say(`Set the game length to ${action.minutes} min`)
+    case 'setLive':
+      return say(action.live ? 'Went live: players can see the board' : 'Stopped live: the public page shows no game')
     case 'setPlayerSkill':
       return say(`Changed ${name(action.playerId)}'s level to ${skillLabel(action.skill)}`)
     case 'renamePlayer':

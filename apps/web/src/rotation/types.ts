@@ -129,6 +129,11 @@ export interface SessionState {
    * one of them is still waiting. Missing means automatic.
    */
   nextUpPick?: (number | null)[]
+  /**
+   * Whether players see the session on the club's public live page. A new session starts not live, so staff
+   * can set it up first. Missing (a session from before this was chosen) means live.
+   */
+  live?: boolean
   /** Every game finished this session, oldest first. Missing in sessions saved before this was kept. */
   matches?: MatchRecord[]
   /**

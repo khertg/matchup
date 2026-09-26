@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Browser, type Page } from '@
 import { failOnCspViolations } from '../cspWatch'
 import { checkIn, openSessionMenu } from '../helpers'
 import { avatarOf, openAvatarEditor, setEmojiAvatar, setPhotoAvatar, viewAvatar } from '../avatarHelpers'
-import { apiCreateClub, bearer, expectSignedIn, uiLogin, uniqueClub, type TestClub } from './support'
+import { apiCreateClub, bearer, expectSignedIn, uiLogin, uniqueClub, type TestClub, goLive } from './support'
 
 failOnCspViolations(test)
 
@@ -16,6 +16,7 @@ async function startSession(page: Page, location = 'Media Night') {
   await page.getByLabel('Session name').fill(location)
   await page.getByRole('button', { name: 'Start session' }).click()
   await expect(page.getByRole('heading', { name: location })).toBeVisible()
+  await goLive(page)
 }
 
 async function viewerPage(browser: Browser, slug: string) {

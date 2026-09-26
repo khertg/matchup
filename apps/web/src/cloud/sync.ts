@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
 import { db } from '@/db/db'
-import { archiveSession, markHistorySynced, unsyncedHistory } from '@/db/history'
+import { archiveSession, markDeletionSent, markHistorySynced, pendingDeletions, unsyncedHistory } from '@/db/history'
 import {
   claimUnownedPlayers,
   clearAvatarDirty,
@@ -29,7 +29,7 @@ import {
 } from '@/db/settings'
 import { avatarKey, colorFor, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
 import { NOTHING_UNSENT, type UnsentCounts } from '@/lib/reset'
-import { lastActivityAt } from '@/rotation/engine'
+import { isLive, lastActivityAt } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi, type PutAvatarRequest } from './api'
@@ -122,6 +122,11 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
   if (!api || !club) return false
   try {
     for (const record of await unsyncedHistory(club.slug)) {
+      // Removed for good before the club ever had it: nothing to send.
+      if (record.deletionPending === 'purge') {
+        await markHistorySynced(record.id, club.slug)
+        continue
+      }
       try {
         await api.putHistory(
           club.token,
@@ -139,6 +144,14 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
         if (!isPermanent(error) || isExpiredLogin(error)) throw error
       }
       await markHistorySynced(record.id, club.slug)
+    }
+    // Then deletes, restores and removals made here, now that the club has every session they are about.
+    for (const record of await pendingDeletions()) {
+      if (record.clubSlug !== undefined && record.clubSlug !== club.slug) continue
+      const sent = record.deletionPending
+      if (sent === 'restore') await api.restoreHistory(club.token, record.id)
+      else await api.deleteHistory(club.token, record.id, { permanent: sent === 'purge' })
+      await markDeletionSent(record.id, sent)
     }
     return true
   } catch (error) {
@@ -621,6 +634,7 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
               ...(keepMine ? {} : { baseRevision: base.revision }),
               sessionId,
               startedAt: new Date(startedAt).toISOString(),
+              live: isLive(session),
             },
           )
           if ('revision' in outcome) {
@@ -696,11 +710,19 @@ export function startCloudSync(api: CloudApi | null = cloud): () => void {
     unsubscribeLive = () => {}
     const club = signedIn()
     if (!club) return
-    unsubscribeLive = api.subscribeLive(club.slug, (row) => {
-      const base = useSessionStore.getState().base
-      if (row && base && row.revision !== undefined && row.revision <= base.revision) return
-      void refresh()
-    })
+    unsubscribeLive = api.subscribeLive(
+      club.slug,
+      // The public board: only its end matters here (the session ended elsewhere). Changes come as revisions.
+      (row) => {
+        if (row === null) void refresh()
+      },
+      // Every change to the club's copy, live on the public page or not.
+      (revision) => {
+        const base = useSessionStore.getState().base
+        if (base && revision <= base.revision) return
+        void refresh()
+      },
+    )
     void refresh()
   }
 

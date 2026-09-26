@@ -1,3 +1,4 @@
+import { HISTORY_TRASH_DAYS } from '@q2dink/shared'
 import type { GameMode, MatchmakingMode, SessionState } from '@/rotation/types'
 import type { LifetimeCounts } from '@/rotation/lifetime'
 import { SESSION_STORE_VERSION } from '@/store/migrate'
@@ -32,6 +33,10 @@ export interface HistoryRecord {
    * the first club to sync one takes it.
    */
   clubSlug?: string
+  /** When it was deleted (ms since the epoch): it is in Recently deleted, and can be restored for a while. */
+  deletedAt?: number
+  /** A delete, restore or removal for good made here that the club has not been told of yet. */
+  deletionPending?: 'delete' | 'restore' | 'purge'
 }
 
 export type HistorySummary = Omit<HistoryRecord, 'session' | 'storeVersion' | 'lifetimeCounted'>
@@ -84,10 +89,69 @@ export async function archiveSession(input: {
   return record
 }
 
-/** Newest first. Without the session itself, so a long list stays light. */
+const summaryOf = ({ session: _s, storeVersion: _v, lifetimeCounted: _c, ...summary }: HistoryRecord): HistorySummary => summary
+
+/** Past sessions that are not deleted, newest first. Without the session itself, so a long list stays light. */
 export async function listHistory(): Promise<HistorySummary[]> {
   const records = await db.history.orderBy('endedAt').reverse().toArray()
-  return records.map(({ session: _s, storeVersion: _v, lifetimeCounted: _c, ...summary }) => summary)
+  return records.filter((r) => r.deletedAt === undefined).map(summaryOf)
+}
+
+/** Recently deleted on this device, most recently deleted first. */
+export async function listDeletedHistory(): Promise<HistorySummary[]> {
+  const records = await db.history.filter((r) => r.deletedAt !== undefined).toArray()
+  return records.sort((a, b) => b.deletedAt! - a.deletedAt!).map(summaryOf)
+}
+
+/** Move a past session to Recently deleted, and remember to tell the club. */
+export async function softDeleteHistory(id: string, now = Date.now()): Promise<void> {
+  await db.history.update(id, { deletedAt: now, deletionPending: 'delete' })
+}
+
+/** Bring a deleted past session back, and remember to tell the club. */
+export async function restoreHistoryRecord(id: string): Promise<void> {
+  await db.history.update(id, { deletedAt: undefined, deletionPending: 'restore' })
+}
+
+/**
+ * Remove a past session for good. The club still has to be told, so the record stays (hidden) until it is,
+ * or goes at once when there is no club to tell.
+ */
+export async function purgeHistoryRecord(id: string, tellClub: boolean, now = Date.now()): Promise<void> {
+  if (!tellClub) {
+    await db.history.delete(id)
+    return
+  }
+  const record = await db.history.get(id)
+  if (record) await db.history.update(id, { deletedAt: record.deletedAt ?? now, deletionPending: 'purge' })
+}
+
+/** The club has been told of a pending delete, restore or removal. A removed record goes for good. */
+export async function markDeletionSent(id: string, sent: HistoryRecord['deletionPending']): Promise<void> {
+  const record = await db.history.get(id)
+  if (!record || record.deletionPending !== sent) return
+  if (sent === 'purge') await db.history.delete(id)
+  else await db.history.update(id, { deletionPending: undefined })
+}
+
+/** The club deleted a session this device still lists: follow it (unless this device restored it since). */
+export async function followClubDeletion(id: string, deletedAt: number): Promise<void> {
+  const record = await db.history.get(id)
+  if (record && record.deletedAt === undefined && record.deletionPending === undefined) {
+    await db.history.update(id, { deletedAt })
+  }
+}
+
+/** Deletes and restores made here that the club has not been told of yet. */
+export const pendingDeletions = () => db.history.filter((r) => r.deletionPending !== undefined).toArray()
+
+/** Sessions deleted over HISTORY_TRASH_DAYS ago are removed for good (once nothing is waiting to be sent). */
+export async function purgeExpiredHistory(now = Date.now()): Promise<void> {
+  const limit = now - HISTORY_TRASH_DAYS * 24 * 60 * 60 * 1000
+  const expired = await db.history
+    .filter((r) => r.deletedAt !== undefined && r.deletedAt < limit && r.deletionPending === undefined)
+    .primaryKeys()
+  await db.history.bulkDelete(expired)
 }
 
 export const getHistory = (id: string) => db.history.get(id)
@@ -102,3 +166,11 @@ export async function markHistorySynced(id: string, clubSlug?: string): Promise<
 /** Sessions waiting to be sent to this club: its own, and older ones that no club has claimed yet. */
 export const unsyncedHistory = (clubSlug: string) =>
   db.history.filter((r) => !r.synced && (r.clubSlug === undefined || r.clubSlug === clubSlug)).toArray()
+
+/** Another device restored a session this device had deleted by following the club: follow again. */
+export async function followClubRestore(id: string): Promise<void> {
+  const record = await db.history.get(id)
+  if (record && record.deletedAt !== undefined && record.deletionPending === undefined) {
+    await db.history.update(id, { deletedAt: undefined })
+  }
+}

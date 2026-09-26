@@ -8,7 +8,9 @@ import { publicSlug, slugParams } from './auth'
 const formatEvent = (event: LiveEvent) =>
   event.type === 'update'
     ? `event: update\ndata: ${JSON.stringify(event.row)}\n\n`
-    : 'event: cleared\ndata: {}\n\n'
+    : event.type === 'revision'
+      ? `event: revision\ndata: ${JSON.stringify({ revision: event.revision })}\n\n`
+      : 'event: cleared\ndata: {}\n\n'
 
 /** The public live board: read it once, or subscribe to changes. No login needed. */
 export function registerLiveRoutes(api: FastifyInstance, { db, config, hub }: RouteDeps): void {

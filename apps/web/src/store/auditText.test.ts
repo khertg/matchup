@@ -84,6 +84,8 @@ describe('describeAction', () => {
     expect(say(waiting, { type: 'moveCourt', courtId: 2, offset: -1 })).toBe('Moved Court 2 up')
     expect(say(waiting, { type: 'closeCourt', courtId: 2, now: 0 })).toBe('Closed Court 2')
     expect(say(waiting, { type: 'setAvgGameMinutes', minutes: 15 })).toBe('Set the game length to 15 min')
+    expect(say(waiting, { type: 'setLive', live: true })).toBe('Went live: players can see the board')
+    expect(say(waiting, { type: 'setLive', live: false })).toBe('Stopped live: the public page shows no game')
     expect(say(waiting, { type: 'setPlayerSkill', playerId: 1, skill: 5 })).toBe("Changed Ann's level to Advanced")
     expect(say(waiting, { type: 'renamePlayer', playerId: 1, name: 'Anne' })).toBe('Renamed Ann to Anne')
   })

@@ -37,6 +37,8 @@ import {
   setPlayerSkill,
   lastActivityAt,
   shiftSessionClock,
+  isLive,
+  setLive,
   startGame,
   unlockPartners,
 } from './engine'
@@ -970,6 +972,16 @@ describe('queue wait time', () => {
     const r = replacePlayer(s, 1, 1, 5, { sendOnBreak: true, now: 20_000 })
     expect(r.courts[0].waited).toEqual({ 2: 8, 3: 7, 4: 6, 5: 15 })
     expect(r.queuedAt).toEqual({})
+  })
+})
+
+describe('live on the public page', () => {
+  it('counts a session from before the choice as live, and follows the choice after it', () => {
+    const s = createSession('doubles', 1)
+    expect(isLive(s)).toBe(true)
+    expect(isLive(setLive(s, false))).toBe(false)
+    expect(isLive(setLive(setLive(s, false), true))).toBe(true)
+    expect(s.live).toBeUndefined() // never changes the state it was given
   })
 })
 

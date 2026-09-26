@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { isLive } from '@/rotation/engine'
+import { useSessionStore } from '@/store/session'
 
 interface SharePanelProps {
   photoToggle?: boolean
@@ -24,6 +26,8 @@ export function SharePanel({ photoToggle = false, open, onOpenChange }: SharePan
   const club = useClubAuth((s) => s.club)
   const [qr, setQr] = useState<string | null>(null)
   const url = club ? viewerUrl(club.slug) : ''
+  // Players opening the link before staff go live see "No game in progress".
+  const notLive = useSessionStore((s) => s.session !== null && !isLive(s.session))
 
   useEffect(() => {
     if (!open || !url) return
@@ -72,6 +76,12 @@ export function SharePanel({ photoToggle = false, open, onOpenChange }: SharePan
           <Input readOnly value={url} aria-label="Live board link" onFocus={(e) => e.target.select()} />
           <Button onClick={copy}>Copy link</Button>
         </div>
+        {notLive && (
+          <p className="text-sm text-muted-foreground">
+            This session is not live yet: players see “No game in progress” until you choose Go live in the session
+            menu.
+          </p>
+        )}
         {photoToggle && <PhotoSharingToggle />}
       </DialogContent>
     </Dialog>

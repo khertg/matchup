@@ -120,12 +120,13 @@ export async function publish(
   token: string,
   location = 'Sunset Courts',
   ip?: string,
+  meta: { live?: boolean } = {},
 ) {
   return app.inject({
     method: 'PUT',
     url: '/api/session',
     headers: bearer(token),
-    payload: { public: sampleSnapshot(location), full: sampleBackup(location) },
+    payload: { public: sampleSnapshot(location), full: sampleBackup(location), ...meta },
     remoteAddress: ip,
   })
 }

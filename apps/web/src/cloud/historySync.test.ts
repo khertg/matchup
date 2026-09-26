@@ -14,7 +14,15 @@ vi.hoisted(() => {
 })
 
 import { db } from '@/db/db'
-import { archiveSession, unsyncedHistory } from '@/db/history'
+import {
+  archiveSession,
+  getHistory,
+  markHistorySynced,
+  purgeHistoryRecord,
+  restoreHistoryRecord,
+  softDeleteHistory,
+  unsyncedHistory,
+} from '@/db/history'
 import { checkIn, createSession } from '@/rotation/engine'
 import { CloudError, type CloudApi } from './api'
 import { useClubAuth } from './auth'
@@ -160,5 +168,65 @@ describe('syncHistory', () => {
     expect(await syncHistory(null)).toBe(false)
     expect(api.putHistory).not.toHaveBeenCalled()
     expect(await unsyncedHistory('downtown')).toHaveLength(1)
+  })
+})
+
+describe('deletes, restores and removals made on this device', () => {
+  function trashApi(failing = false) {
+    const fail = async () => {
+      if (failing) throw new CloudError('network')
+    }
+    const api = {
+      putHistory: vi.fn(async () => {}),
+      deleteHistory: vi.fn(fail),
+      restoreHistory: vi.fn(fail),
+    }
+    return { api, cloudApi: api as unknown as CloudApi }
+  }
+  const synced = async (id: string) => {
+    await archive(id, 1_000)
+    await markHistorySynced(id, 'downtown')
+  }
+
+  it('are sent to the club, and then forgotten', async () => {
+    await synced('a')
+    await synced('b')
+    await synced('c')
+    await softDeleteHistory('a')
+    await softDeleteHistory('b')
+    await restoreHistoryRecord('b')
+    await purgeHistoryRecord('c', true)
+    const { api, cloudApi } = trashApi()
+    expect(await syncHistory(cloudApi)).toBe(true)
+    expect(api.deleteHistory.mock.calls).toEqual(
+      expect.arrayContaining([
+        ['tok-1', 'a', { permanent: false }],
+        ['tok-1', 'c', { permanent: true }],
+      ]),
+    )
+    expect(api.restoreHistory.mock.calls).toEqual([['tok-1', 'b']])
+    expect((await getHistory('a'))?.deletionPending).toBeUndefined()
+    expect((await getHistory('a'))?.deletedAt).toBeDefined() // still in Recently deleted
+    expect((await getHistory('b'))?.deletionPending).toBeUndefined()
+    expect(await getHistory('c')).toBeUndefined() // gone for good once the club knows
+  })
+
+  it('wait for the connection when it fails', async () => {
+    await synced('a')
+    await softDeleteHistory('a')
+    expect(await syncHistory(trashApi(true).cloudApi)).toBe(false)
+    expect((await getHistory('a'))?.deletionPending).toBe('delete')
+    expect(await syncHistory(trashApi().cloudApi)).toBe(true)
+    expect((await getHistory('a'))?.deletionPending).toBeUndefined()
+  })
+
+  it('send nothing about a session removed for good before the club ever had it', async () => {
+    await archive('never-sent', 1_000)
+    await purgeHistoryRecord('never-sent', true)
+    const { api, cloudApi } = trashApi()
+    await syncHistory(cloudApi)
+    expect(api.putHistory).not.toHaveBeenCalled()
+    expect(api.deleteHistory).toHaveBeenCalledWith('tok-1', 'never-sent', { permanent: true })
+    expect(await getHistory('never-sent')).toBeUndefined()
   })
 })

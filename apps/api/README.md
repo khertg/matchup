@@ -49,17 +49,19 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `POST /clubs/:slug/login` `{password}` | none | Returns `{token, name}`. An unknown club and a wrong password give the same `401 invalid_credentials`. |
 | `POST /clubs/:slug/reset-password` `{recoveryCode, newPassword}` | none | Set a new password using the recovery code. Revokes every login and returns a new `{token, recoveryCode, name}`. |
 | `POST /logout` | staff | End this login. |
-| `PUT /session` `{public, full}` | staff | Publish the running session. `public` is validated and stripped to known fields; `full` is a private backup. |
+| `PUT /session` `{public, full, live?}` | staff | Publish the running session. `public` is validated and stripped to known fields; `full` is a private backup. With `live: false` the public board is taken down (viewers get `cleared`) while the private copy is still stored for staff devices; missing `live` (older apps) means live. |
 | `GET /session` | staff | The private backup, for resuming on another device (`404` if none). |
 | `DELETE /session` | staff | The session ended. |
 | `PUT /history/:id` `{endedAt, mode, players, games, full}` | staff | Keep an ended session in the club's history (`id` is a UUID made by the device). Sending the same id again replaces it; the newest 100 per club are kept. `full` is a private backup, like `PUT /session`. |
-| `GET /history` | staff | The club's ended sessions, newest first, without their contents. |
-| `GET /history/:id` | staff | One ended session in full (`404` if unknown or another club's). |
-| `DELETE /history/:id` | staff | Remove an ended session. |
+| `GET /history` | staff | The club's ended sessions that are not deleted, newest first, without their contents. |
+| `GET /history/deleted` | staff | Recently deleted: `{sessions}` with `deletedAt`, most recently deleted first. Sessions deleted more than 30 days ago are removed for good. |
+| `GET /history/:id` | staff | One ended session in full, deleted or not (`404` if unknown or another club's). |
+| `DELETE /history/:id` | staff | Move an ended session to Recently deleted (a `PUT` of it later keeps it deleted). With `?permanent=1`, remove it for good. |
+| `POST /history/:id/restore` | staff | Bring a deleted session back. |
 | `POST /lifetime` `{batchId, players[]}` | staff | Add a session's totals to the club leaderboard. A `batchId` is applied once, so retries are safe. |
 | `POST /players/rename` `{from, to}` | staff | A player was renamed: their leaderboard row and shared avatar move to the new name (matched ignoring case). If the new name already has totals they are added together; if it already has an avatar that one is kept. A name the club has nothing under is a successful no-op, so it is safe to repeat. |
 | `GET /clubs/:slug/live` | none | The public live board, with `ETag` (`304` when unchanged). `404` for an unknown club and for a club with no session, identically. |
-| `GET /clubs/:slug/live/stream` | none | Server-Sent Events: `update` (carries the board) and `cleared`, plus a heartbeat. |
+| `GET /clubs/:slug/live/stream` | none | Server-Sent Events: `update` (carries the board), `cleared`, and `revision` (`{revision}` only, on every publish, live or not: staff devices follow each other with it), plus a heartbeat. |
 | `GET /clubs/:slug/players` | none | The club leaderboard. |
 | `PUT /logo`, `DELETE /logo` | staff | Kept for older cached apps: accepted (`204`) and ignored. Clubs no longer have logos. |
 | `PUT /avatars/:key`, `DELETE /avatars/:key`, `DELETE /avatars` | staff | Set or remove a player's avatar (`key` is the lower-case name): `{kind: "emoji", emoji, color?}`, `{kind: "initials", color}` or `{kind: "photo", photo: {data}}` (at most 48 KB). `DELETE /avatars` removes every photo and keeps emoji and initials. At most 500 per club. |

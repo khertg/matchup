@@ -149,6 +149,11 @@ export interface PublishMeta {
   sessionId?: string
   /** ISO time the session started. */
   startedAt?: string
+  /**
+   * Whether players see it on the public live page. False keeps it off that page while staff devices still
+   * share it. Missing (older apps) means live.
+   */
+  live?: boolean
 }
 
 export interface PublishResponse {
@@ -173,13 +178,19 @@ export interface ConflictBody extends ErrorBody {
   current: SessionStateRow | null
 }
 
-/** Server-Sent Events on /clubs/:slug/live/stream. */
-export type LiveEvent = { type: 'update'; row: LiveRow } | { type: 'cleared' }
+/**
+ * Server-Sent Events on /clubs/:slug/live/stream. `revision` carries only the club copy's revision: staff
+ * devices follow each other with it even while the session is not live. Viewers ignore it.
+ */
+export type LiveEvent = { type: 'update'; row: LiveRow } | { type: 'cleared' } | { type: 'revision'; revision: number }
 
 // ---- session history ---------------------------------------------------------
 
-/** How many ended sessions a club keeps in the cloud. The oldest go first. */
+/** How many ended sessions a club keeps in the cloud. The oldest go first. Deleted ones do not count. */
 export const MAX_HISTORY_PER_CLUB = 100
+
+/** How long a deleted past session can still be restored before it is removed for good. */
+export const HISTORY_TRASH_DAYS = 30
 
 /** An ended session in the club's history list, without its contents. */
 export interface HistorySummary {
@@ -193,6 +204,11 @@ export interface HistorySummary {
   players: number
   /** Games finished. */
   games: number
+}
+
+/** `GET /history/deleted`: a past session in Recently deleted, and when it was deleted (ISO time). */
+export interface DeletedHistorySummary extends HistorySummary {
+  deletedAt: string
 }
 
 /** Saves an ended session. Sending the same id again replaces the earlier version. */

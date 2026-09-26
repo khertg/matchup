@@ -186,4 +186,12 @@ export const MIGRATIONS: Migration[] = [
       drop table if exists club_logos;
     `,
   },
+  {
+    id: '009_history_soft_delete',
+    sql: `
+      -- A deleted past session is kept for a while (Recently deleted) so it can be restored.
+      alter table session_history add column deleted_at timestamptz;
+      create index session_history_deleted_idx on session_history (club_slug, deleted_at);
+    `,
+  },
 ]

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { checkIn, recordWin, startGame } from '../helpers'
-import { apiCreateClub, apiLive, expectSignedIn, uiLogin, uniqueClub } from './support'
+import { apiCreateClub, apiLive, expectSignedIn, uiLogin, uniqueClub, goLive } from './support'
 
 test.describe('scores on the live board', () => {
   test('a player’s phone sees the score of a game as soon as staff enter it', async ({ page, browser, request }) => {
@@ -19,6 +19,7 @@ test.describe('scores on the live board', () => {
     await page.getByRole('button', { name: 'Singles' }).click()
     await page.getByRole('button', { name: 'Start session' }).click()
     await expect(page.getByRole('heading', { name: 'Scored Night' })).toBeVisible()
+    await goLive(page)
     await checkIn(page, ['Ann', 'Bob'])
     await startGame(page)
 
@@ -58,6 +59,7 @@ test.describe('shared images', () => {
     await page.getByLabel('Session name').fill('Share Night')
     await page.getByRole('button', { name: 'Singles' }).click()
     await page.getByRole('button', { name: 'Start session' }).click()
+    await goLive(page)
     await checkIn(page, ['Ann', 'Bob'])
     await startGame(page)
     await recordWin(page, 'Court 1', 'A', [11, 4])

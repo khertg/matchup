@@ -112,7 +112,8 @@ test('club activity is paged 20 at a time and can be searched', async ({ page, r
   expect((await request.put('/api/devices/me', { headers: bearer(token), data: seeder })).status()).toBe(204)
   const start = Date.now() - 60 * 60 * 1000
   const entries = Array.from({ length: 45 }, (_, i) => ({
-    id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    // Random, like a device's: an entry id is unique across the whole server, and this test runs in more than one project.
+    id: crypto.randomUUID(),
     at: new Date(start + (i + 1) * 1000).toISOString(),
     device: seeder,
     kind: 'checkIn',

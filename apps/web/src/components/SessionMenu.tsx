@@ -1,7 +1,9 @@
 import { MAX_LOCATION_LENGTH } from '@q2dink/shared'
-import { HistoryIcon, LogOutIcon, MoreVerticalIcon, PencilIcon, QrCodeIcon, SlidersHorizontalIcon } from 'lucide-react'
+import { HistoryIcon, LogOutIcon, MoreVerticalIcon, PencilIcon, QrCodeIcon, RadioIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useClubAuth } from '@/cloud/auth'
+import { viewerUrl } from '@/cloud/url'
 import { ActivityDialog } from '@/components/ActivityDialog'
 import { EndSessionDialog } from '@/components/EndSessionDialog'
 import { ManageCourtsDialog } from '@/components/ManageCourtsDialog'
@@ -9,6 +11,7 @@ import { RenameDialog } from '@/components/RenameDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { isLive } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
 
@@ -20,6 +23,14 @@ export function SessionMenu({ session }: { session: SessionState }) {
   const [active, setActive] = useState<ActiveDialog>(null)
   const location = useSessionStore((s) => s.location)
   const sessionId = useSessionStore((s) => s.sessionId)
+  const setLive = useSessionStore((s) => s.setLive)
+  const live = isLive(session)
+
+  function toggleLive() {
+    setLive(!live)
+    if (live) toast('Not live: the public page shows no game')
+    else toast(`Live: players can see the board at ${club ? viewerUrl(club.slug) : 'the live link'}`)
+  }
 
   return (
     <>
@@ -50,6 +61,13 @@ export function SessionMenu({ session }: { session: SessionState }) {
               <SlidersHorizontalIcon aria-hidden="true" /> Manage courts
             </Button>
           </PopoverClose>
+          {club && (
+            <PopoverClose asChild>
+              <Button type="button" variant="ghost" className="w-full justify-start" onClick={toggleLive}>
+                <RadioIcon aria-hidden="true" /> {live ? 'Stop live' : 'Go live'}
+              </Button>
+            </PopoverClose>
+          )}
           {club && (
             <PopoverClose asChild>
               <Button

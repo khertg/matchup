@@ -2,6 +2,7 @@ import {
   isErrorCode,
   type AuditPage,
   type ClubDevice,
+  type DeletedHistorySummary,
   type AuthGrant,
   type AvatarIndex,
   type HistorySummary,
@@ -148,8 +149,16 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
     fetchHistory: (token, id) =>
       request<unknown>('GET', `/history/${encodeURIComponent(id)}`, { token, nullOn404: true }),
 
-    async deleteHistory(token, id) {
-      await request('DELETE', `/history/${encodeURIComponent(id)}`, { token })
+    async deleteHistory(token, id, options = {}) {
+      await request('DELETE', `/history/${encodeURIComponent(id)}${options.permanent ? '?permanent=1' : ''}`, { token })
+    },
+
+    async restoreHistory(token, id) {
+      await request('POST', `/history/${encodeURIComponent(id)}/restore`, { token })
+    },
+
+    async listDeletedHistory(token) {
+      return (await request<{ sessions: DeletedHistorySummary[] }>('GET', '/history/deleted', { token })).sessions
     },
 
     async postAudit(token, entries) {
@@ -200,7 +209,7 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
       return result.players
     },
 
-    subscribeLive(slug, onChange) {
+    subscribeLive(slug, onChange, onRevision) {
       // Without EventSource (very old browsers) callers simply rely on polling.
       if (!EventSourceImpl) return () => undefined
       const source = new EventSourceImpl(`${base}/clubs/${slugPath(slug)}/live/stream`)
@@ -216,6 +225,17 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
         })
       listen('update')
       listen('cleared')
+      // Staff devices only: the club's copy changed, even while it is not on the public page.
+      if (onRevision) {
+        source.addEventListener('revision', (event) => {
+          try {
+            const { revision } = JSON.parse((event as MessageEvent<string>).data) as { revision: unknown }
+            if (typeof revision === 'number') onRevision(revision)
+          } catch {
+            // Ignore a garbled event; the poll will correct it.
+          }
+        })
+      }
       // EventSource reconnects by itself after an error, and the server sends the current board on connect.
       return () => source.close()
     },

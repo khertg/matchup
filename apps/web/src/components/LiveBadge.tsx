@@ -1,6 +1,8 @@
 import { useClubAuth } from '@/cloud/auth'
 import type { SyncStatus } from '@/cloud/publisher'
 import { useSyncStore } from '@/cloud/sync'
+import { isLive } from '@/rotation/engine'
+import { useSessionStore } from '@/store/session'
 
 type LiveStatus = Exclude<SyncStatus, 'off' | 'idle'>
 
@@ -22,7 +24,19 @@ const DOT_COLORS: Record<LiveStatus, string> = {
 export function LiveBadge() {
   const club = useClubAuth((s) => s.club)
   const status = useSyncStore((s) => s.status)
-  if (!club || status === 'off' || status === 'idle') return null
+  const notLive = useSessionStore((s) => s.session !== null && !isLive(s.session))
+  if (!club) return null
+  if (notLive) {
+    // Staff have not chosen Go live: players see no game. A hollow grey dot, not pulsing.
+    const label = 'Not live: players cannot see this session'
+    return (
+      <span role="status" data-testid="live-status" title={label} className="inline-flex size-8 items-center justify-center">
+        <span className="inline-flex size-2.5 rounded-full border-2 border-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">{label}</span>
+      </span>
+    )
+  }
+  if (status === 'off' || status === 'idle') return null
   const dot = DOT_COLORS[status]
   return (
     <span

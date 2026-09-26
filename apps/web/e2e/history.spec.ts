@@ -143,6 +143,70 @@ test.describe('past sessions', () => {
     await expect(page.getByRole('dialog', { name: 'Past sessions' }).getByText('No past sessions yet.')).toBeVisible()
   })
 
+  test('a deleted session can be brought back with Undo, or from Recently deleted', async ({ page }) => {
+    await playOneGame(page)
+    await endAndSave(page)
+    const deleteIt = async () => {
+      await (await openPast(page)).getByRole('button', { name: /Sunset Club/ }).click()
+      const view = page.getByRole('dialog', { name: 'Sunset Club' })
+      await view.getByRole('button', { name: 'Delete', exact: true }).click()
+      await expect(view.getByText('It can be restored for 30 days.')).toBeVisible()
+      await view.getByRole('button', { name: 'Delete session' }).click()
+    }
+
+    // Undo, straight away from the list.
+    await deleteIt()
+    const list = page.getByRole('dialog', { name: 'Past sessions' })
+    await expect(list.getByText('No past sessions yet.')).toBeVisible()
+    const undo = list.getByRole('status').filter({ hasText: '“Sunset Club” moved to Recently deleted.' })
+    await undo.getByRole('button', { name: 'Undo' }).click()
+    await expect(undo).toHaveCount(0)
+    await expect(list.getByRole('button', { name: /Sunset Club/ })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.reload() // clears the toasts
+
+    // Later, from Recently deleted: it shows when it was deleted and how long it stays.
+    await deleteIt()
+    await list.getByRole('button', { name: 'Recently deleted (1)' }).click()
+    const trash = page.getByRole('dialog', { name: 'Recently deleted' })
+    const item = trash.getByRole('list', { name: 'Recently deleted' }).getByRole('listitem')
+    await expect(item).toContainText('Sunset Club')
+    await expect(item).toContainText('removed for good in 30 days')
+    // It can be opened to look at, but not resumed.
+    await item.getByRole('button', { name: /Sunset Club/ }).click()
+    const view = page.getByRole('dialog', { name: 'Sunset Club' })
+    await expect(view.getByRole('row').nth(1)).toContainText('Ann')
+    await expect(view.getByRole('button', { name: 'Resume this session' })).toHaveCount(0)
+    await view.getByRole('button', { name: 'Restore' }).click()
+    await expect(page.getByText('“Sunset Club” restored')).toBeVisible()
+    await expect(list.getByRole('button', { name: /Sunset Club/ })).toBeVisible()
+    await expect(list.getByRole('button', { name: /Recently deleted/ })).toHaveCount(0)
+  })
+
+  test('deletes a session for good from Recently deleted, only after asking', async ({ page }) => {
+    await playOneGame(page)
+    await endAndSave(page)
+    await (await openPast(page)).getByRole('button', { name: /Sunset Club/ }).click()
+    const view = page.getByRole('dialog', { name: 'Sunset Club' })
+    await view.getByRole('button', { name: 'Delete', exact: true }).click()
+    await view.getByRole('button', { name: 'Delete session' }).click()
+    const list = page.getByRole('dialog', { name: 'Past sessions' })
+    await list.getByRole('button', { name: 'Recently deleted (1)' }).click()
+
+    const trash = page.getByRole('dialog', { name: 'Recently deleted' })
+    await trash.getByRole('button', { name: 'Delete for good' }).click()
+    const confirm = trash.getByRole('group', { name: 'Confirm deleting Sunset Club for good' })
+    await confirm.getByRole('button', { name: 'Keep it' }).click()
+    await expect(confirm).toHaveCount(0)
+    await trash.getByRole('button', { name: 'Delete for good' }).click()
+    await confirm.getByRole('button', { name: 'Delete for good' }).click()
+    await expect(page.getByText('“Sunset Club” deleted for good')).toBeVisible()
+    await expect(list.getByText('No past sessions yet.')).toBeVisible()
+    await expect(list.getByRole('button', { name: /Recently deleted/ })).toHaveCount(0)
+    await page.reload()
+    await expect((await openPast(page)).getByText('No past sessions yet.')).toBeVisible()
+  })
+
   test('goes back from a session to the list', async ({ page }) => {
     await playOneGame(page)
     await endAndSave(page)

@@ -11,6 +11,7 @@ import {
   uiCreateClub,
   uiLogin,
   uniqueClub,
+  goLive,
   type TestClub,
 } from './support'
 
@@ -22,6 +23,7 @@ async function signInAndStart(page: Page, club: TestClub, location = 'Test Sessi
   await page.getByLabel('Session name').fill(location)
   await page.getByRole('button', { name: 'Start session' }).click()
   await expect(page.getByRole('heading', { name: location })).toBeVisible()
+  await goLive(page)
 }
 
 const queueLength = (request: Parameters<typeof apiLive>[0], slug: string) => async () => {
@@ -256,6 +258,7 @@ test.describe('publishing the live session', () => {
     await page.getByLabel('Session name').fill('Regulars Again')
     await page.getByRole('button', { name: 'Start session' }).click()
     await expect(page.getByRole('heading', { name: 'Regulars Again' })).toBeVisible()
+    await goLive(page)
     await expect.poll(queueLength(request, club.slug)).toBe(0)
 
     const publishes: string[] = []
@@ -504,6 +507,7 @@ test.describe('managing courts', () => {
     await expectSignedIn(page)
     await page.getByLabel('Number of courts (1 to 15)').fill('1')
     await page.getByRole('button', { name: 'Start session' }).click()
+    await goLive(page)
     await checkIn(page, ['Ann', 'Bob', 'Cy', 'Dee', 'Eve', 'Fay', 'Gus', 'Hal'])
     await startGame(page)
 

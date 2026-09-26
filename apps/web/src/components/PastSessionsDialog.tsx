@@ -1,9 +1,13 @@
+import { HISTORY_TRASH_DAYS } from '@q2dink/shared'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { toCloudError } from '@/cloud/api'
+import { recordAudit } from '@/cloud/audit'
 import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import { parseFullBackup } from '@/cloud/snapshot'
+import { syncHistory } from '@/cloud/sync'
+import { ActivityDialog } from '@/components/ActivityDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,31 +20,24 @@ import {
 } from '@/components/ui/dialog'
 import {
   archiveSession,
-  deleteHistory,
+  followClubDeletion,
+  followClubRestore,
   getHistory,
+  listDeletedHistory,
   listHistory,
   markHistorySynced,
-  type HistorySummary,
+  purgeExpiredHistory,
+  purgeHistoryRecord,
+  restoreHistoryRecord,
+  softDeleteHistory,
 } from '@/db/history'
 import { matchmakingLabel } from '@/lib/matchmaking'
+import { daysLeft, mergeHistory, type DeletedEntry, type PastEntry } from '@/lib/pastSessions'
 import type { LifetimeCounts } from '@/rotation/lifetime'
 import type { SessionState } from '@/rotation/types'
 import { StandingsScreen } from '@/screens/StandingsScreen'
 import { migrateSession } from '@/store/migrate'
 import { useSessionStore } from '@/store/session'
-import { recordAudit } from '@/cloud/audit'
-import { ActivityDialog } from '@/components/ActivityDialog'
-
-interface Entry {
-  id: string
-  location: string
-  endedAt: number
-  mode: 'doubles' | 'singles'
-  players: number
-  games: number
-  /** Only the club has it, not this device. */
-  clubOnly: boolean
-}
 
 interface Loaded {
   id: string
@@ -51,6 +48,8 @@ interface Loaded {
   lifetimeCounted: LifetimeCounts
   /** Fetched from the club because this device does not have it. */
   fromClub: boolean
+  /** It is in Recently deleted: it can be looked at and restored, not resumed. */
+  deleted: boolean
 }
 
 /** Sessions listed per page, so a long history stays short to scroll on a phone. */
@@ -59,46 +58,34 @@ const PAGE_SIZE = 10
 const when = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-/** This device's history merged with the club's, newest first. A session both have is listed once. */
-async function loadEntries(): Promise<{ entries: Entry[]; clubError: string | null }> {
-  const local = await listHistory()
-  const byId = new Map<string, Entry>(local.map((s) => [s.id, toEntry(s, false)]))
+/**
+ * This device's history merged with the club's: the past sessions, and Recently deleted. What another staff
+ * device deleted or restored is followed here too. Sessions deleted too long ago are removed for good first.
+ */
+async function loadEntries(): Promise<{ active: PastEntry[]; deleted: DeletedEntry[]; clubError: string | null }> {
+  await purgeExpiredHistory()
+  const [local, localDeleted] = await Promise.all([listHistory(), listDeletedHistory()])
   let clubError: string | null = null
-  const club = useClubAuth.getState().club
-  if (cloud && club) {
+  let club: Awaited<ReturnType<NonNullable<typeof cloud>['listHistory']>> = []
+  let clubDeleted: Awaited<ReturnType<NonNullable<typeof cloud>['listDeletedHistory']>> = []
+  const login = useClubAuth.getState().club
+  if (cloud && login) {
     try {
-      for (const s of await cloud.listHistory(club.token)) {
-        if (!byId.has(s.id)) {
-          byId.set(s.id, {
-            id: s.id,
-            location: s.location,
-            endedAt: Date.parse(s.endedAt),
-            mode: s.mode,
-            players: s.players,
-            games: s.games,
-            clubOnly: true,
-          })
-        }
-      }
+      ;[club, clubDeleted] = await Promise.all([cloud.listHistory(login.token), cloud.listDeletedHistory(login.token)])
     } catch (error) {
       clubError = toCloudError(error).message
     }
   }
-  return { entries: [...byId.values()].sort((a, b) => b.endedAt - a.endedAt), clubError }
+  const merged = mergeHistory(local, localDeleted, club, clubDeleted)
+  await Promise.all([
+    ...merged.deletedElsewhere.map(({ id, deletedAt }) => followClubDeletion(id, deletedAt)),
+    ...merged.restoredElsewhere.map((id) => followClubRestore(id)),
+  ])
+  return { active: merged.active, deleted: merged.deleted, clubError }
 }
 
-const toEntry = (s: HistorySummary, clubOnly: boolean): Entry => ({
-  id: s.id,
-  location: s.location,
-  endedAt: s.endedAt,
-  mode: s.mode,
-  players: s.players,
-  games: s.games,
-  clubOnly,
-})
-
 /** One session in full, from this device or, failing that, from the club. */
-async function loadOne(entry: Entry): Promise<Loaded | null> {
+async function loadOne(entry: PastEntry, deleted: boolean): Promise<Loaded | null> {
   const record = await getHistory(entry.id)
   if (record) {
     const session = migrateSession(record.session, record.storeVersion)
@@ -111,6 +98,7 @@ async function loadOne(entry: Entry): Promise<Loaded | null> {
       session,
       lifetimeCounted: record.lifetimeCounted,
       fromClub: false,
+      deleted,
     }
   }
   const club = useClubAuth.getState().club
@@ -125,42 +113,53 @@ async function loadOne(entry: Entry): Promise<Loaded | null> {
     session: parsed.session,
     lifetimeCounted: parsed.lifetimeCounted,
     fromClub: true,
+    deleted,
   }
 }
 
-/** Past sessions with their rankings, and a way to resume one that ended by accident. */
+/** Past sessions with their rankings, a way to resume one that ended by accident, and Recently deleted. */
 export function PastSessionsDialog() {
-  const club = useClubAuth((s) => s.club)
   const loadSession = useSessionStore((s) => s.loadSession)
   const [open, setOpen] = useState(false)
-  const [entries, setEntries] = useState<Entry[] | null>(null)
+  const [entries, setEntries] = useState<PastEntry[] | null>(null)
+  const [trash, setTrash] = useState<DeletedEntry[]>([])
+  const [showTrash, setShowTrash] = useState(false)
   const [clubError, setClubError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<Loaded | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  /** The session waiting for "Delete for good" to be confirmed. */
+  const [confirmPurge, setConfirmPurge] = useState<DeletedEntry | null>(null)
+  /** The session just deleted, offered back at the top of the list (a toast cannot be tapped behind this window). */
+  const [justDeleted, setJustDeleted] = useState<{ id: string; location: string; clubOnly: boolean } | null>(null)
   const [page, setPage] = useState(0)
 
   const reload = useCallback(async () => {
     const result = await loadEntries()
-    setEntries(result.entries)
+    setEntries(result.active)
+    setTrash(result.deleted)
     setClubError(result.clubError)
     // A delete can empty the last page; step back to the one that is now last.
-    setPage((p) => Math.min(p, Math.max(0, Math.ceil(result.entries.length / PAGE_SIZE) - 1)))
+    setPage((p) => Math.min(p, Math.max(0, Math.ceil(result.active.length / PAGE_SIZE) - 1)))
+    if (result.deleted.length === 0) setShowTrash(false)
   }, [])
 
   function handleOpenChange(next: boolean) {
     // Always start from the first page of the list, never from the session that was open last time.
     setViewing(null)
     setConfirmDelete(false)
+    setConfirmPurge(null)
+    setJustDeleted(null)
+    setShowTrash(false)
     setPage(0)
     setOpen(next)
     if (next) void reload()
   }
 
-  async function handleView(entry: Entry) {
+  async function handleView(entry: PastEntry, deleted = false) {
     setBusy(true)
     try {
-      const loaded = await loadOne(entry)
+      const loaded = await loadOne(entry, deleted)
       if (loaded) setViewing(loaded)
       else toast.error('This session could not be opened.')
     } catch (error) {
@@ -201,15 +200,55 @@ export function PastSessionsDialog() {
     }
   }
 
-  async function handleDelete(loaded: Loaded) {
+  /**
+   * Change a session's place: a copy on this device is changed here and the club is told by the next sync
+   * (offline too); one only the club has is changed on the club, which needs a connection.
+   */
+  async function change(
+    entry: { id: string; clubOnly: boolean },
+    onDevice: () => Promise<void>,
+    onClub: (token: string) => Promise<void>,
+  ): Promise<boolean> {
+    try {
+      if (!entry.clubOnly) {
+        await onDevice()
+        void syncHistory()
+        return true
+      }
+      const login = useClubAuth.getState().club
+      if (!cloud || !login) return false
+      await onClub(login.token)
+      return true
+    } catch (error) {
+      toast.error(toCloudError(error).message)
+      return false
+    }
+  }
+
+  async function restore(entry: { id: string; location: string; clubOnly: boolean }, quiet = false) {
     setBusy(true)
     try {
-      await deleteHistory(loaded.id)
-      recordAudit('historyDeleted', `Deleted the past session “${loaded.location}” (ended ${when(loaded.endedAt)})`, loaded.id)
-      if (cloud && club) await cloud.deleteHistory(club.token, loaded.id).catch(() => {
-        toast.error('Deleted here, but the club copy could not be removed. Try again when online.')
-      })
+      const done = await change(entry, () => restoreHistoryRecord(entry.id), (token) => cloud!.restoreHistory(token, entry.id))
+      if (!done) return
+      recordAudit('historyRestored', `Restored the past session “${entry.location}”`, entry.id)
+      setJustDeleted(null)
+      if (!quiet) toast(`“${entry.location}” restored`)
+      setViewing(null)
+      await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDelete(loaded: Loaded) {
+    setBusy(true)
+    const entry = { id: loaded.id, location: loaded.location, clubOnly: loaded.fromClub }
+    try {
+      const done = await change(entry, () => softDeleteHistory(loaded.id), (token) => cloud!.deleteHistory(token, loaded.id))
+      if (!done) return
+      recordAudit('historyDeleted', `Moved the past session “${loaded.location}” (ended ${when(loaded.endedAt)}) to Recently deleted`, loaded.id)
       toast('Session deleted')
+      setJustDeleted(entry)
       setViewing(null)
       setConfirmDelete(false)
       await reload()
@@ -217,6 +256,28 @@ export function PastSessionsDialog() {
       setBusy(false)
     }
   }
+
+  async function handlePurge(entry: DeletedEntry) {
+    setBusy(true)
+    try {
+      const tellClub = cloud !== null && useClubAuth.getState().club !== null
+      const done = await change(
+        entry,
+        () => purgeHistoryRecord(entry.id, tellClub),
+        (token) => cloud!.deleteHistory(token, entry.id, { permanent: true }),
+      )
+      if (!done) return
+      recordAudit('historyPurged', `Deleted the past session “${entry.location}” for good`, entry.id)
+      toast(`“${entry.location}” deleted for good`)
+      setConfirmPurge(null)
+      await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const summary = (entry: PastEntry) =>
+    `${when(entry.endedAt)} · ${entry.mode === 'doubles' ? 'Doubles' : 'Singles'} · ${plural(entry.players, 'player')} · ${plural(entry.games, 'game')}`
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -231,18 +292,30 @@ export function PastSessionsDialog() {
             <DialogHeader>
               <DialogTitle>{viewing.location}</DialogTitle>
               <DialogDescription>
-                Ended {when(viewing.endedAt)} · {viewing.session.mode === 'doubles' ? 'Doubles' : 'Singles'}
+                {viewing.deleted ? 'Deleted · ' : ''}Ended {when(viewing.endedAt)} ·{' '}
+                {viewing.session.mode === 'doubles' ? 'Doubles' : 'Singles'}
                 {viewing.session.mode === 'doubles' ? ` · ${matchmakingLabel(viewing.session.matchmaking)}` : ''}
               </DialogDescription>
             </DialogHeader>
             <StandingsScreen session={viewing.session} location={viewing.location} readOnly repeatStats share />
-            {confirmDelete ? (
-              <div
-                role="group"
-                aria-label="Confirm deleting this session"
-                className="space-y-2 rounded-lg border p-3"
-              >
-                <p className="text-sm">Delete this session and its results for good?</p>
+            {viewing.deleted ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="h-11 flex-1"
+                  disabled={busy}
+                  onClick={() => restore({ id: viewing.id, location: viewing.location, clubOnly: viewing.fromClub })}
+                >
+                  Restore
+                </Button>
+                <Button variant="outline" disabled={busy} onClick={() => setViewing(null)}>
+                  Back
+                </Button>
+              </div>
+            ) : confirmDelete ? (
+              <div role="group" aria-label="Confirm deleting this session" className="space-y-2 rounded-lg border p-3">
+                <p className="text-sm">
+                  Move this session to Recently deleted? It can be restored for {HISTORY_TRASH_DAYS} days.
+                </p>
                 <div className="flex gap-2">
                   <Button variant="outline" disabled={busy} onClick={() => setConfirmDelete(false)}>
                     Keep it
@@ -267,6 +340,58 @@ export function PastSessionsDialog() {
               </div>
             )}
           </>
+        ) : showTrash ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Recently deleted</DialogTitle>
+              <DialogDescription>
+                Deleted sessions stay here for {HISTORY_TRASH_DAYS} days, then they are removed for good. Restore one
+                to put it back in Past sessions.
+              </DialogDescription>
+            </DialogHeader>
+            <ul aria-label="Recently deleted" className="divide-y rounded-lg border">
+              {trash.map((entry) => (
+                <li key={entry.id} className="space-y-2 px-3 py-2">
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    disabled={busy}
+                    onClick={() => handleView(entry, true)}
+                  >
+                    <span className="block truncate font-medium">{entry.location}</span>
+                    <span className="block text-sm text-muted-foreground">{summary(entry)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Deleted {when(entry.deletedAt)} · removed for good in{' '}
+                      {plural(daysLeft(entry.deletedAt, HISTORY_TRASH_DAYS), 'day')}
+                    </span>
+                  </button>
+                  {confirmPurge?.id === entry.id ? (
+                    <div role="group" aria-label={`Confirm deleting ${entry.location} for good`} className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm">Delete it for good? This cannot be undone.</p>
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmPurge(null)}>
+                        Keep it
+                      </Button>
+                      <Button size="sm" variant="destructive" disabled={busy} onClick={() => handlePurge(entry)}>
+                        Delete for good
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button size="sm" disabled={busy} onClick={() => restore(entry)}>
+                        Restore
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmPurge(entry)}>
+                        Delete for good
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <Button variant="outline" disabled={busy} onClick={() => setShowTrash(false)}>
+              Back
+            </Button>
+          </>
         ) : (
           <>
             <DialogHeader>
@@ -275,6 +400,14 @@ export function PastSessionsDialog() {
                 Every session you end is kept here. Open one to see its ranking, or to resume it.
               </DialogDescription>
             </DialogHeader>
+            {justDeleted && (
+              <div role="status" className="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+                <span className="min-w-0">“{justDeleted.location}” moved to Recently deleted.</span>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => restore(justDeleted, true)}>
+                  Undo
+                </Button>
+              </div>
+            )}
             {clubError && (
               <p role="status" className="text-sm text-muted-foreground">
                 The club’s history could not be loaded ({clubError}). Showing what is on this device.
@@ -299,10 +432,7 @@ export function PastSessionsDialog() {
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{entry.location}</span>
-                          <span className="block text-sm text-muted-foreground">
-                            {when(entry.endedAt)} · {entry.mode === 'doubles' ? 'Doubles' : 'Singles'} ·{' '}
-                            {plural(entry.players, 'player')} · {plural(entry.games, 'game')}
-                          </span>
+                          <span className="block text-sm text-muted-foreground">{summary(entry)}</span>
                         </span>
                         {entry.clubOnly && <Badge variant="secondary">Club</Badge>}
                       </button>
@@ -335,6 +465,11 @@ export function PastSessionsDialog() {
                   </nav>
                 )}
               </>
+            )}
+            {trash.length > 0 && (
+              <Button variant="ghost" disabled={busy} onClick={() => setShowTrash(true)}>
+                Recently deleted ({trash.length})
+              </Button>
             )}
           </>
         )}

@@ -22,6 +22,7 @@ import {
   replacePlayer,
   resetNextUp,
   setAvgGameMinutes,
+  setLive,
   setPlayerSkill,
   startGame,
   unlockPartners,
@@ -40,6 +41,7 @@ export type CheckInPlayer = Pick<RosterPlayer, 'name' | 'skill' | 'gender'>
  */
 export type SessionAction =
   | { type: 'setAvgGameMinutes'; minutes: number }
+  | { type: 'setLive'; live: boolean }
   | { type: 'setPlayerSkill'; playerId: number; skill: SkillLevel }
   | { type: 'renamePlayer'; playerId: number; name: string }
   | { type: 'checkIn'; players: CheckInPlayer[]; now: number }
@@ -95,6 +97,8 @@ export function applyAction(session: SessionState, action: SessionAction): Appli
   switch (action.type) {
     case 'setAvgGameMinutes':
       return { session: setAvgGameMinutes(session, action.minutes) }
+    case 'setLive':
+      return { session: setLive(session, action.live) }
     case 'setPlayerSkill':
       return { session: setPlayerSkill(session, action.playerId, action.skill) }
     case 'renamePlayer':

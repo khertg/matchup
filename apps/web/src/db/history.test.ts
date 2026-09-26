@@ -9,6 +9,15 @@ import { db } from './db'
 import {
   archiveSession,
   deleteHistory,
+  followClubDeletion,
+  followClubRestore,
+  listDeletedHistory,
+  markDeletionSent,
+  pendingDeletions,
+  purgeExpiredHistory,
+  purgeHistoryRecord,
+  restoreHistoryRecord,
+  softDeleteHistory,
   getHistory,
   listHistory,
   markHistorySynced,
@@ -128,5 +137,71 @@ describe('sync bookkeeping', () => {
     await deleteHistory('a')
     expect(await getHistory('a')).toBeUndefined()
     await deleteHistory('a') // already gone is fine
+  })
+})
+
+describe('Recently deleted', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  it('moves a session out of the list and back, remembering to tell the club each time', async () => {
+    await archive('a', session())
+    await archive('b', session(), 2_000)
+    await softDeleteHistory('a', 5_000)
+    expect((await listHistory()).map((r) => r.id)).toEqual(['b'])
+    expect(await listDeletedHistory()).toMatchObject([{ id: 'a', deletedAt: 5_000, deletionPending: 'delete' }])
+
+    await markDeletionSent('a', 'delete')
+    expect((await getHistory('a'))?.deletionPending).toBeUndefined()
+
+    await restoreHistoryRecord('a')
+    expect((await listHistory()).map((r) => r.id)).toEqual(['b', 'a'])
+    expect((await pendingDeletions()).map((r) => [r.id, r.deletionPending])).toEqual([['a', 'restore']])
+  })
+
+  it('removes a session for good at once with no club, or once the club has been told', async () => {
+    await archive('a', session())
+    await archive('b', session())
+    await purgeHistoryRecord('a', false)
+    expect(await getHistory('a')).toBeUndefined()
+
+    await purgeHistoryRecord('b', true, 5_000)
+    expect(await listHistory()).toEqual([])
+    expect((await getHistory('b'))?.deletionPending).toBe('purge')
+    await markDeletionSent('b', 'purge')
+    expect(await getHistory('b')).toBeUndefined()
+  })
+
+  it('does not forget a change made again while the earlier one was being sent', async () => {
+    await archive('a', session())
+    await softDeleteHistory('a')
+    await restoreHistoryRecord('a')
+    await markDeletionSent('a', 'delete') // the delete went through, but a restore is now waiting
+    expect((await getHistory('a'))?.deletionPending).toBe('restore')
+  })
+
+  it('follows another device deleting or restoring, but never over a change made here', async () => {
+    await archive('a', session())
+    await archive('b', session())
+    await restoreHistoryRecord('b')
+    await followClubDeletion('a', 7_000)
+    await followClubDeletion('b', 7_000)
+    expect((await getHistory('a'))?.deletedAt).toBe(7_000)
+    expect((await getHistory('b'))?.deletedAt).toBeUndefined()
+    await followClubRestore('a')
+    expect((await getHistory('a'))?.deletedAt).toBeUndefined()
+  })
+
+  it('removes sessions deleted more than 30 days ago, unless the club still has to be told', async () => {
+    const now = 100 * DAY
+    for (const id of ['old', 'waiting', 'recent']) await archive(id, session())
+    await softDeleteHistory('old', now - 31 * DAY)
+    await markDeletionSent('old', 'delete')
+    await softDeleteHistory('waiting', now - 31 * DAY)
+    await softDeleteHistory('recent', now - 29 * DAY)
+    await markDeletionSent('recent', 'delete')
+    await purgeExpiredHistory(now)
+    expect(await getHistory('old')).toBeUndefined()
+    expect(await getHistory('waiting')).toBeDefined()
+    expect(await getHistory('recent')).toBeDefined()
   })
 })

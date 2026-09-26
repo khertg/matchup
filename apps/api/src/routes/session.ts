@@ -17,7 +17,16 @@ import {
 import type { FastifyInstance } from 'fastify'
 import type { RouteDeps } from '../app'
 import { AppError, defaultMessage } from '../errors'
-import { deleteHistory, getHistory, isHistoryId, listHistory, putHistory } from '../services/history'
+import {
+  deleteHistory,
+  getHistory,
+  isHistoryId,
+  listDeletedHistory,
+  listHistory,
+  purgeHistory,
+  putHistory,
+  restoreHistory,
+} from '../services/history'
 import { recordLifetime, MAX_PLAYERS_PER_BATCH } from '../services/lifetime'
 import { renamePlayer } from '../services/players'
 import { getRoster, putRoster } from '../services/roster'
@@ -34,6 +43,7 @@ const publishBody = {
     baseRevision: { type: 'integer', minimum: 0 },
     sessionId: { type: 'string', maxLength: 64 },
     startedAt: { type: 'string', maxLength: 40 },
+    live: { type: 'boolean' },
   },
 } as const
 
@@ -127,17 +137,20 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
         throw new AppError('payload_too_large')
       }
 
-      const { baseRevision, sessionId, startedAt } = request.body
+      const { baseRevision, sessionId, startedAt, live } = request.body
       if (sessionId !== undefined && !isHistoryId(sessionId)) throw new AppError('invalid_request')
       if (startedAt !== undefined && Number.isNaN(Date.parse(startedAt))) throw new AppError('invalid_request')
-      const result = await publishSession(db, slug, snapshot, backup, { baseRevision, sessionId, startedAt })
+      const result = await publishSession(db, slug, snapshot, backup, { baseRevision, sessionId, startedAt, live })
       if ('conflict' in result) {
         // Another staff device changed or ended the session: this one rebases on the club's copy.
         const body: ConflictBody = { error: 'conflict', message: defaultMessage('conflict'), current: result.conflict }
         return reply.code(409).send(body)
       }
-      hub.publish(slug, { type: 'update', row: result.row })
-      const response: PublishResponse = { updatedAt: result.row.updatedAt, revision: result.revision }
+      // Viewers see the board only while it is live; staff devices follow every change by its revision.
+      if (result.row) hub.publish(slug, { type: 'update', row: result.row })
+      else if (result.wasLive) hub.publish(slug, { type: 'cleared' })
+      hub.publish(slug, { type: 'revision', revision: result.revision })
+      const response: PublishResponse = { updatedAt: result.updatedAt, revision: result.revision }
       return response
     },
   )
@@ -226,6 +239,12 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
     return { sessions: await listHistory(db, slug) }
   })
 
+  // Recently deleted: past sessions that can still be restored. (A fixed path, so never taken for an id.)
+  api.get('/history/deleted', async (request) => {
+    const { slug } = await authenticate(db, request)
+    return { sessions: await listDeletedHistory(db, slug) }
+  })
+
   api.get<{ Params: { id: string } }>('/history/:id', async (request) => {
     const { slug } = await authenticate(db, request)
     if (!isHistoryId(request.params.id)) throw new AppError('not_found')
@@ -234,9 +253,23 @@ export function registerSessionRoutes(api: FastifyInstance, { db, config, hub }:
     return state
   })
 
-  api.delete<{ Params: { id: string } }>('/history/:id', { config: write }, async (request, reply) => {
+  // Moves it to Recently deleted; with ?permanent=1 it is removed for good. An older app's delete is restorable.
+  api.delete<{ Params: { id: string }; Querystring: { permanent?: string } }>(
+    '/history/:id',
+    { config: write },
+    async (request, reply) => {
+      const { slug } = await authenticate(db, request)
+      if (isHistoryId(request.params.id)) {
+        if (request.query.permanent === '1') await purgeHistory(db, slug, request.params.id)
+        else await deleteHistory(db, slug, request.params.id)
+      }
+      return reply.code(204).send()
+    },
+  )
+
+  api.post<{ Params: { id: string } }>('/history/:id/restore', { config: write }, async (request, reply) => {
     const { slug } = await authenticate(db, request)
-    if (isHistoryId(request.params.id)) await deleteHistory(db, slug, request.params.id)
+    if (isHistoryId(request.params.id)) await restoreHistory(db, slug, request.params.id)
     return reply.code(204).send()
   })
 }
