@@ -1,10 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Lock } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -14,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { AddPlayerForm } from '@/components/AddPlayerForm'
 import { RosterCheckIn } from '@/components/RosterCheckIn'
 import {
   Select,
@@ -22,27 +22,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { MAX_PLAYER_NAME_LENGTH } from '@q2dink/shared'
 import type { Gender, SkillLevel } from '@/db/db'
 import { addOrGetPlayer, listRoster } from '@/db/roster'
 import { useClubAuth } from '@/cloud/auth'
 import { requestRosterSync } from '@/cloud/sync'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { SkillBadge } from '@/components/SkillBadge'
-import { DEFAULT_SKILL, SKILL_LEVELS, skillOptionLabel } from '@/lib/skill'
 import { useSkillEditor } from '@/lib/useSkillEditor'
 import { lockStatus, playingIds, type AwayPartner } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
-
-/** Select values can't be empty, so "not set" is a sentinel. */
-type GenderChoice = Gender | 'U'
-
-const GENDER_OPTIONS: { value: GenderChoice; label: string }[] = [
-  { value: 'U', label: 'Not set' },
-  { value: 'M', label: 'Male' },
-  { value: 'F', label: 'Female' },
-]
 
 function PartnersCard({ session }: { session: SessionState }) {
   const lockPartners = useSessionStore((s) => s.lockPartners)
@@ -191,35 +180,14 @@ export function CheckInScreen({ session }: { session: SessionState }) {
   // Bring in players the club's other devices saved, as soon as check-in opens.
   useEffect(() => requestRosterSync(), [clubSlug])
 
-  const [name, setName] = useState('')
-  const [skill, setSkill] = useState<SkillLevel>(DEFAULT_SKILL)
-  const [gender, setGender] = useState<GenderChoice>('U')
-
   const genderRequired = session.mode === 'doubles' && session.matchmaking === 'mixed'
-  const canSubmit = name.trim() !== '' && (!genderRequired || gender !== 'U')
 
-  function handleNameChange(value: string) {
-    setName(value)
-    // Returning players (picked from auto-complete) keep their saved details.
-    const known = roster?.find((p) => p.name.toLowerCase() === value.trim().toLowerCase())
-    if (known) {
-      setSkill(known.skill)
-      if (known.gender) setGender(known.gender)
-    }
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!canSubmit) return
-    const player = await addOrGetPlayer(name, skill, gender === 'U' ? undefined : gender, clubSlug)
+  async function handleAdd(name: string, skill: SkillLevel, gender: Gender | undefined) {
+    const player = await addOrGetPlayer(name, skill, gender, clubSlug)
     requestRosterSync()
     const added = checkInPlayer(player)
     toast(added ? `${player.name} checked in` : `${player.name} is already checked in`)
-    if (added) {
-      setName('')
-      setSkill(DEFAULT_SKILL)
-      setGender('U')
-    }
+    return added
   }
 
   const playing = playingIds(session).length
@@ -231,57 +199,7 @@ export function CheckInScreen({ session }: { session: SessionState }) {
           <CardTitle>Check in a player</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="player-name">Player name</Label>
-              <Input
-                id="player-name"
-                list="roster-players"
-                autoComplete="off"
-                maxLength={MAX_PLAYER_NAME_LENGTH}
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-              />
-              <datalist id="roster-players">
-                {roster?.map((p) => <option key={p.id} value={p.name} />)}
-              </datalist>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="player-skill">Skill level</Label>
-              <Select value={String(skill)} onValueChange={(v) => setSkill(Number(v) as SkillLevel)}>
-                <SelectTrigger id="player-skill" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SKILL_LEVELS.map((s) => (
-                    <SelectItem key={s.value} value={String(s.value)}>
-                      {skillOptionLabel(s)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="player-gender">
-                Gender{genderRequired ? ' (required for mixed doubles)' : ' (optional)'}
-              </Label>
-              <Select value={gender} onValueChange={(v) => setGender(v as GenderChoice)}>
-                <SelectTrigger id="player-gender" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {GENDER_OPTIONS.map((g) => (
-                    <SelectItem key={g.value} value={g.value}>
-                      {g.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button type="submit" className="h-11 w-full" disabled={!canSubmit}>
-              Check in
-            </Button>
-          </form>
+          <AddPlayerForm roster={roster} genderRequired={genderRequired} submitLabel="Check in" onSubmit={handleAdd} />
         </CardContent>
       </Card>
 

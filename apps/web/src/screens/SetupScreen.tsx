@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ClubPanel } from '@/components/ClubPanel'
 import { LifetimeLeaderboard } from '@/components/LifetimeLeaderboard'
 import { PastSessionsDialog } from '@/components/PastSessionsDialog'
+import { SavedPlayersDialog } from '@/components/SavedPlayersDialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -156,6 +157,7 @@ function SetupCard() {
           </Button>
         </form>
         <div className="mt-2 space-y-1">
+          <SavedPlayersDialog />
           <PastSessionsDialog />
           <LifetimeLeaderboard />
         </div>

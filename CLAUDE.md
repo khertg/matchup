@@ -76,6 +76,7 @@ The header shows only the version, so without a bump two builds look the same on
 
 ## Conventions and pitfalls
 
+- **Every feature and bug fix comes with unit tests** (Vitest, next to the code: `*.test.ts`), not only e2e. Put the logic where it can be tested without a browser (the engine, `lib/`, `db/`, `cloud/`) and test it there; for a bug, write the failing test first. E2E specs are in addition, for the flow through the UI.
 - Tests that need a running board start games explicitly (`startGame`/`fillCourts`), never rely on check-in doing it. E2E helpers live in `apps/web/e2e/helpers.ts` (`startSession`, `checkIn`, `startGame`, `recordWin`, `cancelGame`).
 - E2E gotchas: Sonner toasts linger about 10 seconds, so `getByText('Court 1: Team A won')` can match twice; Radix Tabs unmount inactive tabs (switch to Board before looking for court controls); while a dialog is open, `getByRole` cannot see the page behind it (aria-hidden); the Next up card contains list items, so scope queue rows with `ol > li`.
 - The working tree can be CRLF on Windows. When scripting edits, normalise line endings first. Avoid backticks and `$'` in shell heredocs or `node -e` strings; use the editor tools for code containing template literals.
