@@ -6,6 +6,8 @@ import { LifetimeLeaderboard } from '@/components/LifetimeLeaderboard'
 import { PastSessionsDialog } from '@/components/PastSessionsDialog'
 import { SavedPlayersDialog } from '@/components/SavedPlayersDialog'
 import { ActivityDialog } from '@/components/ActivityDialog'
+import { ResetDeviceDialog } from '@/components/ResetDeviceDialog'
+import { cloud } from '@/cloud/client'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -162,6 +164,8 @@ function SetupCard() {
           <PastSessionsDialog />
           <LifetimeLeaderboard />
           <ActivityDialog label="Club activity" />
+          {/* With a cloud it sits in the club panel, next to Log out. */}
+          {!cloud && <ResetDeviceDialog variant="ghost" />}
         </div>
       </CardContent>
     </Card>

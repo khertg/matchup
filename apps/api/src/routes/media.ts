@@ -1,7 +1,6 @@
 import type {
   PhotoSharingRequest,
   PutAvatarRequest,
-  PutLogoRequest,
   StaffAvatar,
   StaffAvatarIndex,
 } from '@q2dink/shared'
@@ -11,13 +10,10 @@ import { AppError } from '../errors'
 import {
   checkKey,
   deleteAvatar,
-  deleteLogo,
   getAvatarIndex,
   getAvatarPhoto,
-  getLogo,
   getStaffAvatar,
   putAvatar,
-  putLogo,
   setPhotoSharing,
   type StoredImage,
 } from '../services/media'
@@ -36,20 +32,6 @@ const avatarBody = {
       required: ['data'],
       additionalProperties: false,
       properties: { data: { type: 'string', maxLength: 80 * 1024 } },
-    },
-  },
-} as const
-
-const logoBody = {
-  type: 'object',
-  required: ['logo'],
-  additionalProperties: false,
-  properties: {
-    logo: {
-      type: 'object',
-      required: ['data'],
-      additionalProperties: false,
-      properties: { data: { type: 'string', maxLength: 200 * 1024 } },
     },
   },
 } as const
@@ -86,21 +68,21 @@ function sendImage(request: FastifyRequest, reply: FastifyReply, image: StoredIm
   return reply.send(image.bytes)
 }
 
-/** The club's logo and player avatars. Staff change them; anyone with the live link can look. */
+/** Player avatars. Staff change them; anyone with the live link can look. */
 export function registerMediaRoutes(api: FastifyInstance, { db, config }: RouteDeps): void {
   const write = {
     rateLimit: { max: config.rateLimit.write.max, timeWindow: config.rateLimit.write.windowMs },
   }
 
-  api.put<{ Body: PutLogoRequest }>('/logo', { config: write, schema: { body: logoBody } }, async (request, reply) => {
-    const { slug } = await authenticate(db, request)
-    await putLogo(db, slug, request.body.logo.data)
+  // Clubs no longer have logos. An older cached app may still send one it kept: accept it and keep
+  // nothing, so it stops retrying.
+  api.put('/logo', { config: write }, async (request, reply) => {
+    await authenticate(db, request)
     return reply.code(204).send()
   })
 
   api.delete('/logo', { config: write }, async (request, reply) => {
-    const { slug } = await authenticate(db, request)
-    await deleteLogo(db, slug)
+    await authenticate(db, request)
     return reply.code(204).send()
   })
 
@@ -160,13 +142,6 @@ export function registerMediaRoutes(api: FastifyInstance, { db, config }: RouteD
       return avatar
     },
   )
-
-  api.get<{ Params: { slug: string } }>('/clubs/:slug/logo', { schema: { params: slugParams } }, async (request, reply) => {
-    const logo = await getLogo(db, publicSlug(request.params.slug))
-    // An unknown club and a club without a logo look exactly the same.
-    if (!logo) throw new AppError('not_found')
-    return sendImage(request, reply, logo)
-  })
 
   api.get<{ Params: { slug: string } }>(
     '/clubs/:slug/avatars',

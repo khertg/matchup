@@ -61,10 +61,9 @@ Everything is under `/api` and speaks JSON. Errors look like `{ "error": "<code>
 | `GET /clubs/:slug/live` | none | The public live board, with `ETag` (`304` when unchanged). `404` for an unknown club and for a club with no session, identically. |
 | `GET /clubs/:slug/live/stream` | none | Server-Sent Events: `update` (carries the board) and `cleared`, plus a heartbeat. |
 | `GET /clubs/:slug/players` | none | The club leaderboard. |
-| `PUT /logo` `{logo: {data}}`, `DELETE /logo` | staff | Set or remove the club logo (base64 PNG, JPEG or WebP, at most 128 KB; the type is decided from the bytes, SVG is refused). |
+| `PUT /logo`, `DELETE /logo` | staff | Kept for older cached apps: accepted (`204`) and ignored. Clubs no longer have logos. |
 | `PUT /avatars/:key`, `DELETE /avatars/:key`, `DELETE /avatars` | staff | Set or remove a player's avatar (`key` is the lower-case name): `{kind: "emoji", emoji, color?}`, `{kind: "initials", color}` or `{kind: "photo", photo: {data}}` (at most 48 KB). `DELETE /avatars` removes every photo and keeps emoji and initials. At most 500 per club. |
-| `GET /clubs/:slug/logo` | none | The logo image (`ETag`; cached for a year when the URL carries `?v=`). `404` for an unknown club and a club with no logo, identically. |
-| `GET /clubs/:slug/avatars` | none | `{avatars, logo}`: every avatar by name (without photos) and the logo's version, with `ETag`. |
+| `GET /clubs/:slug/avatars` | none | `{avatars, logo, name}`: every avatar by name (without photos), with `ETag`. `logo` is always `null` (kept for older apps). |
 | `GET /clubs/:slug/avatars/:key/photo` | none | A player's photo image. |
 | `POST /audit` `{entries[]}` | staff | Add to the club's activity log (at most 100 per request). Each entry's `id` is a UUID made on the device, so sending it again stores it once. |
 | `GET /audit?sessionId&deviceId&before&limit` | staff | The activity log, newest first, `{entries, next}`; pass `next` as `before` for the following page. |

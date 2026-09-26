@@ -105,7 +105,7 @@ function Editor({
     if (!picture) return
     setBusy(true)
     try {
-      setDraft({ kind: 'photo', data: await processImage(picture.file, 'avatar', crop) })
+      setDraft({ kind: 'photo', data: await processImage(picture.file, crop) })
       setPicture(null)
     } catch (e) {
       setError(e instanceof ImageError ? e.message : 'That picture could not be used.')
@@ -159,7 +159,6 @@ function Editor({
         </DialogHeader>
         <PhotoCropper
           picture={picture}
-          mode="circle"
           busy={busy}
           onConfirm={(crop) => void applyCrop(crop)}
           onCancel={() => setPicture(null)}

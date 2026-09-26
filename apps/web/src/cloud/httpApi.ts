@@ -171,14 +171,6 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
       return (await request<{ devices: ClubDevice[] }>('GET', '/devices', { token })).devices
     },
 
-    async putLogo(token, data) {
-      await request('PUT', '/logo', { token, body: { logo: { data } } })
-    },
-
-    async deleteLogo(token) {
-      await request('DELETE', '/logo', { token })
-    },
-
     async putAvatar(token, key, avatar) {
       await request('PUT', `/avatars/${encodeURIComponent(key)}`, { token, body: avatar })
     },
@@ -197,8 +189,6 @@ export function createHttpApi(baseUrl: string, options: Options = {}): CloudApi 
       request<StaffAvatar>('GET', `/avatars/${encodeURIComponent(key)}`, { token, nullOn404: true }),
 
     fetchAvatarIndex: (slug) => request<AvatarIndex>('GET', `/clubs/${slugPath(slug)}/avatars`),
-
-    logoUrl: (slug, version) => `${base}/clubs/${slugPath(slug)}/logo?v=${version}`,
 
     avatarPhotoUrl: (slug, key, version) =>
       `${base}/clubs/${slugPath(slug)}/avatars/${encodeURIComponent(key)}/photo?v=${version}`,

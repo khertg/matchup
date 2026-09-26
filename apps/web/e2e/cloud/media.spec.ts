@@ -27,7 +27,7 @@ async function viewerPage(browser: Browser, slug: string) {
 
 const index = (request: APIRequestContext, slug: string) => async () => {
   const response = await request.get(`/api/clubs/${slug}/avatars`)
-  return (await response.json()) as { avatars: Record<string, { kind: string; emoji?: string }>; logo: { v: number } | null }
+  return (await response.json()) as { avatars: Record<string, { kind: string; emoji?: string }>; logo: null }
 }
 
 const shareBox = (page: Page) => page.getByLabel('Show player photos on the live page')

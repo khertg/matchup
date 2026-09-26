@@ -1,39 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import type { Picture } from '@/lib/avatar'
-import {
-  MAX_ZOOM,
-  MIN_ZOOM,
-  coverScale,
-  cropFromRect,
-  cropFromView,
-  fullRect,
-  initialView,
-  minRectSize,
-  moveRect,
-  panView,
-  resizeRect,
-  zoomView,
-  type Crop,
-  type Handle,
-  type Rect,
-  type View,
-} from '@/lib/crop'
+import { MAX_ZOOM, MIN_ZOOM, coverScale, cropFromView, initialView, panView, zoomView, type Crop, type View } from '@/lib/crop'
 
 /** Side of the square frame the avatar picture is dragged under, in CSS pixels. */
 const FRAME = 256
-/** The largest area the logo picture is shown in. */
-const RECT_STAGE = { width: 320, height: 240 }
 
 interface Props {
   picture: Picture
-  /** "circle": drag and zoom under a round frame (avatars). "rect": a free rectangle (logos). */
-  mode: 'circle' | 'rect'
   busy?: boolean
   /** The chosen part of the picture, in its own pixels. */
   onConfirm: (crop: Crop) => void
-  /** Rect mode only: keep the whole picture. */
-  onWhole?: () => void
   onCancel: () => void
 }
 
@@ -49,14 +26,8 @@ function whole(crop: Crop, width: number, height: number): Crop {
   }
 }
 
-/** Choose which part of a picked picture to use. */
-export function PhotoCropper(props: Props) {
-  return props.mode === 'circle' ? <CircleCropper {...props} /> : <RectCropper {...props} />
-}
-
-// ---- avatars: drag and zoom under a round frame ------------------------------------
-
-function CircleCropper({ picture, busy, onConfirm, onCancel }: Props) {
+/** Choose which part of a picked picture makes the avatar: drag and zoom it under a round frame. */
+export function PhotoCropper({ picture, busy, onConfirm, onCancel }: Props) {
   const { width, height } = picture
   const [view, setView] = useState<View>(initialView)
   const stage = useRef<HTMLDivElement>(null)
@@ -201,144 +172,6 @@ function CircleCropper({ picture, busy, onConfirm, onCancel }: Props) {
         </Button>
         <Button type="button" disabled={busy} onClick={() => onConfirm(crop)}>
           Use photo
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// ---- logos: a free rectangle over the whole picture -----------------------------------
-
-const HANDLES: { handle: Handle; label: string; style: React.CSSProperties; cursor: string }[] = [
-  { handle: 'nw', label: 'top-left corner', style: { left: 0, top: 0 }, cursor: 'nwse-resize' },
-  { handle: 'n', label: 'top edge', style: { left: '50%', top: 0 }, cursor: 'ns-resize' },
-  { handle: 'ne', label: 'top-right corner', style: { left: '100%', top: 0 }, cursor: 'nesw-resize' },
-  { handle: 'e', label: 'right edge', style: { left: '100%', top: '50%' }, cursor: 'ew-resize' },
-  { handle: 'se', label: 'bottom-right corner', style: { left: '100%', top: '100%' }, cursor: 'nwse-resize' },
-  { handle: 's', label: 'bottom edge', style: { left: '50%', top: '100%' }, cursor: 'ns-resize' },
-  { handle: 'sw', label: 'bottom-left corner', style: { left: 0, top: '100%' }, cursor: 'nesw-resize' },
-  { handle: 'w', label: 'left edge', style: { left: 0, top: '50%' }, cursor: 'ew-resize' },
-]
-
-function RectCropper({ picture, busy, onConfirm, onWhole, onCancel }: Props) {
-  const { width, height } = picture
-  const min = minRectSize(width, height)
-  const [rect, setRect] = useState<Rect>(() => fullRect(width, height))
-  // The picture is shown as large as fits, so a small logo is not tiny on screen.
-  const k = Math.min(RECT_STAGE.width / width, RECT_STAGE.height / height)
-  const drag = useRef<{ handle: Handle | 'move'; startX: number; startY: number; start: Rect } | null>(null)
-
-  function begin(handle: Handle | 'move', event: PointerEvent<HTMLElement>) {
-    event.stopPropagation()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { handle, startX: event.clientX, startY: event.clientY, start: rect }
-  }
-
-  function handleMove(event: PointerEvent<HTMLElement>) {
-    const d = drag.current
-    if (!d) return
-    const dx = (event.clientX - d.startX) / k
-    const dy = (event.clientY - d.startY) / k
-    setRect(d.handle === 'move' ? moveRect(d.start, dx, dy, width, height) : resizeRect(d.start, d.handle, dx, dy, width, height, min))
-  }
-
-  const end = () => {
-    drag.current = null
-  }
-
-  function handleKey(event: KeyboardEvent<HTMLElement>, handle: Handle | 'move') {
-    const step = Math.max(1, Math.round(4 / k))
-    const arrows: Record<string, [number, number]> = {
-      ArrowLeft: [-step, 0],
-      ArrowRight: [step, 0],
-      ArrowUp: [0, -step],
-      ArrowDown: [0, step],
-    }
-    const move = arrows[event.key]
-    if (!move) return
-    event.preventDefault()
-    if (handle === 'move' && event.shiftKey) {
-      // Shift + arrows resize from the bottom and right edges: right and down grow, left and up shrink.
-      setRect((r) => resizeRect(r, 'se', move[0], move[1], width, height, min))
-    } else if (handle === 'move') {
-      setRect((r) => moveRect(r, move[0], move[1], width, height))
-    } else {
-      setRect((r) => resizeRect(r, handle, move[0], move[1], width, height, min))
-    }
-  }
-
-  const crop = whole(cropFromRect(rect), width, height)
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-center">
-        <div
-          data-testid="crop-stage"
-          data-crop={`${crop.sx},${crop.sy},${crop.sw},${crop.sh}`}
-          data-size={`${width}x${height}`}
-          className="relative touch-none overflow-hidden rounded-lg bg-[repeating-conic-gradient(#e5e7eb_0%_25%,#f9fafb_0%_50%)] bg-[length:16px_16px] select-none"
-          style={{ width: width * k, height: height * k }}
-        >
-          <img
-            src={picture.url}
-            alt="The picture to crop"
-            draggable={false}
-            className="pointer-events-none absolute inset-0 size-full max-w-none"
-          />
-          <div
-            role="group"
-            tabIndex={0}
-            aria-label="Crop rectangle. Drag to move it. Arrow keys move it, shift and arrow keys resize it."
-            data-testid="crop-rect"
-            className="absolute border-2 border-white outline outline-1 outline-black/60 focus-visible:ring-[3px] focus-visible:ring-ring"
-            style={{
-              left: rect.x * k,
-              top: rect.y * k,
-              width: rect.w * k,
-              height: rect.h * k,
-              cursor: 'move',
-              boxShadow: '0 0 0 999px rgba(0,0,0,0.5)',
-            }}
-            onPointerDown={(e) => begin('move', e)}
-            onPointerMove={handleMove}
-            onPointerUp={end}
-            onPointerCancel={end}
-            onKeyDown={(e) => handleKey(e, 'move')}
-          >
-            {HANDLES.map(({ handle, label, style, cursor }) => (
-              <button
-                key={handle}
-                type="button"
-                aria-label={`Resize from the ${label}`}
-                data-handle={handle}
-                className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow focus-visible:ring-[3px] focus-visible:ring-ring"
-                style={{ ...style, cursor }}
-                onPointerDown={(e) => begin(handle, e)}
-                onPointerMove={handleMove}
-                onPointerUp={end}
-                onPointerCancel={end}
-                onKeyDown={(e) => {
-                  e.stopPropagation()
-                  handleKey(e, handle)
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-      <p className="text-center text-xs text-muted-foreground" aria-live="polite">
-        Using {crop.sw} x {crop.sh} of {width} x {height}
-      </p>
-
-      <div className="grid gap-2">
-        <Button type="button" disabled={busy} onClick={() => onConfirm(crop)}>
-          Crop and use
-        </Button>
-        <Button type="button" variant="outline" disabled={busy} onClick={onWhole}>
-          Use whole picture
-        </Button>
-        <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
-          Cancel
         </Button>
       </div>
     </div>

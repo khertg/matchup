@@ -18,6 +18,7 @@ import { recordAudit } from '@/cloud/audit'
 import { flushAudit, joinClubSession, useSyncStore } from '@/cloud/sync'
 import { PhotoSharingToggle } from '@/components/PhotoSharingToggle'
 import { RenameDialog } from '@/components/RenameDialog'
+import { ResetDeviceDialog } from '@/components/ResetDeviceDialog'
 import { SharePanel } from '@/components/SharePanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -319,6 +320,7 @@ function SignedIn() {
         <Button variant="outline" onClick={handleLogOut}>
           Log out
         </Button>
+        <ResetDeviceDialog />
       </div>
       <SharePanel open={shareOpen} onOpenChange={setShareOpen} />
       <RenameDialog

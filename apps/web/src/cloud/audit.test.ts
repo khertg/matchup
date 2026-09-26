@@ -21,7 +21,9 @@ import { useSessionStore } from '@/store/session'
 import { CloudError, type CloudApi } from './api'
 import { mergeEntries, newAuditEntry, queueAudit, recordAudit, unsentAudit } from './audit'
 import { useClubAuth } from './auth'
-import { flushAudit } from './sync'
+import { countUnsent, flushAudit } from './sync'
+import { NOTHING_UNSENT } from '@/lib/reset'
+import { addOrGetPlayer } from '@/db/roster'
 
 const club = { slug: 'downtown', name: 'Downtown', token: 'tok-1' }
 const player = (id: number): RosterPlayer => ({ id, name: `P${id}`, skill: 3 })
@@ -167,5 +169,31 @@ describe('mergeEntries', () => {
       ['B', true],
       ['A', false],
     ])
+  })
+})
+
+describe('countUnsent', () => {
+  beforeEach(async () => {
+    await db.players.clear()
+    await db.history.clear()
+  })
+
+  it('counts what the club has not been sent yet, for the club signed in', async () => {
+    store().startSession('Open play', 'doubles', 1)
+    store().shareSession()
+    store().checkInPlayer(player(1))
+    await addOrGetPlayer('Ann', 3, undefined, 'downtown')
+    await addOrGetPlayer('Zed', 3, undefined, 'uptown')
+    useClubAuth.setState({ pendingLifetime: [{ batchId: 'b', slug: 'downtown', players: [] }, { batchId: 'c', slug: 'uptown', players: [] }] })
+    await vi.waitFor(async () => expect(await db.auditQueue.count()).toBeGreaterThan(0))
+
+    const counts = await countUnsent()
+    expect(counts).toMatchObject({ sessionChanges: 1, savedPlayers: 1, leaderboard: 1, pastSessions: 0 })
+    expect(counts.activity).toBe(await db.auditQueue.where('clubSlug').equals('downtown').count())
+  })
+
+  it('counts nothing without a club: there is nowhere to send it', async () => {
+    useClubAuth.setState({ club: null })
+    expect(await countUnsent()).toEqual(NOTHING_UNSENT)
   })
 })

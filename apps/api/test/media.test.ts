@@ -37,94 +37,17 @@ const photo = (bytes: Buffer) => ({ kind: 'photo', photo: { data: b64(bytes) } }
 const sharePhotos = (token: string | null, on: unknown) =>
   app.inject({ method: 'PUT', url: '/api/photo-sharing', headers: token ? bearer(token) : {}, payload: { on } as object })
 
-describe('club logo', () => {
-  it('needs a login to change', async () => {
-    const { slug } = await createClub(app)
-    for (const token of [null, 'nope', '0'.repeat(64)]) {
-      expect((await putLogo(token, { logo: { data: b64(png()) } })).statusCode).toBe(401)
-      const del = await app.inject({ method: 'DELETE', url: '/api/logo', headers: token ? bearer(token) : {} })
-      expect(del.statusCode).toBe(401)
-    }
-    expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo` })).statusCode).toBe(404)
-  })
-
-  it('is saved, shown to anyone with its own image type, replaced and removed', async () => {
+describe('club logo (gone)', () => {
+  it('accepts an older app’s logo upload or removal, still only from staff, and keeps nothing', async () => {
     const { token, slug } = await createClub(app)
+    for (const bad of [null, 'nope']) {
+      expect((await putLogo(bad, { logo: { data: b64(png()) } })).statusCode).toBe(401)
+      expect((await app.inject({ method: 'DELETE', url: '/api/logo', headers: bad ? bearer(bad) : {} })).statusCode).toBe(401)
+    }
     expect((await putLogo(token, { logo: { data: b64(png()) } })).statusCode).toBe(204)
-    let response = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo` })
-    expect(response.statusCode).toBe(200)
-    expect(response.headers['content-type']).toBe('image/png')
-    expect(response.headers['x-content-type-options']).toBe('nosniff')
-    expect(Buffer.from(response.rawPayload).equals(png())).toBe(true)
-
-    // A new logo replaces it, and its type follows the bytes.
-    expect((await putLogo(token, { logo: { data: b64(jpeg()) } })).statusCode).toBe(204)
-    response = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo` })
-    expect(response.headers['content-type']).toBe('image/jpeg')
-
     expect((await app.inject({ method: 'DELETE', url: '/api/logo', headers: bearer(token) })).statusCode).toBe(204)
     expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo` })).statusCode).toBe(404)
-  })
-
-  it('answers 304 to a matching ETag, and caches hard when the URL carries a version', async () => {
-    const { token, slug } = await createClub(app)
-    await putLogo(token, { logo: { data: b64(webp()) } })
-    const first = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo` })
-    expect(first.headers['cache-control']).toBe('no-cache')
-    const again = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo`, headers: { 'if-none-match': String(first.headers.etag) } })
-    expect(again.statusCode).toBe(304)
-    const versioned = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/logo?v=123` })
-    expect(versioned.headers['cache-control']).toContain('immutable')
-  })
-
-  it('accepts PNG, JPEG and WebP by their bytes, and nothing else', async () => {
-    const { token } = await createClub(app)
-    for (const good of [png(), jpeg(), webp()]) expect((await putLogo(token, { logo: { data: b64(good) } })).statusCode).toBe(204)
-    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>')
-    const bad = [svg, Buffer.from('<html><script>1</script></html>'), Buffer.from('GIF89a......'), Buffer.alloc(40, 0)]
-    for (const file of bad) {
-      const response = await putLogo(token, { logo: { data: b64(file) } })
-      expect(response.statusCode, file.toString('latin1').slice(0, 20)).toBe(400)
-      expect(response.json().error).toBe('invalid_request')
-    }
-  })
-
-  it('refuses text that is not base64, an empty image, and one that is too large', async () => {
-    const { token } = await createClub(app)
-    for (const data of ['not base64!!', '', 'abc', '====', 42]) {
-      expect((await putLogo(token, { logo: { data } })).statusCode, String(data)).toBe(400)
-    }
-    const huge = png(MEDIA_LIMITS.logoBytes + 10)
-    const response = await putLogo(token, { logo: { data: b64(huge) } })
-    expect(response.statusCode).toBe(413)
-    expect(response.json().error).toBe('payload_too_large')
-    expect((await putLogo(token, { logo: { data: b64(png(MEDIA_LIMITS.logoBytes - 16)) } })).statusCode).toBe(204)
-    expect((await putLogo(token, {})).statusCode).toBe(400)
-    expect((await putLogo(token, { logo: { data: b64(png()) }, extra: 1 })).statusCode).toBe(400)
-  })
-
-  it('belongs to its club only, and goes when the club goes', async () => {
-    const a = await createClub(app)
-    const b = await createClub(app)
-    await putLogo(a.token, { logo: { data: b64(png()) } })
-    expect((await app.inject({ method: 'GET', url: `/api/clubs/${b.slug}/logo` })).statusCode).toBe(404)
-    // Someone else's login cannot remove it.
-    await app.inject({ method: 'DELETE', url: '/api/logo', headers: bearer(b.token) })
-    expect((await app.inject({ method: 'GET', url: `/api/clubs/${a.slug}/logo` })).statusCode).toBe(200)
-    await db.query('delete from clubs where slug = $1', [a.slug])
-    const { rows } = await db.query('select 1 from club_logos')
-    expect(rows).toHaveLength(0)
-  })
-
-  it('looks the same for an unknown club, a badly formed name, and a club with no logo', async () => {
-    const { slug } = await createClub(app)
-    const answers = await Promise.all(
-      [slug, 'no-such-club', 'NOT VALID!'].map((s) => app.inject({ method: 'GET', url: `/api/clubs/${encodeURIComponent(s)}/logo` })),
-    )
-    for (const r of answers) {
-      expect(r.statusCode).toBe(404)
-      expect(r.json()).toEqual(answers[0].json())
-    }
+    expect((await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })).json().logo).toBeNull()
   })
 })
 
@@ -169,16 +92,6 @@ describe('player avatars', () => {
       const r = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars/${key}/photo` })
       expect(r.statusCode, key).toBe(404)
     }
-  })
-
-  it('tells viewers the logo version, and the list validator changes with it', async () => {
-    const { token, slug } = await createClub(app)
-    const before = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars` })
-    expect(before.json().logo).toBeNull()
-    await putLogo(token, { logo: { data: b64(png()) } })
-    const after = await app.inject({ method: 'GET', url: `/api/clubs/${slug}/avatars`, headers: { 'if-none-match': String(before.headers.etag) } })
-    expect(after.statusCode).toBe(200)
-    expect(Number.isFinite(after.json().logo.v)).toBe(true)
   })
 
   it('replaces a player’s avatar, and changes the list validator when anything changes', async () => {

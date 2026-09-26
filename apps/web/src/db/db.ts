@@ -106,6 +106,17 @@ db.version(5).stores({
   auditQueue: 'id, at, clubSlug',
 })
 
+// Version 6: clubs no longer have logos. A logo this device kept (and might still send) is dropped.
+db.version(6)
+  .stores({
+    players: '++id, name, clubSlug',
+    sessions: '++id, createdAt',
+    history: 'id, endedAt',
+    settings: 'key',
+    auditQueue: 'id, at, clubSlug',
+  })
+  .upgrade((tx) => tx.table('settings').delete('logo'))
+
 // A device that used the app under its old name brings its data across (see legacyMigration.ts) before the
 // first query runs.
 db.on('ready', () => migrateLegacyDatabase(db))

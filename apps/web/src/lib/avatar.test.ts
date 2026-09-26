@@ -7,11 +7,10 @@ import {
   colorFor,
   dataUrlBase64,
   dataUrlBytes,
-  fitWithin,
   initialsOf,
   squareCrop,
 } from './avatar'
-import { resolveAvatar, resolveLogo, type MediaUrls } from './avatars'
+import { resolveAvatar, type MediaUrls } from './avatars'
 
 describe('avatarKey', () => {
   it('is the trimmed, lower-case name, like the club leaderboard', () => {
@@ -78,19 +77,6 @@ describe('squareCrop', () => {
   })
 })
 
-describe('fitWithin', () => {
-  it('scales down to fit, keeping the shape', () => {
-    expect(fitWithin(1000, 500, 256)).toEqual({ width: 256, height: 128 })
-    expect(fitWithin(500, 1000, 256)).toEqual({ width: 128, height: 256 })
-    expect(fitWithin(512, 512, 256)).toEqual({ width: 256, height: 256 })
-  })
-
-  it('never scales up, and never reaches zero', () => {
-    expect(fitWithin(100, 50, 256)).toEqual({ width: 100, height: 50 })
-    expect(fitWithin(4000, 1, 256)).toEqual({ width: 256, height: 1 })
-  })
-})
-
 describe('data URL sizes', () => {
   it('measure the decoded bytes, with and without padding', () => {
     const bytes = (n: number) => `data:image/png;base64,${Buffer.alloc(n, 7).toString('base64')}`
@@ -105,11 +91,10 @@ describe('data URL sizes', () => {
 describe('which avatar is shown', () => {
   const urls: MediaUrls = {
     photo: (slug, key, v) => `/api/clubs/${slug}/avatars/${encodeURIComponent(key)}/photo?v=${v}`,
-    logo: (slug, v) => `/api/clubs/${slug}/logo?v=${v}`,
   }
-  const club = (avatars: Record<string, { kind: 'photo' | 'emoji' | 'initials'; emoji?: string; color?: string; v: number }>, logo: { v: number } | null = null) => ({
+  const club = (avatars: Record<string, { kind: 'photo' | 'emoji' | 'initials'; emoji?: string; color?: string; v: number }>) => ({
     slug: 'downtown',
-    index: { avatars, logo, name: null },
+    index: { avatars, logo: null, name: null },
   })
 
   it('prefers this device’s avatar for that name, ignoring case', () => {
@@ -156,25 +141,5 @@ describe('which avatar is shown', () => {
   it('does not use the club’s avatars when there is no cloud', () => {
     const c = club({ ann: { kind: 'emoji', emoji: '🎾', color: '#123456', v: 1 } })
     expect(resolveAvatar({ local: new Map(), club: c }, 'Ann', null).kind).toBe('initials')
-  })
-})
-
-describe('which logo is shown', () => {
-  const urls: MediaUrls = { photo: () => '', logo: (slug, v) => `/api/clubs/${slug}/logo?v=${v}` }
-  const clubWithLogo = { slug: 'downtown', index: { avatars: {}, logo: { v: 7 }, name: null } }
-
-  it('prefers this device’s logo, then the club’s', () => {
-    expect(resolveLogo({ localLogo: 'data:image/png;base64,AAAA', club: clubWithLogo }, urls)).toBe('data:image/png;base64,AAAA')
-    expect(resolveLogo({ localLogo: undefined, club: clubWithLogo }, urls)).toBe('/api/clubs/downtown/logo?v=7')
-  })
-
-  it('shows none when it was removed here, even if the club still has one for a moment', () => {
-    expect(resolveLogo({ localLogo: null, club: clubWithLogo }, urls)).toBeNull()
-  })
-
-  it('shows none when there is no logo anywhere, or no cloud', () => {
-    expect(resolveLogo({ localLogo: undefined, club: null }, urls)).toBeNull()
-    expect(resolveLogo({ localLogo: undefined, club: { slug: 'downtown', index: { avatars: {}, logo: null, name: null } } }, urls)).toBeNull()
-    expect(resolveLogo({ localLogo: undefined, club: clubWithLogo }, null)).toBeNull()
   })
 })

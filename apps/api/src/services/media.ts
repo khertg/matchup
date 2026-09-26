@@ -48,20 +48,6 @@ export function checkKey(key: string): string {
 
 const toEpoch = (value: unknown) => new Date(value as string | number | Date).getTime()
 
-export async function putLogo(db: Queryable, slug: string, data: unknown): Promise<void> {
-  const image = checkImage(data, MEDIA_LIMITS.logoBytes)
-  await db.query(
-    `insert into club_logos (club_slug, content_type, data, updated_at) values ($1, $2, $3, now())
-     on conflict (club_slug) do update
-       set content_type = excluded.content_type, data = excluded.data, updated_at = excluded.updated_at`,
-    [slug, image.type, image.data],
-  )
-}
-
-export async function deleteLogo(db: Queryable, slug: string): Promise<void> {
-  await db.query('delete from club_logos where club_slug = $1', [slug])
-}
-
 export interface StoredImage {
   type: ImageType
   bytes: Buffer
@@ -69,14 +55,6 @@ export interface StoredImage {
   version: number
 }
 
-export async function getLogo(db: Queryable, slug: string): Promise<StoredImage | null> {
-  const { rows } = await db.query<{ content_type: ImageType; data: string; updated_at: unknown }>(
-    'select content_type, data, updated_at from club_logos where club_slug = $1',
-    [slug],
-  )
-  const row = rows[0]
-  return row ? { type: row.content_type, bytes: Buffer.from(row.data, 'base64'), version: toEpoch(row.updated_at) } : null
-}
 
 /** Only pictographs (with their modifiers and joiners): no letters, digits or markup. */
 function isEmoji(text: string): boolean {
@@ -153,7 +131,8 @@ export async function getAvatarIndex(
   { staff = false }: { staff?: boolean } = {},
 ): Promise<{
   avatars: Record<string, AvatarInfo>
-  logo: { v: number } | null
+  /** Always null: clubs no longer have logos. Kept for older cached apps that read it. */
+  logo: null
   name: string | null
   sharePhotos: boolean
   etag: string
@@ -179,8 +158,7 @@ export async function getAvatarIndex(
       v: toEpoch(r.updated_at),
     }
   }
-  const logoRow = await db.query<{ updated_at: unknown }>('select updated_at from club_logos where club_slug = $1', [slug])
-  const logo = logoRow.rows[0] ? { v: toEpoch(logoRow.rows[0].updated_at) } : null
+  const logo = null
   const clubRow = await db.query<{ name: string }>('select name from clubs where slug = $1', [slug])
   const name = clubRow.rows[0]?.name ?? null
   const etag = `W/"${createHash('sha1')

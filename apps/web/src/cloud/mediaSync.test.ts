@@ -16,11 +16,9 @@ vi.hoisted(() => {
 import { db } from '@/db/db'
 import { addOrGetPlayer, setRosterAvatar } from '@/db/roster'
 import {
-  getLogoSetting,
   getPhotoSharingPending,
   getSharePhotos,
   getSyncClub,
-  setLogoSetting,
   setSharePhotos,
 } from '@/db/settings'
 import { CloudError, type CloudApi } from './api'
@@ -34,10 +32,8 @@ const INITIALS = { kind: 'initials' as const, color: '#abcdef' }
 
 type Fn = (...args: unknown[]) => Promise<void>
 
-function fakeApi(overrides: Partial<Record<'putLogo' | 'deleteLogo' | 'putAvatar' | 'deleteAvatar' | 'putPhotoSharing', Fn>> = {}) {
+function fakeApi(overrides: Partial<Record<'putAvatar' | 'deleteAvatar' | 'putPhotoSharing', Fn>> = {}) {
   const api = {
-    putLogo: vi.fn(overrides.putLogo ?? (async () => {})),
-    deleteLogo: vi.fn(overrides.deleteLogo ?? (async () => {})),
     putAvatar: vi.fn(overrides.putAvatar ?? (async () => {})),
     deleteAvatar: vi.fn(overrides.deleteAvatar ?? (async () => {})),
     putPhotoSharing: vi.fn(overrides.putPhotoSharing ?? (async () => {})),
@@ -131,36 +127,19 @@ describe('syncMedia', () => {
     expect(api.putAvatar).not.toHaveBeenCalled()
   })
 
-  it('sends the logo, and a removed logo as a removal, then forgets the pending change', async () => {
-    await setLogoSetting('data:image/png;base64,QUJD')
-    const first = fakeApi()
-    await syncMedia(first.cloudApi)
-    expect(first.api.putLogo).toHaveBeenCalledWith('tok-1', 'QUJD')
-    expect((await getLogoSetting())?.dirty).toBe(false)
-
-    await setLogoSetting(null)
-    const second = fakeApi()
-    await syncMedia(second.cloudApi)
-    expect(second.api.deleteLogo).toHaveBeenCalledWith('tok-1')
-    expect(await getLogoSetting()).toBeUndefined()
-  })
-
   it('leaves changes for later when the connection fails, and reports it', async () => {
     await setRosterAvatar((await addOrGetPlayer('Ann', 3)).id, EMOJI)
-    await setLogoSetting('data:image/png;base64,QUJD')
     const failing = fakeApi({
-      putLogo: async () => {
+      putAvatar: async () => {
         throw new CloudError('network', 'offline')
       },
     })
     expect(await syncMedia(failing.cloudApi)).toBe(false)
     expect(await dirty()).toEqual(['Ann'])
-    expect((await getLogoSetting())?.dirty).toBe(true)
 
     const working = fakeApi()
     expect(await syncMedia(working.cloudApi)).toBe(true)
     expect(await dirty()).toEqual([])
-    expect((await getLogoSetting())?.dirty).toBe(false)
   })
 
   it('gives up on an avatar the server will never accept, without holding up the others', async () => {
@@ -227,20 +206,17 @@ describe('when a different club logs in on the same device', () => {
     expect(await getSyncClub()).toBe('downtown')
   })
 
-  it("never sends the earlier club's unsent avatars or logo to the new club", async () => {
+  it("never sends the earlier club's unsent avatars to the new club", async () => {
     await syncMedia(fakeApi().cloudApi) // downtown is now the club this device syncs for
     await setRosterAvatar((await addOrGetPlayer('Ann', 3)).id, EMOJI)
-    await setLogoSetting('data:image/png;base64,QUJD')
     await setSharePhotos(true)
 
     useClubAuth.setState({ club: uptown })
     const { api, cloudApi } = fakeApi()
     expect(await syncMedia(cloudApi)).toBe(true)
     expect(api.putAvatar).not.toHaveBeenCalled()
-    expect(api.putLogo).not.toHaveBeenCalled()
     expect(api.deleteAvatar).not.toHaveBeenCalled()
     expect(await dirty()).toEqual([])
-    expect((await getLogoSetting())?.dirty).toBe(false)
     expect(await getSyncClub()).toBe('uptown')
     // The new club starts with photos private, and the earlier club's choice is not carried over.
     expect(await getSharePhotos()).toBe(false)

@@ -3,13 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import { addOrGetPlayer, markPhotosDirty, setClubAvatar, setRosterAvatar } from './roster'
 import {
-  getLogoSetting,
   getPhotoSharingPending,
   getSharePhotos,
-  markLogoSynced,
   markPhotosSentFor,
   photosSentFor,
-  setLogoSetting,
   setPhotoSharingPending,
   setSharePhotos,
 } from './settings'
@@ -88,28 +85,6 @@ describe('roster avatars', () => {
 })
 
 describe('device settings', () => {
-  it('keep the logo, marked as not sent, until it is sent', async () => {
-    expect(await getLogoSetting()).toBeUndefined()
-    await setLogoSetting('data:image/png;base64,AAAA')
-    expect(await getLogoSetting()).toEqual({ data: 'data:image/png;base64,AAAA', dirty: true })
-    await markLogoSynced()
-    expect(await getLogoSetting()).toEqual({ data: 'data:image/png;base64,AAAA', dirty: false })
-  })
-
-  it('remember a removed logo until the club has been told, then forget it', async () => {
-    await setLogoSetting('data:image/png;base64,AAAA')
-    await markLogoSynced()
-    await setLogoSetting(null)
-    expect(await getLogoSetting()).toEqual({ data: null, dirty: true })
-    await markLogoSynced()
-    expect(await getLogoSetting()).toBeUndefined()
-  })
-
-  it('sync of nothing is fine', async () => {
-    await markLogoSynced()
-    expect(await getLogoSetting()).toBeUndefined()
-  })
-
   it('share photos only once switched on, and remember a switch the club has not been told of', async () => {
     expect(await getSharePhotos()).toBe(false)
     await setSharePhotos(true)

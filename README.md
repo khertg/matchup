@@ -44,15 +44,16 @@ Matchmaking modes (doubles): *Auto-balanced* (first come, first served, even tea
 
 The active session is saved on the device, so a reload or going offline keeps it.
 
+**Reset this device** (next to **Log out** in the club panel, or on the setup screen without a club) removes everything the app keeps on the device (saved players, past sessions, a running session, settings and the login), as if it were just installed. Anything the club has not been sent yet is listed first, with **Try sending first**. The club's own data on the server is kept and comes back after logging in again; the device keeps its name.
+
 **Light and dark theme:** the button in the top-right corner of every screen (login, setup, session and the players' live page) chooses **Light**, **Dark** or **System** (follow the phone or computer, which is the default). The choice is remembered on the device.
 
-## Club logo and player avatars
+## Player avatars
 
-Every player has a round **avatar** and the club can have a **logo**, both changeable at any time.
+Every player has a round **avatar**, changeable at any time. (Clubs no longer have a logo; the Q2Dink mark is shown instead.)
 
 - **Avatars:** with nothing set a player shows their initials on a colour taken from their name. **Tap any avatar to see the picture large** (on the Board, Next up, courts, Check-in lists, roster list and standings, and on the players' live page). Staff get a **Change avatar** button in that large view to choose a **photo** (from a file, or taken with **Take photo**: on a computer this opens a live camera view in the app with a **Take picture** button and, when the computer has several cameras, **Switch camera**; on a phone or tablet it opens the device's own camera app; if the camera is blocked or unavailable the app says why and offers the file picker instead), an **emoji**, or a **colour**, or to remove it. After choosing or taking a photo you **crop it yourself**: drag the picture inside the round frame and pinch, scroll or use the slider to zoom (arrow keys and + / - work too). Photos are saved as a 128px square and shrunk, so they stay small and work offline. An avatar belongs to the roster player, so it shows everywhere they appear, in every future session, on the stats card and on the end-of-session podium.
-- **Logo:** add or change it with the **Club logo** button on the setup screen. You can optionally **crop it with a free rectangle** (or use the whole picture). It shows on the setup screen, the session header, the stats card and the players' live page.
-- **In the club cloud (signed in):** the logo and emoji and initials avatars are sent to the club, so the players' live page and other staff devices show them. **Photos are not shared unless staff switch on "Show player photos on the live page"** in the club panel (off by default, because anyone with the live link can then see them); switching it off removes the photos from the server. A device's own avatar wins over the club's for the same player, and the club's is matched by name.
+- **In the club cloud (signed in):** emoji and initials avatars are sent to the club, so the players' live page and other staff devices show them. **Photos are not shared unless staff switch on "Show player photos on the live page"** in the club panel (off by default, because anyone with the live link can then see them); switching it off removes the photos from the server. A device's own avatar wins over the club's for the same player, and the club's is matched by name.
 
 ## Cloud sync and live board
 

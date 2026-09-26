@@ -205,12 +205,11 @@ export interface PutHistoryRequest {
   full: unknown
 }
 
-// ---- club logo and player avatars ---------------------------------------------
+// ---- player avatars -----------------------------------------------------------
 
 /** Caps on what a club may store, in bytes of the decoded image. */
 export const MEDIA_LIMITS = {
   avatarPhotoBytes: 48 * 1024,
-  logoBytes: 128 * 1024,
   /** Avatars a club can keep on the server. */
   avatars: 500,
   emojiChars: 8,
@@ -229,11 +228,11 @@ export interface AvatarInfo {
   v: number
 }
 
-/** `GET /clubs/:slug/avatars`: every avatar the club has, by lower-case player name, and its logo's version. */
+/** `GET /clubs/:slug/avatars`: every avatar the club has, by lower-case player name. */
 export interface AvatarIndex {
   avatars: Record<string, AvatarInfo>
-  /** The logo's version for its URL, or null when the club has none. */
-  logo: { v: number } | null
+  /** Always null: clubs no longer have logos. Kept so older cached apps still read the index. */
+  logo: null
   /** The club's display name, or null for an unknown slug (looks the same as any other unset field here). */
   name: string | null
 }
@@ -274,11 +273,6 @@ export interface PutAvatarRequest {
   color?: string
   /** Required for kind "photo". */
   photo?: ImageUpload
-}
-
-/** `PUT /logo` */
-export interface PutLogoRequest {
-  logo: ImageUpload
 }
 
 /** How a player's name is turned into an avatar key: trimmed and lower case, like the club leaderboard. */

@@ -179,4 +179,11 @@ export const MIGRATIONS: Migration[] = [
       create index audit_log_session on audit_log (club_slug, session_id, at desc);
     `,
   },
+  {
+    id: '008_drop_club_logos',
+    sql: `
+      -- Clubs no longer have logos: the stored ones go, so no device or live page shows one again.
+      drop table if exists club_logos;
+    `,
+  },
 ]

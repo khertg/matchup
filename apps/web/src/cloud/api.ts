@@ -73,9 +73,6 @@ export interface CloudApi {
   fetchHistory(token: string, id: string): Promise<unknown | null>
   deleteHistory(token: string, id: string): Promise<void>
 
-  /** Set the club's logo. `data` is the image as base64 text. */
-  putLogo(token: string, data: string): Promise<void>
-  deleteLogo(token: string): Promise<void>
   /** Set a player's avatar; `key` is the lower-case player name. */
   putAvatar(token: string, key: string, avatar: PutAvatarRequest): Promise<void>
   deleteAvatar(token: string, key: string): Promise<void>
@@ -85,10 +82,8 @@ export interface CloudApi {
   fetchStaffAvatars(token: string): Promise<StaffAvatarIndex>
   /** One avatar with its photo, or null when the player has none (staff only). */
   fetchStaffAvatar(token: string, key: string): Promise<StaffAvatar | null>
-  /** Every avatar the club has and its logo's version. Public, so the live page can use it. */
+  /** Every avatar the club has. Public, so the live page can use it. */
   fetchAvatarIndex(slug: string): Promise<AvatarIndex>
-  /** Where the club's logo image is, at this version. */
-  logoUrl(slug: string, version: number): string
   /** Where a player's photo is, at this version. */
   avatarPhotoUrl(slug: string, key: string, version: number): string
 

@@ -16,12 +16,10 @@ import { MAX_ROSTER_BATCH, type SessionStateRow, type StaffAvatar } from '@q2din
 import {
   addPendingRename,
   clearPendingRenames,
-  getLogoSetting,
   getPendingRenames,
   getPhotoSharingPending,
   getSharePhotos,
   getSyncClub,
-  markLogoSynced,
   markPhotosSentFor,
   photosSentFor,
   removePendingRename,
@@ -30,6 +28,7 @@ import {
   setSyncClub,
 } from '@/db/settings'
 import { avatarKey, colorFor, dataUrlBase64, type PlayerAvatar } from '@/lib/avatar'
+import { NOTHING_UNSENT, type UnsentCounts } from '@/lib/reset'
 import { lastActivityAt } from '@/rotation/engine'
 import type { SessionState } from '@/rotation/types'
 import { useSessionStore } from '@/store/session'
@@ -149,9 +148,9 @@ export async function syncHistory(api: CloudApi | null = cloud): Promise<boolean
 }
 
 /**
- * Make sure the logo and avatar changes waiting on this device are for the club that is logged in.
+ * Make sure the avatar changes waiting on this device are for the club that is logged in.
  * The first club to log in takes them. If a different club logs in later, the earlier club's unsent
- * logo and avatar changes are dropped (never sent to the new club), and photo sharing goes back to off,
+ * avatar changes are dropped (never sent to the new club), and photo sharing goes back to off,
  * which is the private default for a club that has not chosen it. Sessions are tagged with their club
  * and the leaderboard totals with their slug, so those already stay with the right club.
  * Safe to call repeatedly.
@@ -164,7 +163,6 @@ export async function adoptClub(slug: string): Promise<void> {
   if (previous !== undefined) {
     await clearAvatarDirty()
     await clearPendingRenames()
-    await markLogoSynced()
     // The photo switch belongs to the earlier club; this club's own setting arrives with the next sync.
     await setPhotoSharingPending(false)
     await setSharePhotos(false)
@@ -225,6 +223,43 @@ async function runSync(api: CloudApi): Promise<void> {
     syncMedia(api),
     renamed ? exchangeRoster(api) : Promise.resolve(false),
   ])
+}
+
+/**
+ * What this device has not sent the club yet, for the signed-in club: what a reset of this device would
+ * lose. Nothing without a club (a build with no cloud keeps everything on the device only).
+ */
+export async function countUnsent(): Promise<UnsentCounts> {
+  const club = useClubAuth.getState().club
+  if (!club) return NOTHING_UNSENT
+  const slug = club.slug
+  const { pending, endedSessionId } = useSessionStore.getState()
+  const [activity, history, roster, renames, avatars, photoSharing] = await Promise.all([
+    db.auditQueue.where('clubSlug').equals(slug).count(),
+    unsyncedHistory(slug),
+    dirtyRoster(slug),
+    getPendingRenames(),
+    db.players.filter((p) => p.avatarDirty === true && p.clubSlug === slug).count(),
+    getPhotoSharingPending(),
+  ])
+  return {
+    sessionChanges: pending.length,
+    sessionEnd: endedSessionId !== '',
+    activity,
+    pastSessions: history.length,
+    savedPlayers: roster.length,
+    renames: renames.length,
+    leaderboard: useClubAuth.getState().pendingLifetime.filter((p) => p.slug === slug).length,
+    avatars,
+    photoSharing,
+  }
+}
+
+/** Send everything waiting on this device now (the running session follows by itself when online). */
+export async function sendEverythingNow(api: CloudApi | null = cloud): Promise<void> {
+  if (!api || !useClubAuth.getState().club) return
+  await runSync(api)
+  await syncRoster(api)
 }
 
 /** Entries per POST /audit. */
@@ -353,7 +388,7 @@ function avatarRequest(avatar: PlayerAvatar): PutAvatarRequest {
 }
 
 /**
- * Send the club logo, player avatars (photos too: the club's other staff devices use them) and the
+ * Send player avatars (photos too: the club's other staff devices use them) and the
  * photo switch that changed on this device. Whether the public live page shows the photos is the
  * club's switch, not a reason to keep them here. Safe to call repeatedly. Returns true when nothing is
  * left waiting.
@@ -381,12 +416,6 @@ export async function syncMedia(api: CloudApi | null = cloud): Promise<boolean> 
     if (!(await photosSentFor(club.slug))) {
       await markPhotosDirty(club.slug)
       await markPhotosSentFor(club.slug)
-    }
-
-    const logo = await getLogoSetting()
-    if (logo?.dirty) {
-      await attempt(() => (logo.data ? api.putLogo(club.token, dataUrlBase64(logo.data)) : api.deleteLogo(club.token)))
-      await markLogoSynced()
     }
 
     for (const player of await db.players

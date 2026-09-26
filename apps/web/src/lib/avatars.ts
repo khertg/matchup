@@ -17,26 +17,22 @@ export interface AvatarContextValue {
   local: Map<string, PlayerAvatar>
   /** This device's saved players of the club, by lower-case name: their roster id, for changing an avatar. */
   rosterIds?: Map<string, number>
-  /** The club's avatars by lower-case name and its logo version, or null with no club. */
+  /** The club's avatars by lower-case name, or null with no club. */
   club: { slug: string; index: AvatarIndex } | null
-  /** This device's logo: undefined = none set here, null = removed here, else a data URL. */
-  localLogo: string | null | undefined
   /** The signed-in club's name on a staff device (known offline, and at once after a rename here). */
   clubName?: string | null
 }
 
-export const AvatarContext = createContext<AvatarContextValue>({ local: new Map(), club: null, localLogo: undefined })
+export const AvatarContext = createContext<AvatarContextValue>({ local: new Map(), club: null })
 
 /** Where the club's images are, when there is a cloud. */
 export interface MediaUrls {
   photo: (slug: string, key: string, version: number) => string
-  logo: (slug: string, version: number) => string
 }
 
 const api = cloud
 const cloudUrls: MediaUrls | null = api && {
   photo: (slug, key, v) => api.avatarPhotoUrl(slug, key, v),
-  logo: (slug, v) => api.logoUrl(slug, v),
 }
 
 /**
@@ -68,16 +64,6 @@ export function resolveAvatar(
   return { kind: 'initials', text: initialsOf(name), color: colorFor(name) }
 }
 
-/** The club logo to show: this device's, else the club's, else nothing. */
-export function resolveLogo(
-  { localLogo, club }: Pick<AvatarContextValue, 'localLogo' | 'club'>,
-  urls: MediaUrls | null = cloudUrls,
-): string | null {
-  if (localLogo !== undefined) return localLogo
-  if (club && urls && club.index.logo) return urls.logo(club.slug, club.index.logo.v)
-  return null
-}
-
 export function usePlayerAvatar(name: string): ResolvedAvatar {
   return resolveAvatar(useContext(AvatarContext), name)
 }
@@ -90,10 +76,6 @@ export function useOwnAvatar(name: string): PlayerAvatar | null {
 /** This device's saved player of that name (its roster id), or undefined when it has none. */
 export function useRosterId(name: string): number | undefined {
   return useContext(AvatarContext).rosterIds?.get(avatarKey(name))
-}
-
-export function useClubLogo(): string | null {
-  return resolveLogo(useContext(AvatarContext))
 }
 
 /** The signed-in (or viewed) club's display name, else null. */

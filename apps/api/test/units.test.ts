@@ -216,7 +216,6 @@ describe('migrations', () => {
       'audit_log',
       'club_avatars',
       'club_devices',
-      'club_logos',
       'club_players',
       'club_roster',
       'club_tokens',
@@ -245,6 +244,21 @@ describe('migrations', () => {
       { slug: 'no-photo', share_photos: false },
       { slug: 'with-photo', share_photos: true },
     ])
+    await db.close()
+  })
+
+  it('drop every club logo, since clubs no longer have one', async () => {
+    const db = await connectDb('pglite://memory')
+    const before = MIGRATIONS.findIndex((m) => m.id === '008_drop_club_logos')
+    await migrate(db, MIGRATIONS.slice(0, before))
+    await db.exec(`
+      insert into clubs (slug, name, password_hash, recovery_hash) values ('with-logo', 'A', 'x', 'x');
+      insert into club_logos (club_slug, content_type, data) values ('with-logo', 'image/png', 'AAAA');
+    `)
+    await migrate(db)
+    const { rows } = await db.query("select 1 from information_schema.tables where table_name = 'club_logos'")
+    expect(rows).toHaveLength(0)
+    expect((await db.query("select slug from clubs")).rows).toEqual([{ slug: 'with-logo' }])
     await db.close()
   })
 

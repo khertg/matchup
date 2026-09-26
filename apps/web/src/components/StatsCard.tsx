@@ -1,6 +1,5 @@
 import { Medal as MedalIcon } from 'lucide-react'
 import type { Ref } from 'react'
-import { ClubLogo } from '@/components/ClubLogo'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { useSessionTitle } from '@/lib/avatars'
 import type { CardColors } from '@/lib/cardPalette'
@@ -36,10 +35,7 @@ export function StatsCard({ standing, location, date, colors, ref }: Props) {
       }}
     >
       <div className="flex items-center justify-between text-sm font-semibold tracking-widest">
-        <span className="flex items-center gap-2">
-          <ClubLogo className="max-h-7 max-w-24 rounded" />
-          Q2DINK
-        </span>
+        <span>Q2DINK</span>
         <span className="opacity-80">{date}</span>
       </div>
 

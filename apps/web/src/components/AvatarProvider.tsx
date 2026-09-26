@@ -5,7 +5,6 @@ import { useClubAuth } from '@/cloud/auth'
 import { cloud } from '@/cloud/client'
 import type { Player } from '@/db/db'
 import { listRoster } from '@/db/roster'
-import { getLogoSetting, type LogoSetting } from '@/db/settings'
 import { avatarKey, type PlayerAvatar } from '@/lib/avatar'
 import { AvatarContext, type AvatarContextValue } from '@/lib/avatars'
 
@@ -13,7 +12,7 @@ import { AvatarContext, type AvatarContextValue } from '@/lib/avatars'
 const REFRESH_MS = 15_000
 
 /**
- * Makes players' avatars and the club logo available to every component. Staff devices read their own
+ * Makes players' avatars available to every component. Staff devices read their own
  * roster and, when signed in, the club's; the players' live page (`viewerSlug`) reads only the club's.
  */
 export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; children: ReactNode }) {
@@ -24,7 +23,6 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
     () => (viewerSlug ? Promise.resolve([] as Player[]) : listRoster(club?.slug)),
     [viewerSlug, club?.slug],
   )
-  const logo = useLiveQuery(() => (viewerSlug ? Promise.resolve(undefined as LogoSetting | undefined) : getLogoSetting()), [viewerSlug])
 
   const [remote, setRemote] = useState<{ slug: string; index: AvatarIndex } | null>(null)
   useEffect(() => {
@@ -67,10 +65,9 @@ export function AvatarProvider({ viewerSlug, children }: { viewerSlug?: string; 
       local,
       rosterIds,
       club: remote && remote.slug === slug ? remote : null,
-      localLogo: logo === undefined ? undefined : logo.data,
       clubName: viewerSlug ? null : (club?.name ?? null),
     }
-  }, [players, remote, slug, logo, viewerSlug, club?.name])
+  }, [players, remote, slug, viewerSlug, club?.name])
 
   return <AvatarContext.Provider value={value}>{children}</AvatarContext.Provider>
 }

@@ -60,12 +60,6 @@ export function squareCrop(width: number, height: number): Crop {
   return { sx: Math.floor((width - size) / 2), sy: Math.floor((height - size) / 2), sw: size, sh: size }
 }
 
-/** An image scaled down to fit inside a square of `max` pixels, keeping its shape. Never scaled up. */
-export function fitWithin(width: number, height: number, max: number): { width: number; height: number } {
-  const scale = Math.min(1, max / Math.max(width, height))
-  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
-}
-
 /** The decoded size of a data URL's base64 part, in bytes. */
 export function dataUrlBytes(dataUrl: string): number {
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
@@ -107,11 +101,11 @@ const toDataUrl = (blob: Blob) =>
   })
 
 /** Encode a canvas as WebP, or as JPEG or PNG on browsers that cannot write WebP. */
-async function encode(canvas: HTMLCanvasElement, quality: number, keepAlpha: boolean): Promise<Blob> {
+async function encode(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   const blob = (type: string, q?: number) => new Promise<Blob | null>((r) => canvas.toBlob(r, type, q))
   const webp = await blob('image/webp', quality)
   if (webp && webp.type === 'image/webp') return webp
-  const fallback = await blob(keepAlpha ? 'image/png' : 'image/jpeg', quality)
+  const fallback = await blob('image/jpeg', quality)
   if (!fallback) throw new ImageError('That picture could not be shrunk. Try a different one.')
   return fallback
 }
@@ -142,29 +136,26 @@ export async function loadPicture(file: Blob): Promise<Picture> {
 }
 
 /**
- * Make an avatar or a logo from a picked photo. An avatar is a 128px square and a logo is fitted
- * inside 256px with its shape and transparency kept. `crop` is the part of the picture to use, in
- * its own pixels; without one an avatar takes the centred square and a logo the whole picture.
- * Returns a data URL small enough to keep on the device and send to the club.
+ * Make an avatar from a picked photo: a 128px square. `crop` is the part of the picture to use, in its
+ * own pixels; without one it takes the centred square. Returns a data URL small enough to keep on the
+ * device and send to the club.
  */
-export async function processImage(file: Blob, kind: 'avatar' | 'logo', crop?: Crop): Promise<string> {
+export async function processImage(file: Blob, crop?: Crop): Promise<string> {
   checkFile(file)
 
   const image = await decode(file)
   try {
-    const limit = kind === 'avatar' ? MEDIA_LIMITS.avatarPhotoBytes : MEDIA_LIMITS.logoBytes
-    const sizes = kind === 'avatar' ? [128, 96, 64] : [256, 192, 128]
-    const source: Crop =
-      crop ?? (kind === 'avatar' ? squareCrop(image.width, image.height) : { sx: 0, sy: 0, sw: image.width, sh: image.height })
-    for (const max of sizes) {
-      const out = kind === 'avatar' ? { width: max, height: max } : fitWithin(source.sw, source.sh, max)
+    const limit = MEDIA_LIMITS.avatarPhotoBytes
+    const source: Crop = crop ?? squareCrop(image.width, image.height)
+    for (const max of [128, 96, 64]) {
+      const out = { width: max, height: max }
       const canvas = document.createElement('canvas')
       canvas.width = out.width
       canvas.height = out.height
       const context = canvas.getContext('2d')
       if (!context) throw new ImageError('This browser cannot shrink pictures.')
       context.drawImage(image.source, source.sx, source.sy, source.sw, source.sh, 0, 0, out.width, out.height)
-      const blob = await encode(canvas, 0.82, kind === 'logo')
+      const blob = await encode(canvas, 0.82)
       const dataUrl = await toDataUrl(blob)
       if (dataUrlBytes(dataUrl) <= limit) return dataUrl
     }
